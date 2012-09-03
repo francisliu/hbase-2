@@ -150,6 +150,7 @@ import org.apache.hadoop.hbase.util.Sleeper;
 import org.apache.hadoop.hbase.util.Strings;
 import org.apache.hadoop.hbase.util.Threads;
 import org.apache.hadoop.hbase.util.VersionInfo;
+import org.apache.hadoop.hbase.zookeeper.ClusterId;
 import org.apache.hadoop.hbase.zookeeper.ClusterStatusTracker;
 import org.apache.hadoop.hbase.zookeeper.ZKUtil;
 import org.apache.hadoop.hbase.zookeeper.ZooKeeperNodeTracker;
@@ -595,6 +596,16 @@ public class HRegionServer implements HRegionInterface, HBaseRPCErrorHandler,
     this.catalogTracker = new CatalogTracker(this.zooKeeper, this.conf,
       this, this.conf.getInt("hbase.regionserver.catalog.timeout", Integer.MAX_VALUE));
     catalogTracker.start();
+
+    // Retrieve clusterId
+    // Since cluster status is now up
+    // ID should have already been set by HMaster
+    ClusterId clusterId = new ClusterId(this.zooKeeper,this);
+    if (!clusterId.hasId()) {
+      this.abort("Cluster ID has not been set");
+    }
+    this.conf.set(HConstants.CLUSTER_ID, clusterId.getId());
+    LOG.info("ClusterId : "+clusterId);
   }
 
   /**
