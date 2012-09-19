@@ -89,7 +89,7 @@ public class HBaseAdmin implements Abortable, Closeable {
   // want to wait a long time.
   private final int retryLongerMultiplier;
   private boolean aborted;
-  
+
   /**
    * Constructor
    *
@@ -191,7 +191,7 @@ public class HBaseAdmin implements Abortable, Closeable {
     this.aborted = true;
     throw new RuntimeException(why, e);
   }
-  
+
   @Override
   public boolean isAborted(){
     return this.aborted;
@@ -598,7 +598,7 @@ public class HBaseAdmin implements Abortable, Closeable {
         // continue
       }
     }
-    
+
     if (tableExists) {
       throw new IOException("Retries exhausted, it took too long to wait"+
         " for the table " + Bytes.toString(tableName) + " to be deleted.");
@@ -1116,7 +1116,7 @@ public class HBaseAdmin implements Abortable, Closeable {
    * servername is provided then based on the online regions in the specified
    * regionserver the specified region will be closed. The master will not be
    * informed of the close. Note that the regionname is the encoded regionname.
-   * 
+   *
    * @param encodedRegionName
    *          The encoded region name; i.e. the hash that makes up the region
    *          name suffix: e.g. if regionname is
@@ -1747,7 +1747,7 @@ public class HBaseAdmin implements Abortable, Closeable {
    * @param tableName the name of the table
    * @return Ordered list of {@link HRegionInfo}.
    * @throws IOException
-   */  
+   */
   public List<HRegionInfo> getTableRegions(final byte[] tableName)
   throws IOException {
     CatalogTracker ct = getCatalogTracker();
@@ -1759,7 +1759,7 @@ public class HBaseAdmin implements Abortable, Closeable {
     }
     return Regions;
   }
-  
+
   public void close() throws IOException {
     if (this.connection != null) {
       this.connection.close();
@@ -1779,14 +1779,14 @@ public class HBaseAdmin implements Abortable, Closeable {
 
   /**
    * Roll the log writer. That is, start writing log messages to a new file.
-   * 
+   *
    * @param serverName
    *          The servername of the regionserver. A server name is made of host,
    *          port and startcode. This is mandatory. Here is an example:
    *          <code> host187.example.com,60020,1289493121758</code>
    * @return If lots of logs, flush the returned regions so next time through
    * we can clean logs. Returns null if nothing to flush.  Names are actual
-   * region names as returned by {@link HRegionInfo#getEncodedName()}  
+   * region names as returned by {@link HRegionInfo#getEncodedName()}
    * @throws IOException if a remote or network exception occurs
    * @throws FailedLogCloseException
    */
