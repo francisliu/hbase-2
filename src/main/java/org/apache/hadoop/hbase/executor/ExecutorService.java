@@ -126,6 +126,7 @@ public class ExecutorService {
 
       case RS_ZK_REGION_SPLIT:
       case M_SERVER_SHUTDOWN:
+      case C_M_GROUP_MOVE_SERVER:
         return ExecutorType.MASTER_SERVER_OPERATIONS;
 
       case M_META_SERVER_SHUTDOWN:
@@ -157,7 +158,6 @@ public class ExecutorService {
 
       case M_RS_CLOSE_META:
         return ExecutorType.RS_CLOSE_META;
-
       default:
         throw new RuntimeException("Unhandled event type " + type);
     }
@@ -269,7 +269,7 @@ public class ExecutorService {
     }
     return ret;
   }
-  
+
   /**
    * Executor instance.
    */

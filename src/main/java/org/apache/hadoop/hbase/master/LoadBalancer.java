@@ -24,6 +24,7 @@ import org.apache.hadoop.hbase.ClusterStatus;
 import org.apache.hadoop.hbase.HRegionInfo;
 import org.apache.hadoop.hbase.ServerName;
 
+import java.io.IOException;
 import java.util.List;
 import java.util.Map;
 
@@ -91,8 +92,10 @@ public interface LoadBalancer extends Configurable {
 
   /**
    * Get a random region server from the list
+   * @param region
    * @param servers
    * @return Servername
    */
-  public ServerName randomAssignment(List<ServerName> servers);
+  public ServerName randomAssignment(HRegionInfo region, List<ServerName> servers, ServerName prefferedServer);
+
 }
