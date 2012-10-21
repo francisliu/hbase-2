@@ -28,6 +28,7 @@ import java.util.Set;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.hbase.HConstants;
 import org.apache.hadoop.hbase.HRegionInfo;
 import org.apache.hadoop.hbase.HTableDescriptor;
 import org.apache.hadoop.hbase.MasterNotRunningException;
@@ -40,9 +41,12 @@ import org.apache.hadoop.hbase.client.HBaseAdmin;
 public class GroupAdminClient implements GroupAdmin {
   private GroupAdmin proxy;
 	private static final Log LOG = LogFactory.getLog(GroupAdminClient.class);
+  private int operationTimeout;
 
   public GroupAdminClient(Configuration conf) throws ZooKeeperConnectionException, MasterNotRunningException {
     proxy = new HBaseAdmin(conf).coprocessorProxy(GroupAdminProtocol.class);
+    operationTimeout = conf.getInt(HConstants.HBASE_CLIENT_OPERATION_TIMEOUT,
+            HConstants.DEFAULT_HBASE_CLIENT_OPERATION_TIMEOUT);
   }
 
   @Override
@@ -68,6 +72,7 @@ public class GroupAdminClient implements GroupAdmin {
   @Override
   public void moveServers(Set<String> servers, String targetGroup) throws IOException, InterruptedException {
     proxy.moveServers(servers, targetGroup);
+    waitForTransitions(servers);
   }
 
   @Override
@@ -103,4 +108,15 @@ public class GroupAdminClient implements GroupAdmin {
     GroupInfo.setGroupString(groupName, desc);
   }
 
+  private void waitForTransitions(Set<String> servers) throws IOException, InterruptedException {
+    long endTime = System.currentTimeMillis()+operationTimeout;
+    boolean found;
+    do {
+      found = false;
+      for(String server: proxy.listServersInTransition().keySet()) {
+        found = found || servers.contains(server);
+      }
+      Thread.sleep(1000);
+    } while(found && System.currentTimeMillis() <= endTime);
+  }
 }
