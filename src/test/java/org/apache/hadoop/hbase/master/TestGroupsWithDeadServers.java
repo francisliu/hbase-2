@@ -47,7 +47,7 @@ import org.junit.Test;
 import org.junit.experimental.categories.Category;
 
 @Category(LargeTests.class)
-public class TestRSGroupWithDeadServers {
+public class TestGroupsWithDeadServers {
 	private static HBaseTestingUtility TEST_UTIL;
 	private static HMaster master;
 	private static Random rand;
@@ -80,8 +80,8 @@ public class TestRSGroupWithDeadServers {
 
 	@Test
 	public void testGroupWithOnlineServers() throws IOException, InterruptedException{
+    GroupAdminClient groupAdmin = new GroupAdminClient(master.getConfiguration());
 		String newRSGroup = "group-" + rand.nextInt();
-		GroupAdminClient groupAdmin = new GroupAdminClient(master.getConfiguration());
 		String tableNameTwo = "TABLE-" + rand.nextInt();
 		byte[] tableTwoBytes = Bytes.toBytes(tableNameTwo);
 		String familyName = "family" + rand.nextInt();
@@ -90,7 +90,7 @@ public class TestRSGroupWithDeadServers {
 
 		GroupInfo defaultInfo = groupAdmin.getGroup(GroupInfo.DEFAULT_GROUP);
 		assertTrue(defaultInfo.getServers().size() == 4);
-		TestGroupInfoManager.addGroup(groupAdmin, newRSGroup, 2);
+		TestGroups.addGroup(groupAdmin, newRSGroup, 2);
 		defaultInfo = groupAdmin.getGroup(GroupInfo.DEFAULT_GROUP);
 		assertTrue(defaultInfo.getServers().size() == 2);
 		assertTrue(groupAdmin.getGroup(newRSGroup).getServers().size() == 2);
@@ -104,7 +104,7 @@ public class TestRSGroupWithDeadServers {
     //move table to new group
     admin.disableTable(tableNameTwo);
     HTableDescriptor desc = admin.getTableDescriptor(tableTwoBytes);
-    GroupInfo.setGroupString(newRSGroup, desc);
+    groupAdmin.setGroupPropertyOfTable(newRSGroup, desc);
     admin.modifyTable(tableTwoBytes, desc);
     admin.enableTable(tableTwoBytes);
 
@@ -206,16 +206,9 @@ public class TestRSGroupWithDeadServers {
       Set<String> set = new TreeSet<String>();
       set.add(newServer.getHostAndPort());
 			groupAdmin.moveServers(set, groupName);
-      waitForTransitions(groupAdmin);
 			assertTrue(groupAdmin.getGroup(groupName).containsServer(
           newServer.getHostAndPort()));
 		}
 	}
-
-  private static void waitForTransitions(GroupAdmin gAdmin) throws IOException, InterruptedException {
-    while(gAdmin.listServersInTransition().size()>0) {
-      Thread.sleep(1000);
-    }
-  }
 
 }

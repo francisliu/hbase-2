@@ -19,10 +19,13 @@
  */
 package org.apache.hadoop.hbase.master;
 
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertTrue;
 
 import java.io.IOException;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
@@ -30,6 +33,7 @@ import java.util.Random;
 import java.util.Set;
 import java.util.TreeSet;
 
+import com.google.common.collect.Sets;
 import org.apache.hadoop.hbase.HBaseTestingUtility;
 import org.apache.hadoop.hbase.HConstants;
 import org.apache.hadoop.hbase.HRegionInfo;
@@ -41,13 +45,15 @@ import org.apache.hadoop.hbase.client.HBaseAdmin;
 import org.apache.hadoop.hbase.client.HTable;
 import org.apache.hadoop.hbase.ipc.HRegionInterface;
 import org.apache.hadoop.hbase.util.Bytes;
+import org.junit.After;
 import org.junit.AfterClass;
+import org.junit.Before;
 import org.junit.BeforeClass;
 import org.junit.Test;
 import org.junit.experimental.categories.Category;
 
 @Category(MediumTests.class)
-public class TestGroupInfoManager {
+public class TestGroups {
 	private static HBaseTestingUtility TEST_UTIL;
 	private static HMaster master;
 	private static Random rand;
@@ -77,44 +83,49 @@ public class TestGroupInfoManager {
 		TEST_UTIL.shutdownMiniCluster();
 	}
 
+  @After
+  public void afterMethod() throws Exception {
+		GroupAdminClient groupAdmin = new GroupAdminClient(master.getConfiguration());
+    for(GroupInfo group: groupAdmin.listGroups()) {
+      if(!group.getName().equals(GroupInfo.DEFAULT_GROUP))
+        groupAdmin.removeGroup(group.getName());
+    }
+    for(HTableDescriptor table: TEST_UTIL.getHBaseAdmin().listTables()) {
+      if(!table.isMetaRegion() && !table.isRootRegion()) {
+        TEST_UTIL.deleteTable(table.getName());
+      }
+    }
+  }
+
 	@Test
 	public void testBasicStartUp() throws IOException {
-		GroupAdminClient groupManager = new GroupAdminClient(master.getConfiguration());
-		GroupInfo defaultInfo = groupManager.getGroup(GroupInfo.DEFAULT_GROUP);
-		defaultInfo = groupManager.getGroup(GroupInfo.DEFAULT_GROUP);
+		GroupAdminClient groupAdmin = new GroupAdminClient(master.getConfiguration());
+		GroupInfo defaultInfo = groupAdmin.getGroup(GroupInfo.DEFAULT_GROUP);
 		assertTrue(defaultInfo.getServers().size() == 4);
 		// Assignment of root and meta regions.
-		assertTrue(groupManager.listRegionsOfGroup(GroupInfo.DEFAULT_GROUP)
+		assertTrue(groupAdmin.listRegionsOfGroup(GroupInfo.DEFAULT_GROUP)
         .size() == 2);
 	}
 
 	@Test
 	public void testSimpleRegionServerMove() throws IOException,
 			InterruptedException {
-		GroupAdminClient groupManager = new GroupAdminClient(master.getConfiguration());
-		String groupOne = groupPrefix + rand.nextInt();
-		addGroup(groupManager, groupOne, 1);
-		GroupInfo dInfo = groupManager
-				.getGroup(GroupInfo.DEFAULT_GROUP);
-		String groupTwo = groupPrefix + rand.nextInt();
-		addGroup(groupManager, groupTwo, 1);
+		GroupAdminClient groupAdmin = new GroupAdminClient(master.getConfiguration());
+		GroupInfo appInfo = addGroup(groupAdmin, groupPrefix + rand.nextInt(), 1);
+		GroupInfo adminInfo = addGroup(groupAdmin, groupPrefix + rand.nextInt(), 1);
+    GroupInfo dInfo = groupAdmin.getGroup(GroupInfo.DEFAULT_GROUP);
 		// Force the group info manager to read group information from disk.
-		assertTrue(groupManager.listGroups().size() == 3);
-		dInfo = groupManager.getGroup(GroupInfo.DEFAULT_GROUP);
-		GroupInfo appInfo = groupManager.getGroup(groupTwo);
-		GroupInfo adminInfo = groupManager.getGroup(groupOne);
+		assertTrue(groupAdmin.listGroups().size() == 3);
 		assertTrue(adminInfo.getServers().size() == 1);
 		assertTrue(appInfo.getServers().size() == 1);
 		assertTrue(dInfo.getServers().size() == 2);
-		groupManager.moveServers(appInfo.getServers(),
+		groupAdmin.moveServers(appInfo.getServers(),
         GroupInfo.DEFAULT_GROUP);
-    waitForTransitions(groupManager);
-		groupManager.removeGroup(groupTwo);
-		groupManager.moveServers(adminInfo.getServers(),
+		groupAdmin.removeGroup(appInfo.getName());
+		groupAdmin.moveServers(adminInfo.getServers(),
         GroupInfo.DEFAULT_GROUP);
-    waitForTransitions(groupManager);
-		groupManager.removeGroup(groupOne);
-		assertTrue(groupManager.listGroups().size() == 1);
+		groupAdmin.removeGroup(adminInfo.getName());
+		assertTrue(groupAdmin.listGroups().size() == 1);
 	}
 
 	@Test
@@ -122,9 +133,8 @@ public class TestGroupInfoManager {
 		String tableName = tablePrefix + rand.nextInt();
 		byte[] TABLENAME = Bytes.toBytes(tableName);
 		byte[] FAMILYNAME = Bytes.toBytes(familyPrefix + rand.nextInt());
-		GroupAdminClient groupManager = new GroupAdminClient(master.getConfiguration());
-		String newGroupName = groupPrefix + rand.nextInt();
-		addGroup(groupManager, newGroupName, 2);
+		GroupAdminClient groupAdmin = new GroupAdminClient(master.getConfiguration());
+		GroupInfo newGroup = addGroup(groupAdmin, groupPrefix + rand.nextInt(), 2);
 
 		HTable ht = TEST_UTIL.createTable(TABLENAME, FAMILYNAME);
 		assertTrue(TEST_UTIL.createMultiRegions(master.getConfiguration(), ht,
@@ -135,18 +145,21 @@ public class TestGroupInfoManager {
 		List<HRegionInfo> regionList = TEST_UTIL.getHBaseAdmin()
 				.getTableRegions(TABLENAME);
 		assertTrue(regionList.size() > 0);
-		GroupInfo tableGrp = groupManager.getGroupInfoOfTable(Bytes.toBytes(tableName));
+		GroupInfo tableGrp = groupAdmin.getGroupInfoOfTable(Bytes.toBytes(tableName));
 		assertTrue(tableGrp.getName().equals(GroupInfo.DEFAULT_GROUP));
 
-
+    //change table's group
     admin.disableTable(TABLENAME);
     HTableDescriptor desc = admin.getTableDescriptor(TABLENAME);
-    GroupInfo.setGroupString(newGroupName, desc);
-    admin.modifyTable(TABLENAME,desc);
+    groupAdmin.setGroupPropertyOfTable(newGroup.getName(), desc);
+    admin.modifyTable(TABLENAME, desc);
     admin.enableTable(TABLENAME);
+
+    //verify group change
     desc = admin.getTableDescriptor(TABLENAME);
-		GroupInfo newTableGrp = groupManager.getGroup(GroupInfo.getGroupString(desc));
-		assertTrue(newTableGrp.getName().equals(newGroupName));
+		assertEquals(newGroup.getName(),
+        GroupInfo.getGroupString(desc));
+
 		Map<String, Map<ServerName, List<HRegionInfo>>> tableRegionAssignMap = master
 				.getAssignmentManager().getAssignmentsByTable();
 		assertTrue(tableRegionAssignMap.keySet().size() == 1);
@@ -154,21 +167,20 @@ public class TestGroupInfoManager {
 				.get(tableName);
 		for (ServerName rs : serverMap.keySet()) {
 			if (serverMap.get(rs).size() > 0) {
-				assertTrue(newTableGrp.containsServer(rs.getHostAndPort()));
+				assertTrue(newGroup.containsServer(rs.getHostAndPort()));
 			}
 		}
-    groupManager.removeGroup(newGroupName);
+    groupAdmin.removeGroup(newGroup.getName());
 		TEST_UTIL.deleteTable(TABLENAME);
 		tableRegionAssignMap = master.getAssignmentManager()
 				.getAssignmentsByTable();
-		assertTrue(tableRegionAssignMap.size() == 0);
+		assertEquals(tableRegionAssignMap.size(), 0);
 	}
 
 	@Test
 	public void testRegionMove() throws IOException, InterruptedException {
-		GroupAdminClient groupManager = new GroupAdminClient(master.getConfiguration());
-		String newGroupName = groupPrefix + rand.nextInt();
-		addGroup(groupManager, newGroupName, 1);
+		GroupAdminClient groupAdmin = new GroupAdminClient(master.getConfiguration());
+		GroupInfo newGroup = addGroup(groupAdmin, groupPrefix + rand.nextInt(), 1);
 		String tableNameOne = tablePrefix + rand.nextInt();
 		byte[] tableOneBytes = Bytes.toBytes(tableNameOne);
 		byte[] familyOneBytes = Bytes.toBytes(familyPrefix + rand.nextInt());
@@ -177,50 +189,48 @@ public class TestGroupInfoManager {
 		assertTrue(TEST_UTIL.createMultiRegions(master.getConfiguration(), ht,
 				familyOneBytes, 5) == 5);
 		TEST_UTIL.waitUntilAllRegionsAssigned(5);
-		List<HRegionInfo> regions = groupManager
+		List<HRegionInfo> regions = groupAdmin
 				.listRegionsOfGroup(GroupInfo.DEFAULT_GROUP);
-		assertTrue(regions.size()+">="+5,regions.size() >= 5);
+		assertTrue(regions.size() + ">=" + 5, regions.size() >= 5);
 		HRegionInfo region = regions.get(regions.size()-1);
 		// Lets move this region to newGroupName group.
-		ServerName tobeAssigned = ServerName.parseServerName(groupManager
-				.getGroup(newGroupName).getServers().iterator().next());
+		ServerName tobeAssigned =
+        ServerName.parseServerName(newGroup.getServers().iterator().next());
 		master.move(region.getEncodedNameAsBytes(),
         Bytes.toBytes(tobeAssigned.toString()));
 
 		while (master.getAssignmentManager().getRegionsInTransition().size() > 0) {
 			Thread.sleep(10);
 		}
-
-		List<HRegionInfo> updatedRegions = groupManager
+    //verify that region was never assigned to the server
+		List<HRegionInfo> updatedRegions = groupAdmin
 				.listRegionsOfGroup(GroupInfo.DEFAULT_GROUP);
 		assertTrue(regions.size() == updatedRegions.size());
     HRegionInterface rs = admin.getConnection().getHRegionConnection(tobeAssigned.getHostname(),tobeAssigned.getPort());
 		assertFalse(rs.getOnlineRegions().contains(region));
 		TEST_UTIL.deleteTable(tableOneBytes);
-    groupManager.removeGroup(newGroupName);
+    groupAdmin.removeGroup(newGroup.getName());
 	}
 
-	static void addGroup(GroupAdminClient gManager, String groupName,
-			int servers) throws IOException, InterruptedException {
-		GroupInfo defaultInfo = gManager
+	static GroupInfo addGroup(GroupAdminClient gAdmin, String groupName,
+			int serverCount) throws IOException, InterruptedException {
+		GroupInfo defaultInfo = gAdmin
 				.getGroup(GroupInfo.DEFAULT_GROUP);
 		assertTrue(defaultInfo != null);
-		assertTrue(defaultInfo.getServers().size() >= servers);
-		gManager.addGroup(new GroupInfo(groupName, new TreeSet<String>()));
-		Iterator<String> itr = defaultInfo.getServers().iterator();
-    Set<String> set = new TreeSet<String>();
-		for (int i = 0; i < servers; i++) {
-      set.add(itr.next());
-		}
-    gManager.moveServers(set, groupName);
-    waitForTransitions(gManager);
-		assertTrue(gManager.getGroup(groupName).getServers().size() >= servers);
-	}
+		assertTrue(defaultInfo.getServers().size() >= serverCount);
+		gAdmin.addGroup(new GroupInfo(groupName, new TreeSet<String>()));
 
-  private static void waitForTransitions(GroupAdmin gAdmin) throws IOException, InterruptedException {
-    while(gAdmin.listServersInTransition().size()>0) {
-      Thread.sleep(1000);
+    Set<String> set = new HashSet<String>();
+    for(String server: defaultInfo.getServers()) {
+      if(set.size() == serverCount) {
+        break;
+      }
+      set.add(server);
     }
-  }
+    gAdmin.moveServers(set, groupName);
+    GroupInfo result = gAdmin.getGroup(groupName);
+		assertTrue(result.getServers().size() >= serverCount);
+    return result;
+	}
 
 }
