@@ -277,7 +277,7 @@ public class GroupBasedLoadBalancer implements LoadBalancer {
     return misplacedRegions;
   }
 
-  public GroupInfoManager getGroupInfoManager() {
+  GroupInfoManager getGroupInfoManager() {
     return groupManager;
   }
 }

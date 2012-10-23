@@ -81,5 +81,19 @@ module Hbase
     def listTablesOfGroup(group_name)
       @admin.listTablesOfGroup(group_name).map { |g| g }
     end
+    #----------------------------------------------------------------------------------------------
+    # list servers in transition
+    def listServersInTransition()
+      iter = @admin.listServersInTransition.entrySet.iterator
+      while iter.hasNext
+        entry = iter.next
+        if block_given?
+          yield(entry.getKey, entry.getValue)
+        else
+          res[entry.getKey] ||= {}
+          res[entry.getKey] = entry.getValue
+        end
+      end
+    end
   end
 end
