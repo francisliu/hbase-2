@@ -97,7 +97,7 @@ public class TestGroupBasedLoadBalancer {
         LOG.info("Mock Cluster :  " + printStats(list));
         List<RegionPlan> plans = loadBalancer.balanceCluster(servers);
         ArrayListMultimap<String, ServerAndLoad> balancedCluster = reconcile(
-                list, plans);
+                                                    list, plans);
         LOG.info("Mock Balance : " + printStats(balancedCluster));
         assertClusterAsBalanced(balancedCluster);
     }
@@ -106,7 +106,7 @@ public class TestGroupBasedLoadBalancer {
      * Invariant is that all servers of a group have load between floor(avg) and
      * ceiling(avg) number of regions.
      */
-    public void assertClusterAsBalanced(
+    private void assertClusterAsBalanced(
             ArrayListMultimap<String, ServerAndLoad> groupLoadMap) {
         for (String gName : groupLoadMap.keySet()) {
             List<ServerAndLoad> groupLoad = groupLoadMap.get(gName);
@@ -347,69 +347,58 @@ public class TestGroupBasedLoadBalancer {
                         servers, ServerName.parseServerName(hostAndPort));
                 List<HRegionInfo> regions = serversMap.get(actual);
                 assertTrue("No load for " + actual, regions != null);
-                //if(regions != null){
                 loadMap.put(gInfo.getName(),
                         new ServerAndLoad(actual, regions.size()));
-                //}
             }
         }
         return loadMap;
     }
 
-    /**
-     * This assumes the RegionPlan HSI instances are the same ones in the map,
-     * so actually no need to even pass in the map, but I think it's clearer.
-     *
-     * @param list
-     * @param plans
-     * @return
-     */
-    private ArrayListMultimap<String, ServerAndLoad> reconcile(
-            ArrayListMultimap<String, ServerAndLoad> previousLoad,
-            List<RegionPlan> plans) {
-        ArrayListMultimap<String, ServerAndLoad> result = ArrayListMultimap
-                .create();
-        result.putAll(previousLoad);
-        if (plans != null) {
-            for (RegionPlan plan : plans) {
-                ServerName source = plan.getSource();
-                updateLoad(result, source, -1);
-                ServerName destination = plan.getDestination();
-                updateLoad(result, destination, +1);
-            }
-        }
-        return result;
+  private ArrayListMultimap<String, ServerAndLoad> reconcile(
+      ArrayListMultimap<String, ServerAndLoad> previousLoad,
+      List<RegionPlan> plans) {
+    ArrayListMultimap<String, ServerAndLoad> result = ArrayListMultimap
+        .create();
+    result.putAll(previousLoad);
+    if (plans != null) {
+      for (RegionPlan plan : plans) {
+        ServerName source = plan.getSource();
+        updateLoad(result, source, -1);
+        ServerName destination = plan.getDestination();
+        updateLoad(result, destination, +1);
+      }
     }
+    return result;
+  }
 
-    private void updateLoad(
-            ArrayListMultimap<String, ServerAndLoad> previousLoad,
-            final ServerName sn, final int diff) {
-        for (String groupName : previousLoad.keySet()) {
-            ServerAndLoad newSAL = null;
-            ServerAndLoad oldSAL = null;
-            for (ServerAndLoad sal : previousLoad.get(groupName)) {
-                if (ServerName.isSameHostnameAndPort(sn, sal.getServerName())) {
-                    oldSAL = sal;
-                    newSAL = new ServerAndLoad(sn, sal.getLoad() + diff);
-                    break;
-                }
-            }
-            if (newSAL != null) {
-                previousLoad.remove(groupName, oldSAL);
-                previousLoad.put(groupName, newSAL);
-                break;
-            }
+  private void updateLoad(
+      ArrayListMultimap<String, ServerAndLoad> previousLoad,
+      final ServerName sn, final int diff) {
+    for (String groupName : previousLoad.keySet()) {
+      ServerAndLoad newSAL = null;
+      ServerAndLoad oldSAL = null;
+      for (ServerAndLoad sal : previousLoad.get(groupName)) {
+        if (ServerName.isSameHostnameAndPort(sn, sal.getServerName())) {
+          oldSAL = sal;
+          newSAL = new ServerAndLoad(sn, sal.getLoad() + diff);
+          break;
         }
+      }
+      if (newSAL != null) {
+        previousLoad.remove(groupName, oldSAL);
+        previousLoad.put(groupName, newSAL);
+        break;
+      }
     }
+  }
 
-    private Map<ServerName, List<HRegionInfo>> mockClusterServers() {
+    private Map<ServerName, List<HRegionInfo>> mockClusterServers() throws IOException {
         assertTrue(servers.size() == regionAssignment.length);
         Map<ServerName, List<HRegionInfo>> assignment = new TreeMap<ServerName, List<HRegionInfo>>();
         for (int i = 0; i < servers.size(); i++) {
             int numRegions = regionAssignment[i];
-            List<HRegionInfo> regions = randomRegions(numRegions);
+            List<HRegionInfo> regions = assignedRegions(numRegions, servers.get(i));
             assignment.put(servers.get(i), regions);
-
         }
         return assignment;
     }
@@ -438,6 +427,30 @@ public class TestGroupBasedLoadBalancer {
         }
         return regions;
     }
+
+    /**
+     * Generated assigned regions to a given server using group information.
+     *
+     * @param numRegions the num regions to generate
+     * @param sn the servername
+     * @return the list
+     * @throws IOException Signals that an I/O exception has occurred.
+     */
+    private List<HRegionInfo> assignedRegions(int numRegions, ServerName sn) throws IOException {
+      List<HRegionInfo> regions = new ArrayList<HRegionInfo>(numRegions);
+      byte[] start = new byte[16];
+      byte[] end = new byte[16];
+      for (int i = 0; i < numRegions; i++) {
+          Bytes.putInt(start, 0, numRegions << 1);
+          Bytes.putInt(end, 0, (numRegions << 1) + 1);
+          String tableName = getTableName(sn);
+          HRegionInfo hri = new HRegionInfo(
+                  Bytes.toBytes(tableName), start, end, false,
+                  regionId++);
+          regions.add(hri);
+      }
+      return regions;
+  }
 
     private static List<ServerName> generatedServers(int numServers) {
         List<ServerName> servers = new ArrayList<ServerName>(numServers);
@@ -503,6 +516,8 @@ public class TestGroupBasedLoadBalancer {
         Mockito.when(tds.get(tables[3])).thenReturn(tableDescs.get(3));
         MasterServices services = Mockito.mock(HMaster.class);
         Mockito.when(services.getTableDescriptors()).thenReturn(tds);
+        AssignmentManager am = Mockito.mock(AssignmentManager.class);
+        Mockito.when(services.getAssignmentManager()).thenReturn(am);
         return services;
     }
 
@@ -536,5 +551,24 @@ public class TestGroupBasedLoadBalancer {
                                 GroupInfo.GROUP_KEY)));
 
         return gm;
+    }
+
+    private String getTableName(ServerName sn) throws IOException{
+      String tableName = null;
+      GroupInfoManager gm = getMockedGroupInfoManager();
+      GroupInfo groupOfServer = null;
+      for(GroupInfo gInfo : gm.listGroups()){
+        if(gInfo.containsServer(sn.getHostAndPort())){
+          groupOfServer = gInfo;
+          break;
+        }
+      }
+
+      for(HTableDescriptor desc : tableDescs){
+       if(gm.getGroupPropertyOfTable(desc).endsWith(groupOfServer.getName())){
+         tableName = desc.getNameAsString();
+       }
+      }
+      return tableName;
     }
 }

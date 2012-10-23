@@ -88,6 +88,7 @@ public class GroupBasedLoadBalancer implements LoadBalancer {
   @Override
   public List<RegionPlan> balanceCluster(
       Map<ServerName, List<HRegionInfo>> clusterState) {
+    Map<ServerName,List<HRegionInfo>> correctedState = correctAssignments(clusterState);
     List<RegionPlan> regionPlans = new ArrayList<RegionPlan>();
     try {
       for (GroupInfo info : groupManager.listGroups()) {
@@ -96,7 +97,7 @@ public class GroupBasedLoadBalancer implements LoadBalancer {
           ServerName actual = ServerName.findServerWithSameHostnamePort(
               clusterState.keySet(), ServerName.parseServerName(sName));
           if (actual != null) {
-            groupClusterState.put(actual, clusterState.get(actual));
+            groupClusterState.put(actual, correctedState.get(actual));
           }
         }
         List<RegionPlan> groupPlans = this.internalBalancer
@@ -134,8 +135,7 @@ public class GroupBasedLoadBalancer implements LoadBalancer {
       Map<HRegionInfo, ServerName> regions, List<ServerName> servers) {
     try {
       Map<ServerName, List<HRegionInfo>> assignments = new TreeMap<ServerName, List<HRegionInfo>>();
-      ArrayListMultimap<String, HRegionInfo> rGroup = ArrayListMultimap
-          .create();
+      ArrayListMultimap<String, HRegionInfo> rGroup = ArrayListMultimap.create();
       List<HRegionInfo> misplacedRegions = getMisplacedRegions(regions);
       for (HRegionInfo region : regions.keySet()) {
         if (misplacedRegions.contains(region) == false) {
@@ -225,7 +225,12 @@ public class GroupBasedLoadBalancer implements LoadBalancer {
 
   private List<ServerName> getServerToAssign(GroupInfo groupInfo,
       List<ServerName> onlineServers) {
-    return filterServers(groupInfo.getServers(), onlineServers);
+    if (groupInfo != null) {
+      return filterServers(groupInfo.getServers(), onlineServers);
+    } else {
+      LOG.debug("Group Information found to be null. Some regions might be unassigned.");
+      return new ArrayList<ServerName>();
+    }
   }
 
   /**
@@ -270,11 +275,41 @@ public class GroupBasedLoadBalancer implements LoadBalancer {
       GroupInfo info = groupManager.getGroup(groupManager
           .getGroupPropertyOfTable(services.getTableDescriptors().get(
               region.getTableNameAsString())));
-      if (!info.containsServer(assignedServer.getHostAndPort())) {
+      if ((info == null)|| (!info.containsServer(assignedServer.getHostAndPort()))) {
         misplacedRegions.add(region);
       }
     }
     return misplacedRegions;
+  }
+
+  private Map<ServerName, List<HRegionInfo>> correctAssignments(
+       Map<ServerName, List<HRegionInfo>> existingAssignments){
+    Map<ServerName, List<HRegionInfo>> correctAssignments = new TreeMap<ServerName, List<HRegionInfo>>();
+    List<HRegionInfo> misplacedRegions = new ArrayList<HRegionInfo>();
+    for (ServerName sName : existingAssignments.keySet()) {
+      correctAssignments.put(sName, new ArrayList<HRegionInfo>());
+      List<HRegionInfo> regions = existingAssignments.get(sName);
+      for (HRegionInfo region : regions) {
+        GroupInfo info = null;
+        try {
+          info = groupManager.getGroup(groupManager
+            .getGroupPropertyOfTable(services.getTableDescriptors().get(
+                region.getTableNameAsString())));
+        }catch(IOException exp){
+          LOG.debug("Group information null for region of table " + region.getTableNameAsString(), exp);
+        }
+        if ((info == null) || (!info.containsServer(sName.getHostAndPort()))) {
+          // Misplaced region.
+          misplacedRegions.add(region);
+        } else {
+          correctAssignments.get(sName).add(region);
+        }
+      }
+    }
+
+    //unassign misplaced regions, so that they are assigned to correct groups.
+    this.services.getAssignmentManager().unassign(misplacedRegions);
+    return correctAssignments;
   }
 
   GroupInfoManager getGroupInfoManager() {
