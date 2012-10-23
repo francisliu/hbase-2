@@ -29,20 +29,18 @@ import java.util.Set;
 
 public interface GroupAdmin {
   /**
-   * Get regions of a region server group.
+   * Get online regions of a region server group.
    *
-   * @param groupName
-   *            the name of the group
-   * @return list of regions this group contains
+   * @param groupName the name of the group
+   * @return list of online regions this group contains
    */
-  List<HRegionInfo> listRegionsOfGroup(String groupName) throws IOException;
+  List<HRegionInfo> listOnlineRegionsOfGroup(String groupName) throws IOException;
 
   /**
-   * Get tables of a group.
+   * Get member tables of a group.
    *
-   * @param groupName
-   *            the name of the group
-   * @return List of HTableDescriptor
+   * @param groupName the name of the group
+   * @return list of table names
    */
   Collection<String> listTablesOfGroup(String groupName) throws IOException;
 
@@ -63,7 +61,7 @@ public interface GroupAdmin {
   GroupInfo getGroupInfoOfTable(byte[] tableName) throws IOException;
 
   /**
-   * Carry out the server movement from one group to another.
+   * Move a set of serves to another group
    *
    * @param server the server
    * @param targetGroup the target group
@@ -74,8 +72,18 @@ public interface GroupAdmin {
       throws IOException, InterruptedException;
 
 
-  void addGroup(GroupInfo groupInfo) throws IOException;
+  /**
+   * Add a new group
+   * @param name name of the group
+   * @throws IOException
+   */
+  void addGroup(String name) throws IOException;
 
+  /**
+   * Remove a new group
+   * @param name name of the group
+   * @throws IOException
+   */
   void removeGroup(String name) throws IOException;
 
   /**
@@ -85,7 +93,18 @@ public interface GroupAdmin {
    */
   List<GroupInfo> listGroups() throws IOException;
 
+  /**
+   * Retrieve the GroupInfo a server is affiliated to
+   * @param hostPort
+   * @return
+   * @throws IOException
+   */
   GroupInfo getGroupOfServer(String hostPort) throws IOException;
 
+  /**
+   * List servers that are currently being moved to a new group
+   * @return
+   * @throws IOException
+   */
   Map<String, String> listServersInTransition() throws IOException;
 }

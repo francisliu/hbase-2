@@ -86,6 +86,7 @@ public class TestGroupsWithDeadServers {
 		byte[] tableTwoBytes = Bytes.toBytes(tableNameTwo);
 		String familyName = "family" + rand.nextInt();
 		byte[] familyTwoBytes = Bytes.toBytes(familyName);
+    int baseNumRegions = TEST_UTIL.getMetaTableRows().size();
 		int NUM_REGIONS = 4;
 
 		GroupInfo defaultInfo = groupAdmin.getGroup(GroupInfo.DEFAULT_GROUP);
@@ -98,8 +99,8 @@ public class TestGroupsWithDeadServers {
 		// All the regions created below will be assigned to the default group.
 		assertTrue(TEST_UTIL.createMultiRegions(master.getConfiguration(), ht,
 				familyTwoBytes, NUM_REGIONS) == NUM_REGIONS);
-		TEST_UTIL.waitUntilAllRegionsAssigned(NUM_REGIONS);
-		List<HRegionInfo> regions = groupAdmin.listRegionsOfGroup(GroupInfo.DEFAULT_GROUP);
+		TEST_UTIL.waitUntilAllRegionsAssigned(baseNumRegions+NUM_REGIONS);
+		List<HRegionInfo> regions = groupAdmin.listOnlineRegionsOfGroup(GroupInfo.DEFAULT_GROUP);
 		assertTrue(regions.size() >= NUM_REGIONS);
     //move table to new group
     admin.disableTable(tableNameTwo);
@@ -108,7 +109,7 @@ public class TestGroupsWithDeadServers {
     admin.modifyTable(tableTwoBytes, desc);
     admin.enableTable(tableTwoBytes);
 
-		TEST_UTIL.waitUntilAllRegionsAssigned(NUM_REGIONS);
+		TEST_UTIL.waitUntilAllRegionsAssigned(baseNumRegions+NUM_REGIONS);
 		//Move the ROOT and META regions to default group.
 		ServerName serverForRoot =
         ServerName.findServerWithSameHostnamePort(master.getServerManager().getOnlineServersList(),
@@ -118,7 +119,7 @@ public class TestGroupsWithDeadServers {
 		while (master.getAssignmentManager().isRegionsInTransition()){
 			Thread.sleep(10);
 		}
-		List<HRegionInfo> newGrpRegions = groupAdmin.listRegionsOfGroup(newRSGroup);
+		List<HRegionInfo> newGrpRegions = groupAdmin.listOnlineRegionsOfGroup(newRSGroup);
 		assertTrue(newGrpRegions.size() == NUM_REGIONS);
 		MiniHBaseCluster hbaseCluster = TEST_UTIL.getHBaseCluster();
 		// Now we kill all the region servers in the new group.
@@ -133,9 +134,9 @@ public class TestGroupsWithDeadServers {
 		while (master.getAssignmentManager().getRegionsInTransition().size() < NUM_REGIONS){
 			Thread.sleep(5);
 		}
-		newGrpRegions = groupAdmin.listRegionsOfGroup(newRSGroup);
+		newGrpRegions = groupAdmin.listOnlineRegionsOfGroup(newRSGroup);
 		assertTrue(newGrpRegions.size() == 0);
-		regions = groupAdmin.listRegionsOfGroup(GroupInfo.DEFAULT_GROUP);
+		regions = groupAdmin.listOnlineRegionsOfGroup(GroupInfo.DEFAULT_GROUP);
 		assertTrue(regions.size() == 2);
 		scanTableForNegativeResults(ht);
 		startServersAndMove(groupAdmin, 1, newRSGroup);
@@ -143,7 +144,7 @@ public class TestGroupsWithDeadServers {
 			Thread.sleep(5);
 		}
 		scanTableForPositiveResults(ht);
-		newGrpRegions = groupAdmin.listRegionsOfGroup(newRSGroup);
+		newGrpRegions = groupAdmin.listOnlineRegionsOfGroup(newRSGroup);
 		assertTrue(newGrpRegions.size() == NUM_REGIONS);
 		TEST_UTIL.deleteTable(tableTwoBytes);
     groupAdmin.removeGroup(newRSGroup);

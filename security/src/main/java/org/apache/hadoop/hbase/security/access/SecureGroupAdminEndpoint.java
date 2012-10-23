@@ -51,9 +51,9 @@ public class SecureGroupAdminEndpoint extends GroupAdminEndpoint implements Grou
   }
 
   @Override
-  public void addGroup(GroupInfo groupInfo) throws IOException {
+  public void addGroup(String groupName) throws IOException {
     getAccessController().requirePermission(HConstants.ROOT_TABLE_NAME, null, null, Permission.Action.ADMIN);
-    super.addGroup(groupInfo);
+    super.addGroup(groupName);
   }
 
   private AccessController getAccessController() {

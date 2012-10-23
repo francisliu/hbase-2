@@ -417,6 +417,11 @@ module Hbase
                 end
                 maxId += 1
                 htd.setValue(k + "\$" + maxId.to_s, value)
+              else (k =~ /rs_group/i)
+                # validate coprocessor specs
+                v = String.new(value)
+                v.strip!
+                htd.setValue(k, value)
               end
             end
           end

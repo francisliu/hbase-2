@@ -50,8 +50,8 @@ public class GroupAdminClient implements GroupAdmin {
   }
 
   @Override
-  public List<HRegionInfo> listRegionsOfGroup(String groupName) throws IOException {
-    return proxy.listRegionsOfGroup(groupName);
+  public List<HRegionInfo> listOnlineRegionsOfGroup(String groupName) throws IOException {
+    return proxy.listOnlineRegionsOfGroup(groupName);
   }
 
   @Override
@@ -76,8 +76,8 @@ public class GroupAdminClient implements GroupAdmin {
   }
 
   @Override
-  public void addGroup(GroupInfo groupInfo) throws IOException {
-    proxy.addGroup(groupInfo);
+  public void addGroup(String groupName) throws IOException {
+    proxy.addGroup(groupName);
   }
 
   @Override
@@ -100,10 +100,22 @@ public class GroupAdminClient implements GroupAdmin {
     return proxy.listServersInTransition();
   }
 
+  /**
+   * Retrieve a table's group membership from the table descriptor
+   * @param desc
+   * @return
+   * @throws IOException
+   */
   public String getGroupPropertyOfTable(HTableDescriptor desc) throws IOException {
     return GroupInfo.getGroupString(desc);
   }
 
+  /**
+   * Set's a table's group membership
+   * @param groupName group name the table is being assigned to
+   * @param desc table descriptor of the table
+   * @throws IOException
+   */
   public void setGroupPropertyOfTable(String groupName, HTableDescriptor desc) throws IOException {
     GroupInfo.setGroupString(groupName, desc);
   }

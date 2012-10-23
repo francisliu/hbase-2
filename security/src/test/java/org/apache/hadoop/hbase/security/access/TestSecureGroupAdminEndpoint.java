@@ -179,8 +179,7 @@ public class TestSecureGroupAdminEndpoint {
 
     PrivilegedExceptionAction addGroup = new PrivilegedExceptionAction() {
       public Object run() throws Exception {
-        GroupInfo group = new GroupInfo("testGetAddRemove"+counter.incrementAndGet(), new TreeSet<String>());
-        GROUP_ENDPOINT.addGroup(group);
+        GROUP_ENDPOINT.addGroup("testGetAddRemove"+counter.incrementAndGet());
         return null;
       }
     };
@@ -202,7 +201,7 @@ public class TestSecureGroupAdminEndpoint {
     final AtomicLong counter = new AtomicLong(0);
     Set<String> servers = new TreeSet<String>();
     for(int i=1;i<=100;i++) {
-      GROUP_ENDPOINT.addGroup(new GroupInfo("testMoveServer_"+i, servers));
+      GROUP_ENDPOINT.addGroup("testMoveServer_"+i);
     }
 
     PrivilegedExceptionAction action = new PrivilegedExceptionAction() {

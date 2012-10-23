@@ -27,12 +27,12 @@ Add a new group.
 
 Example:
 
-  hbase> group_add 'my_table' ['server1:port1','server2:port2']
+  hbase> group_add 'my_table'
 EOF
       end
 
-      def command(group_name, *args)
-        group_admin.addGroup(group_name, *args)
+      def command(group_name)
+        group_admin.addGroup(group_name)
       end
     end
   end

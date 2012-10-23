@@ -23,6 +23,7 @@ import org.apache.commons.lang.StringUtils;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.hbase.CoprocessorEnvironment;
+import org.apache.hadoop.hbase.DoNotRetryIOException;
 import org.apache.hadoop.hbase.HRegionInfo;
 import org.apache.hadoop.hbase.HTableDescriptor;
 import org.apache.hadoop.hbase.ServerName;
@@ -40,6 +41,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.NavigableSet;
 import java.util.Set;
+import java.util.TreeSet;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 
@@ -57,15 +59,8 @@ public class GroupAdminEndpoint extends BaseEndpointCoprocessor implements Group
     master = menv.getMasterServices();
   }
 
-	/**
-	 * Get regions of a region server group.
-	 *
-	 * @param groupName
-	 *            the name of the group
-	 * @return list of regions this group contains
-	 */
   @Override
-  public List<HRegionInfo> listRegionsOfGroup(String groupName) throws IOException {
+  public List<HRegionInfo> listOnlineRegionsOfGroup(String groupName) throws IOException {
 		List<HRegionInfo> regions = new ArrayList<HRegionInfo>();
 		if (groupName == null) {
       throw new NullPointerException("groupName can't be null");
@@ -87,13 +82,6 @@ public class GroupAdminEndpoint extends BaseEndpointCoprocessor implements Group
 		return regions;
 	}
 
-	/**
-	 * Get tables of a group.
-	 *
-	 * @param groupName
-	 *            the name of the group
-	 * @return List of HTableDescriptor
-	 */
   @Override
   public Collection<String> listTablesOfGroup(String groupName) throws IOException {
 		Set<String> set = new HashSet<String>();
@@ -115,24 +103,12 @@ public class GroupAdminEndpoint extends BaseEndpointCoprocessor implements Group
 	}
 
 
-	/**
-	 * Gets the group information.
-	 *
-	 * @param groupName the group name
-	 * @return An instance of GroupInfo
-	 */
   @Override
   public GroupInfo getGroup(String groupName) throws IOException {
 			return getGroupInfoManager().getGroup(groupName);
 	}
 
 
-	/**
-	 * Gets the group info of table.
-	 *
-	 * @param tableName the table name
-	 * @return An instance of GroupInfo.
-	 */
   @Override
   public GroupInfo getGroupInfoOfTable(byte[] tableName) throws IOException {
 		HTableDescriptor des;
@@ -143,14 +119,6 @@ public class GroupAdminEndpoint extends BaseEndpointCoprocessor implements Group
 		return tableRSGroup;
 	}
 
-	/**
-	 * Carry out the server movement from one group to another.
-	 *
-	 * @param servers the server
-	 * @param targetGroup the target group
-	 * @throws IOException Signals that an I/O exception has occurred.
-	 * @throws InterruptedException the interrupted exception
-	 */
   @Override
   public void moveServers(Set<String> servers, String targetGroup)
 			throws IOException {
@@ -169,25 +137,29 @@ public class GroupAdminEndpoint extends BaseEndpointCoprocessor implements Group
       LOG.info("GroupMoveServerHanndlerSubmitted: "+plan.getTargetGroup());
     } catch(Exception e) {
       LOG.error("Failed to submit GroupMoveServerHandler", e);
-      handler.complete();
+      if(handler != null) {
+        handler.complete();
+      }
     }
 	}
 
   @Override
-  public void addGroup(GroupInfo groupInfo) throws IOException {
-    getGroupInfoManager().addGroup(groupInfo);
+  public void addGroup(String name) throws IOException {
+    getGroupInfoManager().addGroup(new GroupInfo(name, new HashSet<String>()));
   }
 
   @Override
   public void removeGroup(String name) throws IOException {
-    getGroupInfoManager().removeGroup(name);
+    GroupInfoManager manager = getGroupInfoManager();
+    synchronized (manager) {
+      if(listTablesOfGroup(name).size() > 0) {
+        throw new DoNotRetryIOException("Group must have no associated tables.");
+      }
+      manager.removeGroup(name);
+    }
+
   }
 
-	/**
-	 * Gets the existing groups.
-	 *
-	 * @return Collection of GroupInfo.
-	 */
   @Override
   public List<GroupInfo> listGroups() throws IOException {
     return getGroupInfoManager().listGroups();

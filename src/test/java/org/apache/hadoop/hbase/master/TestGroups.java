@@ -26,14 +26,12 @@ import static org.junit.Assert.assertTrue;
 
 import java.io.IOException;
 import java.util.HashSet;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
 import java.util.Set;
 import java.util.TreeSet;
 
-import com.google.common.collect.Sets;
 import org.apache.hadoop.hbase.HBaseTestingUtility;
 import org.apache.hadoop.hbase.HConstants;
 import org.apache.hadoop.hbase.HRegionInfo;
@@ -41,13 +39,13 @@ import org.apache.hadoop.hbase.HTableDescriptor;
 import org.apache.hadoop.hbase.MediumTests;
 import org.apache.hadoop.hbase.MiniHBaseCluster;
 import org.apache.hadoop.hbase.ServerName;
+import org.apache.hadoop.hbase.TableDescriptors;
 import org.apache.hadoop.hbase.client.HBaseAdmin;
 import org.apache.hadoop.hbase.client.HTable;
 import org.apache.hadoop.hbase.ipc.HRegionInterface;
 import org.apache.hadoop.hbase.util.Bytes;
 import org.junit.After;
 import org.junit.AfterClass;
-import org.junit.Before;
 import org.junit.BeforeClass;
 import org.junit.Test;
 import org.junit.experimental.categories.Category;
@@ -87,8 +85,9 @@ public class TestGroups {
   public void afterMethod() throws Exception {
 		GroupAdminClient groupAdmin = new GroupAdminClient(master.getConfiguration());
     for(GroupInfo group: groupAdmin.listGroups()) {
-      if(!group.getName().equals(GroupInfo.DEFAULT_GROUP))
-        groupAdmin.removeGroup(group.getName());
+      if(!group.getName().equals(GroupInfo.DEFAULT_GROUP)) {
+        removeGroup(groupAdmin, group.getName());
+      }
     }
     for(HTableDescriptor table: TEST_UTIL.getHBaseAdmin().listTables()) {
       if(!table.isMetaRegion() && !table.isRootRegion()) {
@@ -103,7 +102,7 @@ public class TestGroups {
 		GroupInfo defaultInfo = groupAdmin.getGroup(GroupInfo.DEFAULT_GROUP);
 		assertTrue(defaultInfo.getServers().size() == 4);
 		// Assignment of root and meta regions.
-		assertTrue(groupAdmin.listRegionsOfGroup(GroupInfo.DEFAULT_GROUP)
+		assertTrue(groupAdmin.listOnlineRegionsOfGroup(GroupInfo.DEFAULT_GROUP)
         .size() == 2);
 	}
 
@@ -135,11 +134,11 @@ public class TestGroups {
 		byte[] FAMILYNAME = Bytes.toBytes(familyPrefix + rand.nextInt());
 		GroupAdminClient groupAdmin = new GroupAdminClient(master.getConfiguration());
 		GroupInfo newGroup = addGroup(groupAdmin, groupPrefix + rand.nextInt(), 2);
-
+    int currMetaCount = TEST_UTIL.getMetaTableRows().size();
 		HTable ht = TEST_UTIL.createTable(TABLENAME, FAMILYNAME);
 		assertTrue(TEST_UTIL.createMultiRegions(master.getConfiguration(), ht,
 				FAMILYNAME, 4) == 4);
-		TEST_UTIL.waitUntilAllRegionsAssigned(4);
+		TEST_UTIL.waitUntilAllRegionsAssigned(currMetaCount+4);
 		assertTrue(master.getAssignmentManager().getZKTable()
 				.isEnabledTable(Bytes.toString(TABLENAME)));
 		List<HRegionInfo> regionList = TEST_UTIL.getHBaseAdmin()
@@ -170,7 +169,7 @@ public class TestGroups {
 				assertTrue(newGroup.containsServer(rs.getHostAndPort()));
 			}
 		}
-    groupAdmin.removeGroup(newGroup.getName());
+    removeGroup(groupAdmin, newGroup.getName());
 		TEST_UTIL.deleteTable(TABLENAME);
 		tableRegionAssignMap = master.getAssignmentManager()
 				.getAssignmentsByTable();
@@ -184,13 +183,14 @@ public class TestGroups {
 		String tableNameOne = tablePrefix + rand.nextInt();
 		byte[] tableOneBytes = Bytes.toBytes(tableNameOne);
 		byte[] familyOneBytes = Bytes.toBytes(familyPrefix + rand.nextInt());
+    int currMetaCount = TEST_UTIL.getMetaTableRows().size();
 		HTable ht = TEST_UTIL.createTable(tableOneBytes, familyOneBytes);
 		// All the regions created below will be assigned to the default group.
 		assertTrue(TEST_UTIL.createMultiRegions(master.getConfiguration(), ht,
 				familyOneBytes, 5) == 5);
-		TEST_UTIL.waitUntilAllRegionsAssigned(5);
+		TEST_UTIL.waitUntilAllRegionsAssigned(currMetaCount+5);
 		List<HRegionInfo> regions = groupAdmin
-				.listRegionsOfGroup(GroupInfo.DEFAULT_GROUP);
+				.listOnlineRegionsOfGroup(GroupInfo.DEFAULT_GROUP);
 		assertTrue(regions.size() + ">=" + 5, regions.size() >= 5);
 		HRegionInfo region = regions.get(regions.size()-1);
 		// Lets move this region to newGroupName group.
@@ -204,7 +204,7 @@ public class TestGroups {
 		}
     //verify that region was never assigned to the server
 		List<HRegionInfo> updatedRegions = groupAdmin
-				.listRegionsOfGroup(GroupInfo.DEFAULT_GROUP);
+				.listOnlineRegionsOfGroup(GroupInfo.DEFAULT_GROUP);
 		assertTrue(regions.size() == updatedRegions.size());
     HRegionInterface rs = admin.getConnection().getHRegionConnection(tobeAssigned.getHostname(),tobeAssigned.getPort());
 		assertFalse(rs.getOnlineRegions().contains(region));
@@ -218,7 +218,7 @@ public class TestGroups {
 				.getGroup(GroupInfo.DEFAULT_GROUP);
 		assertTrue(defaultInfo != null);
 		assertTrue(defaultInfo.getServers().size() >= serverCount);
-		gAdmin.addGroup(new GroupInfo(groupName, new TreeSet<String>()));
+		gAdmin.addGroup(groupName);
 
     Set<String> set = new HashSet<String>();
     for(String server: defaultInfo.getServers()) {
@@ -232,5 +232,17 @@ public class TestGroups {
 		assertTrue(result.getServers().size() >= serverCount);
     return result;
 	}
+
+  static void removeGroup(GroupAdminClient groupAdmin, String groupName) throws IOException {
+    for(String table: groupAdmin.listTablesOfGroup(groupName)) {
+      byte[] bTable = Bytes.toBytes(table);
+      admin.disableTable(bTable);
+      HTableDescriptor desc = admin.getTableDescriptor(bTable);
+      desc.remove(GroupInfo.GROUP_KEY);
+      admin.modifyTable(bTable, desc);
+      admin.enableTable(bTable);
+    }
+    groupAdmin.removeGroup(groupName);
+  }
 
 }

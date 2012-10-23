@@ -53,13 +53,8 @@ module Hbase
     end
     #----------------------------------------------------------------------------------------------
     # add a group
-    def addGroup(group_name, *args)
-      servers = java.util.TreeSet.new();
-      args[0].each do |s|
-        servers.add(s)
-      end
-      group = org.apache.hadoop.hbase.master.GroupInfo.new(group_name,servers)
-      @admin. addGroup(group)
+    def addGroup(group_name)
+      @admin.addGroup(group_name)
     end
     #----------------------------------------------------------------------------------------------
     # remove a group
@@ -68,7 +63,11 @@ module Hbase
     end
     #----------------------------------------------------------------------------------------------
     # move server to a group
-    def moveServer(server, dest)
+    def moveServer(dest, *servers)
+      servers = java.util.TreeSet.new();
+      args[0].each do |s|
+        servers.add(s)
+      end
       @admin.moveServers(server, dest)
     end
     #----------------------------------------------------------------------------------------------

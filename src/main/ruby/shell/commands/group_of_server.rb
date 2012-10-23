@@ -33,7 +33,7 @@ EOF
         now = Time.now
         groupName = group_admin.getGroupOfServer(server).getName
         formatter.row([ groupName ])
-        formatter.footer(now)
+        formatter.footer(now,1)
       end
     end
   end
