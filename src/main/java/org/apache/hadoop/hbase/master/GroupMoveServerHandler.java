@@ -105,9 +105,9 @@ public class GroupMoveServerHandler extends EventHandler {
     }
   }
 
-  private java.util.List<HRegionInfo> getOnlineRegions(String hostPort) throws IOException {
-    java.util.List<HRegionInfo> regions = new LinkedList<HRegionInfo>();
-    for(Map.Entry<ServerName, java.util.List<HRegionInfo>> el:
+  private List<HRegionInfo> getOnlineRegions(String hostPort) throws IOException {
+    List<HRegionInfo> regions = new LinkedList<HRegionInfo>();
+    for(Map.Entry<ServerName, List<HRegionInfo>> el:
         master.getAssignmentManager().getAssignments().entrySet()) {
       if(el.getKey().getHostAndPort().equals(hostPort)) {
         regions.addAll(el.getValue());

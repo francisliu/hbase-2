@@ -208,8 +208,6 @@ public class TestGroups {
 		assertTrue(regions.size() == updatedRegions.size());
     HRegionInterface rs = admin.getConnection().getHRegionConnection(tobeAssigned.getHostname(),tobeAssigned.getPort());
 		assertFalse(rs.getOnlineRegions().contains(region));
-		TEST_UTIL.deleteTable(tableOneBytes);
-    groupAdmin.removeGroup(newGroup.getName());
 	}
 
 	static GroupInfo addGroup(GroupAdminClient gAdmin, String groupName,

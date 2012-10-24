@@ -140,6 +140,7 @@ public class GroupAdminEndpoint extends BaseEndpointCoprocessor implements Group
       if(handler != null) {
         handler.complete();
       }
+      throw new DoNotRetryIOException("Failed to submit GroupMoveServerHandler",e);
     }
 	}
 

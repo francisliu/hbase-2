@@ -63,12 +63,12 @@ module Hbase
     end
     #----------------------------------------------------------------------------------------------
     # move server to a group
-    def moveServer(dest, *servers)
+    def moveServer(dest, *args)
       servers = java.util.TreeSet.new();
       args[0].each do |s|
         servers.add(s)
       end
-      @admin.moveServers(server, dest)
+      @admin.moveServers(servers, dest)
     end
     #----------------------------------------------------------------------------------------------
     # get group of server
