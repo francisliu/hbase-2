@@ -3271,7 +3271,7 @@ public class AssignmentManager extends ZooKeeperListener {
    * If a new server has come in and it has no regions, it will not be included
    * in the returned Map.
    */
-  Map<ServerName, List<HRegionInfo>> getAssignments() {
+  public Map<ServerName, List<HRegionInfo>> getAssignments() {
     // This is an EXPENSIVE clone.  Cloning though is the safest thing to do.
     // Can't let out original since it can change and at least the loadbalancer
     // wants to iterate this exported list.  We need to synchronize on regions

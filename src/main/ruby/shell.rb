@@ -297,6 +297,7 @@ Shell.load_command_group(
     grant
     revoke
     user_permission
+    refresh_super_user_groups
   ]
 )
 
