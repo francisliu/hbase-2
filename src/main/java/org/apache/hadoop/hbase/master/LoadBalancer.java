@@ -96,6 +96,6 @@ public interface LoadBalancer extends Configurable {
    * @param servers
    * @return Servername
    */
-  public ServerName randomAssignment(HRegionInfo region, List<ServerName> servers, ServerName prefferedServer);
+  public ServerName randomAssignment(HRegionInfo region, List<ServerName> servers);
 
 }

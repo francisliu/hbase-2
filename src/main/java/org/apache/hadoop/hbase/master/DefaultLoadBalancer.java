@@ -767,16 +767,12 @@ public class DefaultLoadBalancer implements LoadBalancer {
     return assignments;
   }
 
-  public ServerName randomAssignment(HRegionInfo region, List<ServerName> servers, ServerName prefferedServer) {
-		if (prefferedServer == null) {
-			if (servers == null || servers.isEmpty()) {
-				LOG.warn("Wanted to do random assignment but no servers to assign to");
-				return null;
-			}
-			return servers.get(RANDOM.nextInt(servers.size()));
-		} else {
-			return prefferedServer;
-		}
+  public ServerName randomAssignment(HRegionInfo region, List<ServerName> servers) {
+    if (servers == null || servers.isEmpty()) {
+      LOG.warn("Wanted to do random assignment but no servers to assign to");
+      return null;
+    }
+    return servers.get(RANDOM.nextInt(servers.size()));
   }
 
 }

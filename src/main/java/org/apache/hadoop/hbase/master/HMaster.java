@@ -42,6 +42,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import javax.management.ObjectName;
 
 import com.google.common.collect.ClassToInstanceMap;
+import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import com.google.common.collect.MutableClassToInstanceMap;
 import org.apache.commons.logging.Log;
@@ -1135,15 +1136,10 @@ Server {
       this.assignmentManager.getAssignment(encodedRegionName);
     if (p == null)
       throw new UnknownRegionException(Bytes.toStringBinary(encodedRegionName));
-    ServerName prefferedServer;
-    if(destServerName == null || destServerName.length == 0){
-    	prefferedServer = null;
-    } else {
-    	prefferedServer = new ServerName(Bytes.toString(destServerName));
-    }
-    ServerName dest = balancer.randomAssignment(p.getFirst(), this.serverManager.getOnlineServersList(),
-    		prefferedServer);
-    RegionPlan rp = new RegionPlan(p.getFirst(), p.getSecond(), dest);
+    ServerName dest = new ServerName(Bytes.toString(destServerName));
+    RegionPlan rp = new RegionPlan(p.getFirst(),
+        p.getSecond(),
+        balancer.randomAssignment(p.getFirst(), Lists.newArrayList(dest)));
     try {
       if (this.cpHost != null) {
         if (this.cpHost.preMove(p.getFirst(), p.getSecond(), dest)) {

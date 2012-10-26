@@ -903,8 +903,8 @@ public class TestAssignmentManager {
     }
 
     @Override
-    public ServerName randomAssignment(HRegionInfo region, List<ServerName> servers, ServerName prefferedServer) {
-      ServerName randomServerName = super.randomAssignment(region, servers, prefferedServer);
+    public ServerName randomAssignment(HRegionInfo region, List<ServerName> servers) {
+      ServerName randomServerName = super.randomAssignment(region, servers);
       this.gate.set(true);
       return randomServerName;
     }

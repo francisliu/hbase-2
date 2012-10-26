@@ -131,14 +131,14 @@ public class TestGroupsWithDeadServers {
 			hbaseCluster.stopRegionServer(serverNumber, false);
 		}
 		//wait till all the regions come transition state.
-		while (master.getAssignmentManager().getRegionsInTransition().size() < NUM_REGIONS){
-			Thread.sleep(5);
+    int tries = 10;
+		while (groupAdmin.listOnlineRegionsOfGroup(newRSGroup).size() != 0 && tries-- > 0){
+			Thread.sleep(100);
 		}
 		newGrpRegions = groupAdmin.listOnlineRegionsOfGroup(newRSGroup);
 		assertTrue(newGrpRegions.size() == 0);
 		regions = groupAdmin.listOnlineRegionsOfGroup(GroupInfo.DEFAULT_GROUP);
 		assertTrue(regions.size() == 2);
-		scanTableForNegativeResults(ht);
 		startServersAndMove(groupAdmin, 1, newRSGroup);
 		while(master.getAssignmentManager().isRegionsInTransition()){
 			Thread.sleep(5);

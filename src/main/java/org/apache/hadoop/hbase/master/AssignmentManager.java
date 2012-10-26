@@ -1903,12 +1903,9 @@ public class AssignmentManager extends ZooKeeperListener {
           || existingPlan.getDestination() == null
           || drainingServers.contains(existingPlan.getDestination())) {
         newPlan = true;
-        ServerName newDestination =  balancer.randomAssignment(state.getRegion(), servers, null);
-				if (newDestination != null) {
-					randomPlan = new RegionPlan(state.getRegion(), null,
-							newDestination);
-					this.regionPlans.put(encodedName, randomPlan);
-				}
+        randomPlan = new RegionPlan(state.getRegion(), null, balancer
+            .randomAssignment(state.getRegion(), servers));
+        this.regionPlans.put(encodedName, randomPlan);
       }
     }
 

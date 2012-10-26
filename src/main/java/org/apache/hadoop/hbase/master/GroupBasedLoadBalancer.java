@@ -38,7 +38,6 @@ import org.apache.hadoop.hbase.ServerName;
 import com.google.common.collect.ArrayListMultimap;
 
 public class GroupBasedLoadBalancer implements LoadBalancer {
-
   private static final Log LOG = LogFactory
       .getLog(GroupBasedLoadBalancer.class);
   private Configuration config;
@@ -164,7 +163,7 @@ public class GroupBasedLoadBalancer implements LoadBalancer {
         GroupInfo info = groupManager.getGroup(groupName);
         List<ServerName> candidateList = getServerToAssign(info, servers);
         ServerName server = this.internalBalancer.randomAssignment(region,
-            candidateList, null);
+            candidateList);
         if (assignments.containsKey(server) == false) {
           assignments.put(server, new ArrayList<HRegionInfo>());
         }
@@ -201,7 +200,7 @@ public class GroupBasedLoadBalancer implements LoadBalancer {
 
   @Override
   public ServerName randomAssignment(HRegionInfo region,
-      List<ServerName> servers, ServerName prefferedServer) {
+      List<ServerName> servers) {
     try {
       String tableName = region.getTableNameAsString();
       List<ServerName> candidateList;
@@ -209,14 +208,7 @@ public class GroupBasedLoadBalancer implements LoadBalancer {
           .getGroupPropertyOfTable(services.getTableDescriptors()
               .get(tableName)));
       candidateList = getServerToAssign(groupInfo, servers);
-
-      if ((prefferedServer == null)
-          || (groupInfo.containsServer(prefferedServer.getHostAndPort()) == false)) {
-        return this.internalBalancer.randomAssignment(region, candidateList,
-            null);
-      } else {
-        return prefferedServer;
-      }
+      return this.internalBalancer.randomAssignment(region, candidateList);
     } catch (IOException e) {
       LOG.error("Failed to access group store", e);
       throw new IllegalStateException("Failed to access group store", e);
