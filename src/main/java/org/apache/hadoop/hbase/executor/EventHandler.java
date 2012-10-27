@@ -128,7 +128,6 @@ public abstract class EventHandler implements Runnable, Comparable<Runnable> {
     C_M_DELETE_FAMILY         (45),   // Client asking Master to delete family of table
     C_M_MODIFY_FAMILY         (46),   // Client asking Master to modify family of table
     C_M_CREATE_TABLE          (47),   // Client asking Master to create a table
-    C_M_GROUP_MOVE_SERVER     (48),   // Client asking master to move server from one group to another
 
     // Updates from master to ZK. This is done by the master and there is
     // nothing to process by either Master or RS
@@ -137,7 +136,10 @@ public abstract class EventHandler implements Runnable, Comparable<Runnable> {
 
     // Master controlled events to be executed on the master
     M_SERVER_SHUTDOWN         (70),  // Master is processing shutdown of a RS
-    M_META_SERVER_SHUTDOWN    (72);  // Master is processing shutdown of RS hosting a meta region (-ROOT- or .META.).
+    M_META_SERVER_SHUTDOWN    (72),  // Master is processing shutdown of RS hosting a meta region (-ROOT- or .META.).
+
+    // Group related events placed at the end because RegionInTransitionData serialization uses Enum.ordinal()
+    C_M_GROUP_MOVE_SERVER     (80);   // Client asking master to move server from one group to another
 
     /**
      * Constructor
