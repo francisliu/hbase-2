@@ -60,6 +60,13 @@ public interface LoadBalancer extends Configurable {
   public void setMasterServices(MasterServices masterServices);
 
   /**
+   * Configure the load balancer.
+   *
+   * @throws IOException Signals that an I/O exception has occurred.
+   */
+  public void configure() throws IOException;
+
+  /**
    * Perform the major balance operation
    * @param clusterState
    * @return List of plans

@@ -775,4 +775,8 @@ public class DefaultLoadBalancer implements LoadBalancer {
     return servers.get(RANDOM.nextInt(servers.size()));
   }
 
+  @Override
+  public void configure() throws IOException {
+  }
+
 }

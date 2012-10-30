@@ -74,14 +74,6 @@ public class GroupBasedLoadBalancer implements LoadBalancer {
   public void setMasterServices(MasterServices masterServices) {
     this.services = masterServices;
     internalBalancer.setMasterServices(masterServices);
-    if (this.groupManager == null) {
-      try {
-        this.groupManager = new GroupInfoManagerImpl(
-            services.getConfiguration(), services);
-      } catch (IOException e) {
-        LOG.warn("IOException while creating GroupInfoManagerImpl.", e);
-      }
-    }
   }
 
   @Override
@@ -284,11 +276,11 @@ public class GroupBasedLoadBalancer implements LoadBalancer {
       for (HRegionInfo region : regions) {
         GroupInfo info = null;
         try {
-          info = groupManager.getGroup(groupManager
-            .getGroupPropertyOfTable(services.getTableDescriptors().get(
-                region.getTableNameAsString())));
+          info = groupManager.getGroup(groupManager.getGroupPropertyOfTable(services
+              .getTableDescriptors().get(region.getTableNameAsString())));
         }catch(IOException exp){
-          LOG.debug("Group information null for region of table " + region.getTableNameAsString(), exp);
+          LOG.debug("Group information null for region of table " + region.getTableNameAsString(),
+              exp);
         }
         if ((info == null) || (!info.containsServer(sName.getHostAndPort()))) {
           // Misplaced region.
@@ -306,5 +298,13 @@ public class GroupBasedLoadBalancer implements LoadBalancer {
 
   GroupInfoManager getGroupInfoManager() {
     return groupManager;
+  }
+
+  @Override
+  public void configure() throws IOException {
+    if (this.groupManager == null) {
+        this.groupManager = new GroupInfoManagerImpl(services.getConfiguration(), services);
+    }
+
   }
 }

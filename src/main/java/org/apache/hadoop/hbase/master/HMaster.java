@@ -432,6 +432,7 @@ Server {
     this.catalogTracker.start();
 
     this.balancer = LoadBalancerFactory.getLoadBalancer(conf);
+    this.balancer.configure();
     this.assignmentManager = new AssignmentManager(this, serverManager,
         this.catalogTracker, this.balancer, this.executorService);
     zooKeeper.registerListenerFirst(assignmentManager);
