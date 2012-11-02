@@ -37,7 +37,6 @@ import org.apache.hadoop.hbase.ServerName;
 import org.apache.hadoop.hbase.client.HBaseAdmin;
 import org.apache.hadoop.hbase.client.HTable;
 import org.apache.hadoop.hbase.client.ResultScanner;
-import org.apache.hadoop.hbase.client.RetriesExhaustedException;
 import org.apache.hadoop.hbase.client.Scan;
 import org.apache.hadoop.hbase.util.Bytes;
 import org.apache.hadoop.hbase.util.JVMClusterUtil;
@@ -136,7 +135,8 @@ public class TestGroupsWithDeadServers {
 			Thread.sleep(100);
 		}
 		newGrpRegions = groupAdmin.listOnlineRegionsOfGroup(newRSGroup);
-		assertTrue(newGrpRegions.size() == 0);
+    assertTrue("Number of online regions in" + newRSGroup + " " + newGrpRegions.size(),
+      newGrpRegions.size() == 0);
 		regions = groupAdmin.listOnlineRegionsOfGroup(GroupInfo.DEFAULT_GROUP);
 		assertTrue(regions.size() == 2);
 		startServersAndMove(groupAdmin, 1, newRSGroup);
@@ -160,24 +160,7 @@ public class TestGroupsWithDeadServers {
 		}
 		return -1;
 	}
-
-	private void scanTableForNegativeResults(HTable ht){
-		ResultScanner s = null;
-		boolean isExceptionCaught = false;
-		try {
-			Scan scan = new Scan();
-			s = ht.getScanner(scan);
-		} catch (Exception exp) {
-			assertTrue(exp instanceof RetriesExhaustedException);
-			isExceptionCaught = true;
-		} finally {
-			if (s != null) {
-				s.close();
-			}
-			assertTrue(isExceptionCaught);
-		}
-	}
-
+	
 	private void scanTableForPositiveResults(HTable ht) throws IOException{
 		ResultScanner s = null;
 		try {

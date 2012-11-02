@@ -21,7 +21,6 @@ package org.apache.hadoop.hbase.master;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertTrue;
 
 import java.io.IOException;
@@ -30,7 +29,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Random;
 import java.util.Set;
-import java.util.TreeSet;
 
 import org.apache.hadoop.hbase.HBaseTestingUtility;
 import org.apache.hadoop.hbase.HConstants;
@@ -39,7 +37,6 @@ import org.apache.hadoop.hbase.HTableDescriptor;
 import org.apache.hadoop.hbase.MediumTests;
 import org.apache.hadoop.hbase.MiniHBaseCluster;
 import org.apache.hadoop.hbase.ServerName;
-import org.apache.hadoop.hbase.TableDescriptors;
 import org.apache.hadoop.hbase.client.HBaseAdmin;
 import org.apache.hadoop.hbase.client.HTable;
 import org.apache.hadoop.hbase.ipc.HRegionInterface;
@@ -199,14 +196,16 @@ public class TestGroups {
 		master.move(region.getEncodedNameAsBytes(),
         Bytes.toBytes(tobeAssigned.toString()));
 
-		while (master.getAssignmentManager().getRegionsInTransition().size() > 0) {
-			Thread.sleep(10);
-		}
+		int tries =10;
+    while (groupAdmin.listOnlineRegionsOfGroup(GroupInfo.DEFAULT_GROUP).size() != regions.size()
+        && tries-- > 0) {
+      Thread.sleep(100);
+    }
     //verify that region was never assigned to the server
-		List<HRegionInfo> updatedRegions = groupAdmin
-				.listOnlineRegionsOfGroup(GroupInfo.DEFAULT_GROUP);
-		assertTrue(regions.size() == updatedRegions.size());
-    HRegionInterface rs = admin.getConnection().getHRegionConnection(tobeAssigned.getHostname(),tobeAssigned.getPort());
+		List<HRegionInfo> updatedRegions = groupAdmin.listOnlineRegionsOfGroup(GroupInfo.DEFAULT_GROUP);
+    assertTrue(regions.size() + "!=" + updatedRegions.size(),regions.size() == updatedRegions.size());
+    HRegionInterface rs = admin.getConnection().getHRegionConnection(tobeAssigned.getHostname(),
+      tobeAssigned.getPort());
 		assertFalse(rs.getOnlineRegions().contains(region));
 	}
 
