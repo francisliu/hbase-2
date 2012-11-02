@@ -432,7 +432,6 @@ Server {
     this.catalogTracker.start();
 
     this.balancer = LoadBalancerFactory.getLoadBalancer(conf);
-    this.balancer.configure();
     this.assignmentManager = new AssignmentManager(this, serverManager,
         this.catalogTracker, this.balancer, this.executorService);
     zooKeeper.registerListenerFirst(assignmentManager);
@@ -546,6 +545,7 @@ Server {
 
     this.balancer.setClusterStatus(getClusterStatus());
     this.balancer.setMasterServices(this);
+    this.balancer.configure();
 
     // Make sure root and meta assigned before proceeding.
     assignRootAndMeta(status);
@@ -1137,10 +1137,18 @@ Server {
       this.assignmentManager.getAssignment(encodedRegionName);
     if (p == null)
       throw new UnknownRegionException(Bytes.toStringBinary(encodedRegionName));
-    ServerName dest = new ServerName(Bytes.toString(destServerName));
-    RegionPlan rp = new RegionPlan(p.getFirst(),
-        p.getSecond(),
-        balancer.randomAssignment(p.getFirst(), Lists.newArrayList(dest)));
+    ServerName dest = null;
+    if (destServerName == null || destServerName.length == 0) {
+      LOG.info("Passed destination servername is null or empty so choosing a server at random");
+      List<ServerName> destServers = this.serverManager.getOnlineServersList();
+      destServers.remove(p.getSecond());
+      dest = balancer.randomAssignment(p.getFirst(), destServers);
+    } else {
+      ServerName candidate = new ServerName(Bytes.toString(destServerName));
+      dest = balancer.randomAssignment(p.getFirst(), Lists.newArrayList(candidate));
+    }
+    
+    RegionPlan rp = new RegionPlan(p.getFirst(),p.getSecond(),dest);
     try {
       if (this.cpHost != null) {
         if (this.cpHost.preMove(p.getFirst(), p.getSecond(), dest)) {
