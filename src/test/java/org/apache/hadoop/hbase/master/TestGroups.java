@@ -181,15 +181,14 @@ public class TestGroups {
 		String tableNameOne = tablePrefix + rand.nextInt();
 		byte[] tableOneBytes = Bytes.toBytes(tableNameOne);
 		byte[] familyOneBytes = Bytes.toBytes(familyPrefix + rand.nextInt());
-    int currMetaCount = TEST_UTIL.getMetaTableRows().size();
 		HTable ht = TEST_UTIL.createTable(tableOneBytes, familyOneBytes);
 		// All the regions created below will be assigned to the default group.
-		assertTrue(TEST_UTIL.createMultiRegions(master.getConfiguration(), ht,
-				familyOneBytes, 5) == 5);
-		TEST_UTIL.waitUntilAllRegionsAssigned(currMetaCount+5);
+    assertTrue(TEST_UTIL.createMultiRegions(master.getConfiguration(), ht, familyOneBytes, 5) == 5);
+    while (groupAdmin.listOnlineRegionsOfGroup(GroupInfo.DEFAULT_GROUP).size() < 5) {
+      Thread.sleep(100);
+    }
 		List<HRegionInfo> regions = groupAdmin
 				.listOnlineRegionsOfGroup(GroupInfo.DEFAULT_GROUP);
-		assertTrue(regions.size() + ">=" + 5, regions.size() >= 5);
 		HRegionInfo region = regions.get(regions.size()-1);
 		// Lets move this region to newGroupName group.
 		ServerName tobeAssigned =
