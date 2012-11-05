@@ -80,6 +80,7 @@ public class TestGroupBasedLoadBalancer {
         loadBalancer = new GroupBasedLoadBalancer(getMockedGroupInfoManager());
         loadBalancer.setMasterServices(getMockedMaster());
         loadBalancer.setConf(conf);
+        loadBalancer.configure();
     }
 
     /**
