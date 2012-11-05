@@ -29,7 +29,6 @@ import org.apache.hadoop.hbase.HTableDescriptor;
 import org.apache.hadoop.hbase.ServerName;
 import org.apache.hadoop.hbase.coprocessor.BaseEndpointCoprocessor;
 import org.apache.hadoop.hbase.coprocessor.MasterCoprocessorEnvironment;
-import org.apache.hadoop.hbase.executor.EventHandler;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -40,22 +39,29 @@ import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
-import java.util.NavigableSet;
 import java.util.Set;
-import java.util.TreeSet;
+import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.LinkedBlockingDeque;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 
 /**
  * Service to support Region Server Grouping (HBase-6721)
  * This should be installed as a Master CoprocessorEndpoint
  */
 public class GroupAdminEndpoint extends BaseEndpointCoprocessor
-    implements GroupAdminProtocol, EventHandler.EventHandlerListener {
+    implements GroupAdminProtocol {
 	private static final Log LOG = LogFactory.getLog(GroupAdminEndpoint.class);
 
+  private final long threadKeepAliveTimeInMillis = 1000;
+  private int threadMax = 1;
+  private BlockingQueue<Runnable> threadQ;
   private MasterCoprocessorEnvironment menv;
   private MasterServices master;
+  private ExecutorService executorService;
   //List of servers that are being moved from one group to another
   //Key=host:port,Value=targetGroup
   private ConcurrentMap<String,String> serversInTransition =
@@ -65,6 +71,15 @@ public class GroupAdminEndpoint extends BaseEndpointCoprocessor
   public void start(CoprocessorEnvironment env) {
     menv = (MasterCoprocessorEnvironment)env;
     master = menv.getMasterServices();
+    threadQ = new LinkedBlockingDeque<Runnable>();
+    threadMax = menv.getConfiguration().getInt("hbase.group.executor.threads", 1);
+    executorService = new ThreadPoolExecutor(threadMax, threadMax,
+        threadKeepAliveTimeInMillis, TimeUnit.MILLISECONDS, threadQ);
+  }
+
+  @Override
+  public void stop(CoprocessorEnvironment env) {
+    executorService.shutdown();
   }
 
   @Override
@@ -140,20 +155,19 @@ public class GroupAdminEndpoint extends BaseEndpointCoprocessor
 					"The target group cannot be null.");
     }
 
-    GroupMoveServerHandler.MoveServerPlan plan =
-        new GroupMoveServerHandler.MoveServerPlan(servers, targetGroup);
-    GroupMoveServerHandler handler = null;
+    GroupMoveServerWorker.MoveServerPlan plan =
+        new GroupMoveServerWorker.MoveServerPlan(servers, targetGroup);
+    GroupMoveServerWorker worker = null;
     try {
-      handler = new GroupMoveServerHandler(master, serversInTransition, getGroupInfoManager(), plan);
-      handler.setListener(this);
-      master.getExecutorService().submit(handler);
+      worker = new GroupMoveServerWorker(master, serversInTransition, getGroupInfoManager(), plan);
+      executorService.submit(worker);
       LOG.info("GroupMoveServerHanndlerSubmitted: "+plan.getTargetGroup());
     } catch(Exception e) {
-      LOG.error("Failed to submit GroupMoveServerHandler", e);
-      if(handler != null) {
-        handler.complete();
+      LOG.error("Failed to submit GroupMoveServerWorker", e);
+      if(worker != null) {
+        worker.complete();
       }
-      throw new DoNotRetryIOException("Failed to submit GroupMoveServerHandler",e);
+      throw new DoNotRetryIOException("Failed to submit GroupMoveServerWorker",e);
     }
 	}
 
@@ -203,23 +217,6 @@ public class GroupAdminEndpoint extends BaseEndpointCoprocessor
       result.get(el.getKey().getHostAndPort()).addAll(el.getValue());
     }
     return result;
-  }
-
-  @Override
-  public void beforeProcess(EventHandler event) {
-    //do nothing
-  }
-
-  @Override
-  public void afterProcess(EventHandler event) {
-    GroupMoveServerHandler h =
-        ((GroupMoveServerHandler)event);
-    try {
-      h.complete();
-    } catch (IOException e) {
-      LOG.error("Failed to complete GroupMoveServer with "+h.getPlan().getServers().size()+
-          " servers to group "+h.getPlan().getTargetGroup());
-    }
   }
 
 }

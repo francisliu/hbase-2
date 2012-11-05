@@ -136,10 +136,7 @@ public abstract class EventHandler implements Runnable, Comparable<Runnable> {
 
     // Master controlled events to be executed on the master
     M_SERVER_SHUTDOWN         (70),  // Master is processing shutdown of a RS
-    M_META_SERVER_SHUTDOWN    (72),  // Master is processing shutdown of RS hosting a meta region (-ROOT- or .META.).
-
-    // Group related events placed at the end because RegionInTransitionData serialization uses Enum.ordinal()
-    C_M_GROUP_MOVE_SERVER     (80);   // Client asking master to move server from one group to another
+    M_META_SERVER_SHUTDOWN    (72);  // Master is processing shutdown of RS hosting a meta region (-ROOT- or .META.).
 
     /**
      * Constructor

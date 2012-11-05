@@ -25,18 +25,16 @@ import org.apache.hadoop.hbase.DoNotRetryIOException;
 import org.apache.hadoop.hbase.HRegionInfo;
 import org.apache.hadoop.hbase.Server;
 import org.apache.hadoop.hbase.ServerName;
-import org.apache.hadoop.hbase.executor.EventHandler;
 
 import java.io.IOException;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
-import java.util.NavigableSet;
 import java.util.Set;
 import java.util.TreeSet;
 
-public class GroupMoveServerHandler extends EventHandler {
-	private static final Log LOG = LogFactory.getLog(GroupMoveServerHandler.class);
+public class GroupMoveServerWorker implements Runnable {
+	private static final Log LOG = LogFactory.getLog(GroupMoveServerWorker.class);
 
   private MasterServices master;
   private MoveServerPlan plan;
@@ -46,12 +44,11 @@ public class GroupMoveServerHandler extends EventHandler {
   private Map<String,String> serversInTransition;
   private volatile boolean success;
 
-  public GroupMoveServerHandler(Server master, Map<String,String> serversInTransition,
-                                GroupInfoManager groupManager, MoveServerPlan plan) throws IOException {
-    super(master, EventType.C_M_GROUP_MOVE_SERVER);
+  public GroupMoveServerWorker(Server master, Map<String, String> serversInTransition,
+                               GroupInfoManager groupManager, MoveServerPlan plan) throws IOException {
     this.serversInTransition = serversInTransition;
     this.groupManager = groupManager;
-    this.master = (MasterServices)server;
+    this.master = (MasterServices)master;
     this.plan = plan;
 
     synchronized (serversInTransition) {
@@ -80,7 +77,9 @@ public class GroupMoveServerHandler extends EventHandler {
   }
 
   @Override
-  public void process() throws IOException {
+  public void run() {
+    String name = "GroupMoveServer-"+transGroup+"-"+plan.getTargetGroup();
+    Thread.currentThread().setName(name);
     try {
       boolean found;
       do {
@@ -92,7 +91,7 @@ public class GroupMoveServerHandler extends EventHandler {
           found = found || regions.size() > 0;
         }
         try {
-          Thread.sleep(10000);
+          Thread.sleep(1000);
         } catch (InterruptedException e) {
           LOG.warn("Sleep interrupted", e);
         }
@@ -102,6 +101,14 @@ public class GroupMoveServerHandler extends EventHandler {
     } catch(Exception e) {
       success = false;
       LOG.error("Caught exception while running", e);
+    }
+    if(success) {
+      try {
+        complete();
+      } catch (IOException e) {
+        success = false;
+        LOG.error("Failed to complete move", e);
+      }
     }
   }
 
@@ -132,11 +139,6 @@ public class GroupMoveServerHandler extends EventHandler {
     public String getTargetGroup() {
       return targetGroup;
     }
-  }
-
-
-  public MoveServerPlan getPlan() {
-    return plan;
   }
 
   public void complete() throws IOException {

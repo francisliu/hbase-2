@@ -22,29 +22,25 @@ package org.apache.hadoop.hbase.master;
 
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
+import org.apache.commons.io.output.ByteArrayOutputStream;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
-import org.apache.hadoop.fs.FSDataInputStream;
-import org.apache.hadoop.fs.FSDataOutputStream;
-import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.FileSystem;
-import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.hbase.DoNotRetryIOException;
-import org.apache.hadoop.hbase.HTableDescriptor;
 import org.apache.hadoop.hbase.ServerName;
-import org.apache.hadoop.hbase.util.Bytes;
 import org.apache.hadoop.hbase.util.FSUtils;
 import org.apache.hadoop.hbase.zookeeper.ZKUtil;
-import org.apache.hadoop.hbase.zookeeper.ZooKeeperListener;
 import org.apache.hadoop.hbase.zookeeper.ZooKeeperWatcher;
 import org.apache.zookeeper.KeeperException;
-import org.apache.zookeeper.ZooKeeper;
 
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.io.OutputStream;
 import java.io.OutputStreamWriter;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -58,23 +54,27 @@ import java.util.concurrent.ConcurrentHashMap;
 public class GroupInfoManagerImpl implements GroupInfoManager {
 	private static final Log LOG = LogFactory.getLog(GroupInfoManagerImpl.class);
 
-  public static final String GROUP_INFO_FILE_NAME = ".rsgroupinfo";
-
 	//Access to this map should always be synchronized.
 	private Map<String, GroupInfo> groupMap;
-  private Path path;
+  private String znodePath;
   private FileSystem fs;
   private ZooKeeperWatcher watcher;
   private MasterServices master;
+  private String groupZNode = "group";
 
   public GroupInfoManagerImpl(Configuration conf, MasterServices master) throws IOException {
 		this.groupMap = new ConcurrentHashMap<String, GroupInfo>();
-		this.path = new Path(FSUtils.getRootDir(conf), GROUP_INFO_FILE_NAME);
 		this.fs = FSUtils.getRootDir(conf).getFileSystem(conf);
     this.master = master;
     this.watcher = master.getZooKeeper();
-    if(!fs.exists(path)) {
-      fs.createNewFile(path);
+    znodePath = ZKUtil.joinZNode(watcher.baseZNode, groupZNode);
+
+    try {
+      if(ZKUtil.checkExists(watcher,znodePath) == -1) {
+        ZKUtil.createSetData(watcher, znodePath, new byte[0]);
+      }
+    } catch (KeeperException e) {
+      throw new IOException("Failed to verify group znode",e);
     }
     reloadConfig();
   }
@@ -198,17 +198,22 @@ public class GroupInfoManagerImpl implements GroupInfoManager {
 	 */
 	synchronized void reloadConfig() throws IOException {
 		List<GroupInfo> groupList;
-    FSDataInputStream in = fs.open(path);
+    InputStream is = null;
     try {
+      byte[] payload = ZKUtil.getData(watcher, znodePath);
       synchronized (groupMap) {
         this.groupMap.clear();
-        groupList = readGroups(in);
+        groupList = readGroups(new ByteArrayInputStream(payload));
         for (GroupInfo group : groupList) {
           groupMap.put(group.getName(), group);
         }
       }
+    } catch (KeeperException e) {
+      throw new IOException("Failed to read group znode", e);
     } finally {
-      in.close();
+      if(is != null) {
+        is.close();
+      }
     }
 	}
 
@@ -222,13 +227,17 @@ public class GroupInfoManagerImpl implements GroupInfoManager {
 	}
 
 	private synchronized void flushConfig(Map<String,GroupInfo> map) throws IOException {
-		FSDataOutputStream output = null;
+    ByteArrayOutputStream os = new ByteArrayOutputStream();
 		try {
-			output = fs.create(path, true);
 			List<GroupInfo> groups = Lists.newArrayList(map.values());
-			writeGroups(groups, output);
-		} finally {
-			output.close();
+			writeGroups(groups, os);
+      ZKUtil.setData(watcher, znodePath, os.toByteArray());
+    } catch (KeeperException e) {
+      throw new IOException("Failed to write to group znode", e);
+    } finally {
+			if(os != null) {
+        os.close();
+      }
 		}
 	}
 
@@ -240,7 +249,7 @@ public class GroupInfoManagerImpl implements GroupInfoManager {
 	 * @return
 	 * @throws IOException
 	 */
-	private static List<GroupInfo> readGroups(final FSDataInputStream in)
+	private static List<GroupInfo> readGroups(final InputStream in)
 			throws IOException {
 		List<GroupInfo> groupList = new ArrayList<GroupInfo>();
 		BufferedReader br = new BufferedReader(new InputStreamReader(in));
@@ -267,7 +276,7 @@ public class GroupInfoManagerImpl implements GroupInfoManager {
 	 * @param out
 	 * @throws IOException
 	 */
-	private static void writeGroups(Collection<GroupInfo> groups, FSDataOutputStream out)
+	private static void writeGroups(Collection<GroupInfo> groups, OutputStream out)
 			throws IOException {
 		BufferedWriter bw = new BufferedWriter(new OutputStreamWriter(out));
 		try {

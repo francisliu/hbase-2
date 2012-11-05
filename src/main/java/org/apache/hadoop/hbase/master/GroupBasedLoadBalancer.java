@@ -45,7 +45,7 @@ import org.apache.hadoop.util.ReflectionUtils;
  */
 public class GroupBasedLoadBalancer implements LoadBalancer {
   /** Config for pluggable load balancers */
-  public static final String HBASE_GROUP_LOADBALANCER_CLASS = "hbase.groups.grouploadbalancer.class";
+  public static final String HBASE_GROUP_LOADBALANCER_CLASS = "hbase.group.grouploadbalancer.class";
 
   private static final Log LOG = LogFactory
       .getLog(GroupBasedLoadBalancer.class);
