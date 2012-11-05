@@ -41,7 +41,8 @@ public class GroupInfo implements Serializable {
 	private Set<String> servers;
 	public static final String DEFAULT_GROUP = "default";
   public static final String TRANSITION_GROUP_PREFIX = "_transition_";
-	public static final byte[] GROUP_KEY = Bytes.toBytes("rs_group");
+	public static final String GROUP_KEY = "rs_group";
+
 	private String name;
 
   public GroupInfo() {
@@ -175,22 +176,22 @@ public class GroupInfo implements Serializable {
 	 * @param des
 	 * @return The group name of the table.
 	 */
-	public static String getGroupString(HTableDescriptor des) {
-		byte[] gbyte = des.getValue(GROUP_KEY);
-		if (gbyte != null) {
-			return Bytes.toString(des.getValue(GROUP_KEY));
+	public static String getGroupProperty(HTableDescriptor des) {
+		String group = des.getValue(GROUP_KEY);
+		if (group!= null) {
+			return group;
 		} else {
 			return GroupInfo.DEFAULT_GROUP;
     }
 	}
 
 
-	public static void setGroupString(String group, HTableDescriptor des) {
+	public static void setGroupProperty(String group, HTableDescriptor des) {
     if(group.equals(DEFAULT_GROUP)) {
       des.remove(group);
     }
     else {
-		  des.setValue(GROUP_KEY, Bytes.toBytes(group));
+		  des.setValue(GROUP_KEY, group);
     }
 	}
 

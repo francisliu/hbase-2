@@ -323,18 +323,4 @@ public class GroupInfoManagerImpl implements GroupInfoManager {
 		}
 	}
 
-  /**
-	 * Gets the group info of table.
-	 *
-	 * @param desc the table name
-	 * @return An instance of GroupInfo.
-	 */
-  //TODO move this to group admin?
-  public String getGroupPropertyOfTable(HTableDescriptor desc) throws IOException {
-		return GroupInfo.getGroupString(desc);
-	}
-
-  public void setGroupPropertyOfTable(String groupName, HTableDescriptor desc) throws IOException {
-		GroupInfo.setGroupString(groupName, desc);
-  }
 }

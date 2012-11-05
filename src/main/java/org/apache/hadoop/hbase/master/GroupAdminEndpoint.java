@@ -104,7 +104,7 @@ public class GroupAdminEndpoint extends BaseEndpointCoprocessor
       HTableDescriptor[] tables =
           master.getTableDescriptors().getAll().values().toArray(new HTableDescriptor[0]);
       for (HTableDescriptor table : tables) {
-        if(GroupInfo.getGroupString(table).equals(groupName))
+        if(GroupInfo.getGroupProperty(table).equals(groupName))
           set.add(table.getNameAsString());
       }
     }
@@ -123,7 +123,7 @@ public class GroupAdminEndpoint extends BaseEndpointCoprocessor
 		HTableDescriptor des;
 		GroupInfo tableRSGroup;
     des =  master.getTableDescriptors().get(tableName);
-		String group = GroupInfo.getGroupString(des);
+		String group = GroupInfo.getGroupProperty(des);
 		tableRSGroup = getGroupInfoManager().getGroup(group);
 		return tableRSGroup;
 	}

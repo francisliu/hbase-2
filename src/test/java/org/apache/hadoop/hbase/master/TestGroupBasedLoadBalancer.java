@@ -170,8 +170,8 @@ public class TestGroupBasedLoadBalancer {
             assertTrue(assignments.containsKey(region));
             ServerName server = assignments.get(region);
             String tableName = region.getTableNameAsString();
-            String groupName = getMockedGroupInfoManager()
-                    .getGroupPropertyOfTable(
+            String groupName =
+                GroupInfo.getGroupProperty(
                             getMockedMaster().getTableDescriptors().get(
                                     tableName));
             assertTrue(StringUtils.isNotEmpty(groupName));
@@ -200,8 +200,8 @@ public class TestGroupBasedLoadBalancer {
             List<HRegionInfo> regionAssigned = assignments.get(sn);
             for (HRegionInfo region : regionAssigned) {
                 String tableName = region.getTableNameAsString();
-                String groupName = getMockedGroupInfoManager()
-                        .getGroupPropertyOfTable(
+                String groupName =
+                    GroupInfo.getGroupProperty(
                                 getMockedMaster().getTableDescriptors().get(
                                         tableName));
                 assertTrue(StringUtils.isNotEmpty(groupName));
@@ -280,8 +280,8 @@ public class TestGroupBasedLoadBalancer {
             for (HRegionInfo r : a.getValue()) {
                 ServerName oldAssignedServer = existing.get(r);
                 String tableName = r.getTableNameAsString();
-                String groupName = getMockedGroupInfoManager()
-                        .getGroupPropertyOfTable(
+                String groupName =
+                        GroupInfo.getGroupProperty(
                                 getMockedMaster().getTableDescriptors().get(
                                         tableName));
                 assertTrue(StringUtils.isNotEmpty(groupName));
@@ -503,7 +503,7 @@ public class TestGroupBasedLoadBalancer {
             HTableDescriptor htd = new HTableDescriptor(tables[i]);
             int grpIndex = (i + index) % groups.length ;
             String groupName = groups[grpIndex];
-            htd.setValue(GroupInfo.GROUP_KEY, Bytes.toBytes(groupName));
+            GroupInfo.setGroupProperty(groupName, htd);
             tds.add(htd);
         }
         return tds;
@@ -534,23 +534,6 @@ public class TestGroupBasedLoadBalancer {
                 groupMap.get(groups[3]));
         Mockito.when(gm.listGroups()).thenReturn(
                 Lists.newLinkedList(groupMap.values()));
-        Mockito.when(gm.getGroupPropertyOfTable(tableDescs.get(0)))
-                .thenReturn(
-                        Bytes.toString(tableDescs.get(0).getValue(
-                                GroupInfo.GROUP_KEY)));
-        Mockito.when(gm.getGroupPropertyOfTable(tableDescs.get(1)))
-                .thenReturn(
-                        Bytes.toString(tableDescs.get(1).getValue(
-                                GroupInfo.GROUP_KEY)));
-        Mockito.when(gm.getGroupPropertyOfTable(tableDescs.get(2)))
-                .thenReturn(
-                        Bytes.toString(tableDescs.get(2).getValue(
-                                GroupInfo.GROUP_KEY)));
-        Mockito.when(gm.getGroupPropertyOfTable(tableDescs.get(3)))
-                .thenReturn(
-                        Bytes.toString(tableDescs.get(3).getValue(
-                                GroupInfo.GROUP_KEY)));
-
         return gm;
     }
 
@@ -566,7 +549,7 @@ public class TestGroupBasedLoadBalancer {
       }
 
       for(HTableDescriptor desc : tableDescs){
-       if(gm.getGroupPropertyOfTable(desc).endsWith(groupOfServer.getName())){
+       if(GroupInfo.getGroupProperty(desc).endsWith(groupOfServer.getName())){
          tableName = desc.getNameAsString();
        }
       }

@@ -62,8 +62,4 @@ public interface GroupInfoManager {
   GroupInfo getGroup(String groupName) throws IOException;
 
   List<GroupInfo> listGroups() throws IOException;
-
-  String getGroupPropertyOfTable(HTableDescriptor desc) throws IOException;
-
-  void setGroupPropertyOfTable(String groupName, HTableDescriptor desc) throws IOException;
 }

@@ -105,7 +105,7 @@ public class TestGroupsWithDeadServers {
     //move table to new group
     admin.disableTable(tableNameTwo);
     HTableDescriptor desc = admin.getTableDescriptor(tableTwoBytes);
-    groupAdmin.setGroupPropertyOfTable(newRSGroup, desc);
+    GroupInfo.setGroupProperty(newRSGroup, desc);
     admin.modifyTable(tableTwoBytes, desc);
     admin.enableTable(tableTwoBytes);
 

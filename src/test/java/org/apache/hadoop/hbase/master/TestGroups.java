@@ -148,14 +148,14 @@ public class TestGroups {
     //change table's group
     admin.disableTable(TABLENAME);
     HTableDescriptor desc = admin.getTableDescriptor(TABLENAME);
-    groupAdmin.setGroupPropertyOfTable(newGroup.getName(), desc);
+    GroupInfo.setGroupProperty(newGroup.getName(), desc);
     admin.modifyTable(TABLENAME, desc);
     admin.enableTable(TABLENAME);
 
     //verify group change
     desc = admin.getTableDescriptor(TABLENAME);
 		assertEquals(newGroup.getName(),
-        GroupInfo.getGroupString(desc));
+        GroupInfo.getGroupProperty(desc));
 
 		Map<String, Map<ServerName, List<HRegionInfo>>> tableRegionAssignMap = master
 				.getAssignmentManager().getAssignmentsByTable();
