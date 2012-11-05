@@ -50,7 +50,7 @@ public interface GroupAdmin {
    * @param groupName the group name
    * @return An instance of GroupInfo
    */
-  GroupInfo getGroup(String groupName) throws IOException;
+  GroupInfo getGroupInfo(String groupName) throws IOException;
 
   /**
    * Gets the group info of table.

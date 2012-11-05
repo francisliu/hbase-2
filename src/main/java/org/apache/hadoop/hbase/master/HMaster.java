@@ -1148,7 +1148,9 @@ Server {
       dest = balancer.randomAssignment(p.getFirst(), Lists.newArrayList(candidate));
     }
     
-    RegionPlan rp = new RegionPlan(p.getFirst(),p.getSecond(),dest);
+    // Now we can do the move
+    RegionPlan rp = new RegionPlan(p.getFirst(), p.getSecond(), dest);
+
     try {
       if (this.cpHost != null) {
         if (this.cpHost.preMove(p.getFirst(), p.getSecond(), dest)) {

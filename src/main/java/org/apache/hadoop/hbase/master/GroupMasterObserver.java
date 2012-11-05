@@ -60,6 +60,6 @@ public class GroupMasterObserver extends BaseMasterObserver {
   }
 
   private GroupInfoManager getGroupInfoManager() {
-    return ((GroupBasedLoadBalancer)menv.getMasterServices().getAssignmentManager().getBalancer()).getGroupInfoManager();
+    return ((GroupBasedLoadBalancer)menv.getMasterServices().getLoadBalancer()).getGroupInfoManager();
   }
 }

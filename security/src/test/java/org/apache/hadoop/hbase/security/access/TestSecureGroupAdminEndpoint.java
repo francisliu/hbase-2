@@ -27,7 +27,6 @@ import org.apache.hadoop.hbase.client.HTable;
 import org.apache.hadoop.hbase.client.RetriesExhaustedWithDetailsException;
 import org.apache.hadoop.hbase.master.GroupAdmin;
 import org.apache.hadoop.hbase.master.GroupBasedLoadBalancer;
-import org.apache.hadoop.hbase.master.GroupInfo;
 import org.apache.hadoop.hbase.master.MasterCoprocessorHost;
 import org.apache.hadoop.hbase.security.AccessDeniedException;
 import org.apache.hadoop.hbase.security.User;
@@ -171,7 +170,7 @@ public class TestSecureGroupAdminEndpoint {
 
     PrivilegedExceptionAction getGroup = new PrivilegedExceptionAction() {
       public Object run() throws Exception {
-        GROUP_ENDPOINT.getGroup("default");
+        GROUP_ENDPOINT.getGroupInfo("default");
         return null;
       }
     };

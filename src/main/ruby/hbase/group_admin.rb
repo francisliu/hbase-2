@@ -28,7 +28,7 @@ module Hbase
     include HBaseConstants
 
     def initialize(configuration, formatter)
-      @admin = org.apache.hadoop.hbase.master.GroupAdminClient.new(configuration)
+      @admin = org.apache.hadoop.hbase.client.GroupAdminClient.new(configuration)
       @conf = configuration
       @formatter = formatter
     end
@@ -41,7 +41,7 @@ module Hbase
     #----------------------------------------------------------------------------------------------
     # get a group's information
     def getGroup(group_name)
-      group = @admin.getGroup(group_name)
+      group = @admin.getGroupInfo(group_name)
       res = {}
       group.getServers.each do |v|
         if block_given?
@@ -63,7 +63,7 @@ module Hbase
     end
     #----------------------------------------------------------------------------------------------
     # move server to a group
-    def moveServer(dest, *args)
+    def moveServers(dest, *args)
       servers = java.util.TreeSet.new();
       args[0].each do |s|
         servers.add(s)
@@ -89,7 +89,6 @@ module Hbase
         if block_given?
           yield(entry.getKey, entry.getValue)
         else
-          res[entry.getKey] ||= {}
           res[entry.getKey] = entry.getValue
         end
       end

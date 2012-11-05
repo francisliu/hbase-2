@@ -60,7 +60,7 @@ public interface LoadBalancer extends Configurable {
   public void setMasterServices(MasterServices masterServices);
 
   /**
-   * Configure the load balancer.
+   * Configure the load balancer. Must be called after setters.
    *
    * @throws IOException Signals that an I/O exception has occurred.
    */
@@ -104,5 +104,4 @@ public interface LoadBalancer extends Configurable {
    * @return Servername
    */
   public ServerName randomAssignment(HRegionInfo region, List<ServerName> servers);
-
 }

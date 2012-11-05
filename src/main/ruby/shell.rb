@@ -313,7 +313,7 @@ Shell.load_command_group(
     group_get
     group_add
     group_remove
-    group_move_server
+    group_move_servers
     group_of_server
     group_list_tables
     group_list_transitions

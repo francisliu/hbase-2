@@ -28,6 +28,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
 
+import com.google.common.collect.ListMultimap;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
@@ -36,17 +37,26 @@ import org.apache.hadoop.hbase.HRegionInfo;
 import org.apache.hadoop.hbase.ServerName;
 
 import com.google.common.collect.ArrayListMultimap;
+import org.apache.hadoop.util.ReflectionUtils;
 
+/**
+ * GroupBasedLoadBalancer, used when Region Server Grouping is configured (HBase-6721)
+ * It does region balance based on a table's group membership.
+ */
 public class GroupBasedLoadBalancer implements LoadBalancer {
+  /** Config for pluggable load balancers */
+  public static final String HBASE_GROUP_LOADBALANCER_CLASS = "hbase.groups.grouploadbalancer.class";
+
   private static final Log LOG = LogFactory
       .getLog(GroupBasedLoadBalancer.class);
   private Configuration config;
-  private ClusterStatus status;
-  private MasterServices services;
+  private ClusterStatus clusterStatus;
+  private MasterServices masterServices;
   private GroupInfoManager groupManager;
-  private DefaultLoadBalancer internalBalancer = new DefaultLoadBalancer();
+  private LoadBalancer internalBalancer;
 
   GroupBasedLoadBalancer() {
+    this(null);
   }
 
   GroupBasedLoadBalancer(GroupInfoManager groupManager) {
@@ -61,19 +71,16 @@ public class GroupBasedLoadBalancer implements LoadBalancer {
   @Override
   public void setConf(Configuration conf) {
     this.config = conf;
-    internalBalancer.setConf(conf);
   }
 
   @Override
   public void setClusterStatus(ClusterStatus st) {
-    this.status = st;
-    internalBalancer.setClusterStatus(st);
+    this.clusterStatus = st;
   }
 
   @Override
   public void setMasterServices(MasterServices masterServices) {
-    this.services = masterServices;
-    internalBalancer.setMasterServices(masterServices);
+    this.masterServices = masterServices;
   }
 
   @Override
@@ -108,7 +115,7 @@ public class GroupBasedLoadBalancer implements LoadBalancer {
       List<HRegionInfo> regions, List<ServerName> servers) {
     try {
       Map<ServerName, List<HRegionInfo>> assignments = new TreeMap<ServerName, List<HRegionInfo>>();
-      ArrayListMultimap<String, HRegionInfo> regionGroup = groupRegions(regions);
+      ListMultimap<String, HRegionInfo> regionGroup = groupRegions(regions);
       for (String groupKey : regionGroup.keys()) {
         GroupInfo info = groupManager.getGroup(groupKey);
         assignments.putAll(this.internalBalancer.roundRobinAssignment(
@@ -126,11 +133,11 @@ public class GroupBasedLoadBalancer implements LoadBalancer {
       Map<HRegionInfo, ServerName> regions, List<ServerName> servers) {
     try {
       Map<ServerName, List<HRegionInfo>> assignments = new TreeMap<ServerName, List<HRegionInfo>>();
-      ArrayListMultimap<String, HRegionInfo> rGroup = ArrayListMultimap.create();
+      ListMultimap<String, HRegionInfo> rGroup = ArrayListMultimap.create();
       List<HRegionInfo> misplacedRegions = getMisplacedRegions(regions);
       for (HRegionInfo region : regions.keySet()) {
         if (misplacedRegions.contains(region) == false) {
-          String groupName = groupManager.getGroupPropertyOfTable(services
+          String groupName = groupManager.getGroupPropertyOfTable(masterServices
               .getTableDescriptors().get(region.getTableNameAsString()));
           rGroup.put(groupName, region);
         }
@@ -150,7 +157,7 @@ public class GroupBasedLoadBalancer implements LoadBalancer {
       }
 
       for (HRegionInfo region : misplacedRegions) {
-        String groupName = groupManager.getGroupPropertyOfTable(services
+        String groupName = groupManager.getGroupPropertyOfTable(masterServices
             .getTableDescriptors().get(region.getTableNameAsString()));
         GroupInfo info = groupManager.getGroup(groupName);
         List<ServerName> candidateList = getServerToAssign(info, servers);
@@ -175,7 +182,7 @@ public class GroupBasedLoadBalancer implements LoadBalancer {
       Map<HRegionInfo, ServerName> assignments = new TreeMap<HRegionInfo, ServerName>();
       // Need to group regions by the group and servers and then call the
       // internal load balancer.
-      ArrayListMultimap<String, HRegionInfo> regionGroups = groupRegions(regions);
+      ListMultimap<String, HRegionInfo> regionGroups = groupRegions(regions);
       for (String key : regionGroups.keys()) {
         List<HRegionInfo> regionsOfSameGroup = regionGroups.get(key);
         GroupInfo info = groupManager.getGroup(key);
@@ -197,7 +204,7 @@ public class GroupBasedLoadBalancer implements LoadBalancer {
       String tableName = region.getTableNameAsString();
       List<ServerName> candidateList;
       GroupInfo groupInfo = groupManager.getGroup(groupManager
-          .getGroupPropertyOfTable(services.getTableDescriptors()
+          .getGroupPropertyOfTable(masterServices.getTableDescriptors()
               .get(tableName)));
       candidateList = getServerToAssign(groupInfo, servers);
       return this.internalBalancer.randomAssignment(region, candidateList);
@@ -239,12 +246,12 @@ public class GroupBasedLoadBalancer implements LoadBalancer {
     return finalList;
   }
 
-  private ArrayListMultimap<String, HRegionInfo> groupRegions(
+  private ListMultimap<String, HRegionInfo> groupRegions(
       List<HRegionInfo> regionList) throws IOException {
-    ArrayListMultimap<String, HRegionInfo> regionGroup = ArrayListMultimap
+    ListMultimap<String, HRegionInfo> regionGroup = ArrayListMultimap
         .create();
     for (HRegionInfo region : regionList) {
-      String groupName = groupManager.getGroupPropertyOfTable(services
+      String groupName = groupManager.getGroupPropertyOfTable(masterServices
           .getTableDescriptors().get(region.getTableNameAsString()));
       regionGroup.put(groupName, region);
     }
@@ -257,7 +264,7 @@ public class GroupBasedLoadBalancer implements LoadBalancer {
     for (HRegionInfo region : regions.keySet()) {
       ServerName assignedServer = regions.get(region);
       GroupInfo info = groupManager.getGroup(groupManager
-          .getGroupPropertyOfTable(services.getTableDescriptors().get(
+          .getGroupPropertyOfTable(masterServices.getTableDescriptors().get(
               region.getTableNameAsString())));
       if ((info == null)|| (!info.containsServer(assignedServer.getHostAndPort()))) {
         misplacedRegions.add(region);
@@ -276,7 +283,7 @@ public class GroupBasedLoadBalancer implements LoadBalancer {
       for (HRegionInfo region : regions) {
         GroupInfo info = null;
         try {
-          info = groupManager.getGroup(groupManager.getGroupPropertyOfTable(services
+          info = groupManager.getGroup(groupManager.getGroupPropertyOfTable(masterServices
               .getTableDescriptors().get(region.getTableNameAsString())));
         }catch(IOException exp){
           LOG.debug("Group information null for region of table " + region.getTableNameAsString(),
@@ -292,7 +299,7 @@ public class GroupBasedLoadBalancer implements LoadBalancer {
     }
 
     //unassign misplaced regions, so that they are assigned to correct groups.
-    this.services.getAssignmentManager().unassign(misplacedRegions);
+    this.masterServices.getAssignmentManager().unassign(misplacedRegions);
     return correctAssignments;
   }
 
@@ -303,8 +310,16 @@ public class GroupBasedLoadBalancer implements LoadBalancer {
   @Override
   public void configure() throws IOException {
     if (this.groupManager == null) {
-        this.groupManager = new GroupInfoManagerImpl(services.getConfiguration(), services);
+        this.groupManager = new GroupInfoManagerImpl(masterServices.getConfiguration(), masterServices);
     }
-
+    // Create the balancer
+    Class<? extends LoadBalancer> balancerKlass = config.getClass(
+        HBASE_GROUP_LOADBALANCER_CLASS,
+        DefaultLoadBalancer.class, LoadBalancer.class);
+    internalBalancer = ReflectionUtils.newInstance(balancerKlass, config);
+    internalBalancer.setClusterStatus(clusterStatus);
+    internalBalancer.setMasterServices(masterServices);
+    internalBalancer.setConf(config);
+    internalBalancer.configure();
   }
 }

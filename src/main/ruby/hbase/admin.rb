@@ -417,15 +417,17 @@ module Hbase
                 end
                 maxId += 1
                 htd.setValue(k + "\$" + maxId.to_s, value)
-              else (k =~ /rs_group/i)
-                # validate coprocessor specs
-                v = String.new(value)
-                v.strip!
-                htd.setValue(k, value)
               end
             end
           end
 
+          if arg[CONFIG]
+            raise(ArgumentError, "#{CONFIG} must be a Hash type") unless arg.kind_of?(Hash)
+            for k,v in arg[CONFIG]
+              v = v.to_s unless v.nil?
+              htd.setValue(k, v)
+            end
+          end
           @admin.modifyTable(table_name.to_java_bytes, htd)
           if wait == true
             puts "Updating all regions with the new schema..."

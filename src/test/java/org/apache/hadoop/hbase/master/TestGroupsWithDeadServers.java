@@ -34,6 +34,7 @@ import org.apache.hadoop.hbase.HTableDescriptor;
 import org.apache.hadoop.hbase.LargeTests;
 import org.apache.hadoop.hbase.MiniHBaseCluster;
 import org.apache.hadoop.hbase.ServerName;
+import org.apache.hadoop.hbase.client.GroupAdminClient;
 import org.apache.hadoop.hbase.client.HBaseAdmin;
 import org.apache.hadoop.hbase.client.HTable;
 import org.apache.hadoop.hbase.client.ResultScanner;
@@ -88,12 +89,12 @@ public class TestGroupsWithDeadServers {
     int baseNumRegions = TEST_UTIL.getMetaTableRows().size();
 		int NUM_REGIONS = 4;
 
-		GroupInfo defaultInfo = groupAdmin.getGroup(GroupInfo.DEFAULT_GROUP);
+		GroupInfo defaultInfo = groupAdmin.getGroupInfo(GroupInfo.DEFAULT_GROUP);
 		assertTrue(defaultInfo.getServers().size() == 4);
 		TestGroups.addGroup(groupAdmin, newRSGroup, 2);
-		defaultInfo = groupAdmin.getGroup(GroupInfo.DEFAULT_GROUP);
+		defaultInfo = groupAdmin.getGroupInfo(GroupInfo.DEFAULT_GROUP);
 		assertTrue(defaultInfo.getServers().size() == 2);
-		assertTrue(groupAdmin.getGroup(newRSGroup).getServers().size() == 2);
+		assertTrue(groupAdmin.getGroupInfo(newRSGroup).getServers().size() == 2);
 		HTable ht = TEST_UTIL.createTable(tableTwoBytes, familyTwoBytes);
 		// All the regions created below will be assigned to the default group.
 		assertTrue(TEST_UTIL.createMultiRegions(master.getConfiguration(), ht,
@@ -122,7 +123,7 @@ public class TestGroupsWithDeadServers {
 		assertTrue(newGrpRegions.size() == NUM_REGIONS);
 		MiniHBaseCluster hbaseCluster = TEST_UTIL.getHBaseCluster();
 		// Now we kill all the region servers in the new group.
-		Set<String> serverNames = groupAdmin.getGroup(newRSGroup).getServers();
+		Set<String> serverNames = groupAdmin.getGroupInfo(newRSGroup).getServers();
 		for (String sName : serverNames) {
 			int serverNumber = getServerNumber(
 					hbaseCluster.getRegionServerThreads(), sName);
@@ -185,12 +186,12 @@ public class TestGroupsWithDeadServers {
 					.getServerManager().getOnlineServersList(), newServer) == null) {
 				Thread.sleep(5);
 			}
-			assertTrue(groupAdmin.getGroup(GroupInfo.DEFAULT_GROUP)
+			assertTrue(groupAdmin.getGroupInfo(GroupInfo.DEFAULT_GROUP)
           .containsServer(newServer.getHostAndPort()));
       Set<String> set = new TreeSet<String>();
       set.add(newServer.getHostAndPort());
 			groupAdmin.moveServers(set, groupName);
-			assertTrue(groupAdmin.getGroup(groupName).containsServer(
+			assertTrue(groupAdmin.getGroupInfo(groupName).containsServer(
           newServer.getHostAndPort()));
 		}
 	}

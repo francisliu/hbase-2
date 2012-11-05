@@ -37,6 +37,7 @@ import org.apache.hadoop.hbase.HTableDescriptor;
 import org.apache.hadoop.hbase.MediumTests;
 import org.apache.hadoop.hbase.MiniHBaseCluster;
 import org.apache.hadoop.hbase.ServerName;
+import org.apache.hadoop.hbase.client.GroupAdminClient;
 import org.apache.hadoop.hbase.client.HBaseAdmin;
 import org.apache.hadoop.hbase.client.HTable;
 import org.apache.hadoop.hbase.ipc.HRegionInterface;
@@ -96,7 +97,7 @@ public class TestGroups {
 	@Test
 	public void testBasicStartUp() throws IOException {
 		GroupAdminClient groupAdmin = new GroupAdminClient(master.getConfiguration());
-		GroupInfo defaultInfo = groupAdmin.getGroup(GroupInfo.DEFAULT_GROUP);
+		GroupInfo defaultInfo = groupAdmin.getGroupInfo(GroupInfo.DEFAULT_GROUP);
 		assertTrue(defaultInfo.getServers().size() == 4);
 		// Assignment of root and meta regions.
 		assertTrue(groupAdmin.listOnlineRegionsOfGroup(GroupInfo.DEFAULT_GROUP)
@@ -109,7 +110,7 @@ public class TestGroups {
 		GroupAdminClient groupAdmin = new GroupAdminClient(master.getConfiguration());
 		GroupInfo appInfo = addGroup(groupAdmin, groupPrefix + rand.nextInt(), 1);
 		GroupInfo adminInfo = addGroup(groupAdmin, groupPrefix + rand.nextInt(), 1);
-    GroupInfo dInfo = groupAdmin.getGroup(GroupInfo.DEFAULT_GROUP);
+    GroupInfo dInfo = groupAdmin.getGroupInfo(GroupInfo.DEFAULT_GROUP);
 		// Force the group info manager to read group information from disk.
 		assertTrue(groupAdmin.listGroups().size() == 3);
 		assertTrue(adminInfo.getServers().size() == 1);
@@ -212,7 +213,7 @@ public class TestGroups {
 	static GroupInfo addGroup(GroupAdminClient gAdmin, String groupName,
 			int serverCount) throws IOException, InterruptedException {
 		GroupInfo defaultInfo = gAdmin
-				.getGroup(GroupInfo.DEFAULT_GROUP);
+				.getGroupInfo(GroupInfo.DEFAULT_GROUP);
 		assertTrue(defaultInfo != null);
 		assertTrue(defaultInfo.getServers().size() >= serverCount);
 		gAdmin.addGroup(groupName);
@@ -225,7 +226,7 @@ public class TestGroups {
       set.add(server);
     }
     gAdmin.moveServers(set, groupName);
-    GroupInfo result = gAdmin.getGroup(groupName);
+    GroupInfo result = gAdmin.getGroupInfo(groupName);
 		assertTrue(result.getServers().size() >= serverCount);
     return result;
 	}
