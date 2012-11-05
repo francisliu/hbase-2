@@ -137,9 +137,9 @@ public class GroupBasedLoadBalancer implements LoadBalancer {
       List<HRegionInfo> misplacedRegions = getMisplacedRegions(regions);
       for (HRegionInfo region : regions.keySet()) {
         if (misplacedRegions.contains(region) == false) {
-          String groupName = masterServices
-              .getTableDescriptors().get(region.getTableNameAsString()).getValue(GroupInfo.GROUP_KEY);
-          rGroup.put(groupName, region);
+          String groupName = GroupInfo.getGroupProperty(masterServices.getTableDescriptors().get(
+            region.getTableNameAsString()));         
+          rGroup.put(groupName, region);         
         }
       }
       // Now the "rGroup" map has only the regions which have correct
@@ -157,8 +157,8 @@ public class GroupBasedLoadBalancer implements LoadBalancer {
       }
 
       for (HRegionInfo region : misplacedRegions) {
-          String groupName = masterServices
-              .getTableDescriptors().get(region.getTableNameAsString()).getValue(GroupInfo.GROUP_KEY);
+        String groupName = GroupInfo.getGroupProperty(masterServices.getTableDescriptors().get(
+          region.getTableNameAsString()));
         GroupInfo info = groupManager.getGroup(groupName);
         List<ServerName> candidateList = getServerToAssign(info, servers);
         ServerName server = this.internalBalancer.randomAssignment(region,
