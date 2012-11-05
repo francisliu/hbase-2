@@ -57,14 +57,12 @@ public class GroupInfoManagerImpl implements GroupInfoManager {
 	//Access to this map should always be synchronized.
 	private Map<String, GroupInfo> groupMap;
   private String znodePath;
-  private FileSystem fs;
   private ZooKeeperWatcher watcher;
   private MasterServices master;
   private String groupZNode = "group";
 
   public GroupInfoManagerImpl(Configuration conf, MasterServices master) throws IOException {
 		this.groupMap = new ConcurrentHashMap<String, GroupInfo>();
-		this.fs = FSUtils.getRootDir(conf).getFileSystem(conf);
     this.master = master;
     this.watcher = master.getZooKeeper();
     znodePath = ZKUtil.joinZNode(watcher.baseZNode, groupZNode);
