@@ -70,9 +70,8 @@ import org.apache.hadoop.hbase.client.MetaScanner;
 import org.apache.hadoop.hbase.client.MetaScanner.MetaScannerVisitor;
 import org.apache.hadoop.hbase.client.MetaScanner.MetaScannerVisitorBase;
 import org.apache.hadoop.hbase.client.Result;
+import org.apache.hadoop.hbase.client.coprocessor.Exec;
 import org.apache.hadoop.hbase.client.coprocessor.ExecResult;
-import org.apache.hadoop.hbase.client.coprocessor.MasterExec;
-import org.apache.hadoop.hbase.client.coprocessor.MasterExecResult;
 import org.apache.hadoop.hbase.coprocessor.CoprocessorHost;
 import org.apache.hadoop.hbase.executor.ExecutorService;
 import org.apache.hadoop.hbase.executor.ExecutorService.ExecutorType;
@@ -1304,7 +1303,7 @@ Server {
       cpHost.preDisableTable(tableName);
     }
     this.executorService.submit(new DisableTableHandler(this, tableName,
-      catalogTracker, assignmentManager, false));
+        catalogTracker, assignmentManager, false));
 
     if (cpHost != null) {
       cpHost.postDisableTable(tableName);
@@ -1805,7 +1804,7 @@ Server {
   }
 
   @Override
-  public MasterExecResult execCoprocessor(MasterExec call) throws IOException {
+  public ExecResult execCoprocessor(Exec call) throws IOException {
     Class<? extends CoprocessorProtocol> protocol = call.getProtocol();
     if (protocol == null) {
       String protocolName = call.getProtocolName();
@@ -1850,7 +1849,7 @@ Server {
       throw ioe;
     }
 
-    return new MasterExecResult(value);
+    return new ExecResult(value);
   }
 
   /**

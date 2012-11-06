@@ -26,8 +26,6 @@ import org.apache.hadoop.hbase.client.HConnection;
 import org.apache.hadoop.hbase.client.ServerCallable;
 import org.apache.hadoop.hbase.client.coprocessor.Exec;
 import org.apache.hadoop.hbase.client.coprocessor.ExecResult;
-import org.apache.hadoop.hbase.client.coprocessor.MasterExec;
-import org.apache.hadoop.hbase.client.coprocessor.MasterExecResult;
 import org.apache.hadoop.hbase.util.Bytes;
 
 import java.lang.reflect.InvocationHandler;
@@ -61,8 +59,8 @@ public class MasterExecRPCInvoker implements InvocationHandler {
     if (LOG.isDebugEnabled()) {
       LOG.debug("Call: "+method.getName()+", "+(args != null ? args.length : 0));
     }
-    MasterExec exec = new MasterExec(conf, protocol, method, args);
-    MasterExecResult result = connection.getMaster().execCoprocessor(exec);
+    Exec exec = new Exec(conf, protocol, method, args);
+    ExecResult result = connection.getMaster().execCoprocessor(exec);
     LOG.debug("Master Result is value="+result.getValue());
     return result.getValue();
   }

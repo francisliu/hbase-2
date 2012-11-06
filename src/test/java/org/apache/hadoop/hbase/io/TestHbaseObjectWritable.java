@@ -539,7 +539,7 @@ public class TestHbaseObjectWritable extends TestCase {
    * note on the test above. 
    */
   public void testGetNextObjectCode(){
-    assertEquals(83,HbaseObjectWritable.getNextClassCode());
+    assertEquals(82,HbaseObjectWritable.getNextClassCode());
   }
 
   @org.junit.Rule

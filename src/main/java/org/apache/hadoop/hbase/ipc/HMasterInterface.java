@@ -26,8 +26,8 @@ import org.apache.hadoop.hbase.ClusterStatus;
 import org.apache.hadoop.hbase.HColumnDescriptor;
 import org.apache.hadoop.hbase.HTableDescriptor;
 import org.apache.hadoop.hbase.UnknownRegionException;
-import org.apache.hadoop.hbase.client.coprocessor.MasterExec;
-import org.apache.hadoop.hbase.client.coprocessor.MasterExecResult;
+import org.apache.hadoop.hbase.client.coprocessor.Exec;
+import org.apache.hadoop.hbase.client.coprocessor.ExecResult;
 import org.apache.hadoop.hbase.security.TokenInfo;
 import org.apache.hadoop.hbase.security.KerberosInfo;
 import org.apache.hadoop.hbase.util.Pair;
@@ -284,6 +284,6 @@ public interface HMasterInterface extends VersionedProtocol {
    *     occurs during the invocation
    * @see org.apache.hadoop.hbase.master.MasterServices#registerProtocol(Class, CoprocessorProtocol)
    */
-  public MasterExecResult execCoprocessor(MasterExec call)
+  public ExecResult execCoprocessor(Exec call)
       throws IOException;
 }
