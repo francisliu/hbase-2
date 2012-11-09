@@ -183,8 +183,9 @@ public class TestGroups {
 		byte[] familyOneBytes = Bytes.toBytes(familyPrefix + rand.nextInt());
 		HTable ht = TEST_UTIL.createTable(tableOneBytes, familyOneBytes);
 		// All the regions created below will be assigned to the default group.
+		int curMetaCount = TEST_UTIL.getMetaTableRows().size();
     assertTrue(TEST_UTIL.createMultiRegions(master.getConfiguration(), ht, familyOneBytes, 5) == 5);
-    while (groupAdmin.listOnlineRegionsOfGroup(GroupInfo.DEFAULT_GROUP).size() < 5) {
+    while (groupAdmin.listOnlineRegionsOfGroup(GroupInfo.DEFAULT_GROUP).size() < (curMetaCount + 5)) {
       Thread.sleep(100);
     }
 		List<HRegionInfo> regions = groupAdmin
