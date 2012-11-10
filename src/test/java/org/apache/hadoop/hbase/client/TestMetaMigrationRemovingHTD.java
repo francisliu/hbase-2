@@ -79,8 +79,7 @@ public class TestMetaMigrationRemovingHTD {
     Path hbaseRootDir = TEST_UTIL.getDefaultRootDirPath();
     if (!fs.isDirectory(hbaseRootDir.getParent())) {
       // mkdir at first
-      doFsCommand(shell,
-        new String [] {"-mkdir", hbaseRootDir.getParent().toString()});
+      createDir(fs, shell, hbaseRootDir.getParent());
     }
     doFsCommand(shell,
       new String [] {"-put", untar.toURI().toString(), hbaseRootDir.toString()});
@@ -101,6 +100,17 @@ public class TestMetaMigrationRemovingHTD {
     Assert.assertEquals(ROWCOUNT, count);
     scanner.close();
     t.close();
+  }
+
+  private static void createDir(FileSystem fs, FsShell shell, Path dir) throws Exception {
+	// non-existing parent directories are created manually to overcome the difference in 
+	// CLI of Hadoop 1.x and 0.23/2.x. Switch '-p' was added in 0.23/2.x, changing the defaults.
+    if (dir.getParent() != null)
+      createDir(fs, shell, dir.getParent());
+    if (!fs.exists(dir)) {
+      doFsCommand(shell,
+    	  new String [] {"-mkdir", dir.toString()});
+    }
   }
 
   private static File untar(final File testdir) throws IOException {
