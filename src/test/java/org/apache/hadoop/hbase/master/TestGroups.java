@@ -72,6 +72,10 @@ public class TestGroups {
 		master = cluster.getMaster();
 		rand = new Random();
     admin = TEST_UTIL.getHBaseAdmin();
+    //wait till the balancer is in online mode
+    while(!((GroupBasedLoadBalancer)master.getLoadBalancer()).isOnline()) {
+      Thread.sleep(100);
+    }
 	}
 
 	@AfterClass
@@ -88,7 +92,8 @@ public class TestGroups {
       }
     }
     for(HTableDescriptor table: TEST_UTIL.getHBaseAdmin().listTables()) {
-      if(!table.isMetaRegion() && !table.isRootRegion()) {
+      if(!table.isMetaRegion() && !table.isRootRegion() &&
+          !Bytes.equals(table.getName(), GroupInfoManager.GROUP_TABLE_NAME_BYTES)) {
         TEST_UTIL.deleteTable(table.getName());
       }
     }
@@ -98,10 +103,9 @@ public class TestGroups {
 	public void testBasicStartUp() throws IOException {
 		GroupAdminClient groupAdmin = new GroupAdminClient(master.getConfiguration());
 		GroupInfo defaultInfo = groupAdmin.getGroupInfo(GroupInfo.DEFAULT_GROUP);
-		assertTrue(defaultInfo.getServers().size() == 4);
+		assertEquals(defaultInfo.getServers().size(), 4);
 		// Assignment of root and meta regions.
-		assertTrue(groupAdmin.listOnlineRegionsOfGroup(GroupInfo.DEFAULT_GROUP)
-        .size() == 2);
+		assertEquals(groupAdmin.listOnlineRegionsOfGroup(GroupInfo.DEFAULT_GROUP).size(), 3);
 	}
 
 	@Test
@@ -159,7 +163,7 @@ public class TestGroups {
 
 		Map<String, Map<ServerName, List<HRegionInfo>>> tableRegionAssignMap = master
 				.getAssignmentManager().getAssignmentsByTable();
-		assertTrue(tableRegionAssignMap.keySet().size() == 1);
+		assertEquals(2, tableRegionAssignMap.keySet().size());
 		Map<ServerName, List<HRegionInfo>> serverMap = tableRegionAssignMap
 				.get(tableName);
 		for (ServerName rs : serverMap.keySet()) {
@@ -171,7 +175,7 @@ public class TestGroups {
 		TEST_UTIL.deleteTable(TABLENAME);
 		tableRegionAssignMap = master.getAssignmentManager()
 				.getAssignmentsByTable();
-		assertEquals(tableRegionAssignMap.size(), 0);
+		assertEquals(1, tableRegionAssignMap.size());
 	}
 
 	@Test
@@ -183,9 +187,8 @@ public class TestGroups {
 		byte[] familyOneBytes = Bytes.toBytes(familyPrefix + rand.nextInt());
 		HTable ht = TEST_UTIL.createTable(tableOneBytes, familyOneBytes);
 		// All the regions created below will be assigned to the default group.
-		int curMetaCount = TEST_UTIL.getMetaTableRows().size();
     assertTrue(TEST_UTIL.createMultiRegions(master.getConfiguration(), ht, familyOneBytes, 5) == 5);
-    while (groupAdmin.listOnlineRegionsOfGroup(GroupInfo.DEFAULT_GROUP).size() < (curMetaCount + 5)) {
+    while (groupAdmin.listOnlineRegionsOfGroup(GroupInfo.DEFAULT_GROUP).size() < 5) {
       Thread.sleep(100);
     }
 		List<HRegionInfo> regions = groupAdmin

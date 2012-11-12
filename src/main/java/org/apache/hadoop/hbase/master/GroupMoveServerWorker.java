@@ -67,13 +67,13 @@ public class GroupMoveServerWorker implements Runnable {
       for(String server: plan.getServers()) {
         serversInTransition.put(server, plan.getTargetGroup());
       }
+      if(!sourceGroup.startsWith(GroupInfo.TRANSITION_GROUP_PREFIX)) {
+        transGroup = GroupInfo.TRANSITION_GROUP_PREFIX+
+            System.currentTimeMillis()+"_"+sourceGroup+"-"+plan.getTargetGroup();
+        groupManager.addGroup(new GroupInfo(transGroup, new TreeSet<String>()));
+      }
     }
-
-    if(!sourceGroup.startsWith(GroupInfo.TRANSITION_GROUP_PREFIX)) {
-      transGroup = GroupInfo.TRANSITION_GROUP_PREFIX+sourceGroup+"_TO_"+plan.getTargetGroup();
-      groupManager.addGroup(new GroupInfo(transGroup, new TreeSet<String>()));
-    }
-    groupManager.moveServers(plan.getServers(), sourceGroup, transGroup);
+    groupManager.moveServers(plan.getServers(), sourceGroup, transGroup!=null?transGroup:plan.getTargetGroup());
   }
 
   @Override

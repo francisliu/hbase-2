@@ -21,12 +21,18 @@
 package org.apache.hadoop.hbase.master;
 
 import org.apache.hadoop.hbase.HTableDescriptor;
+import org.apache.hadoop.hbase.util.Bytes;
 
 import java.io.IOException;
 import java.util.List;
 import java.util.Set;
 
 public interface GroupInfoManager {
+  public static final String GROUP_TABLE_NAME = "_GROUP_";
+  public static final byte[] GROUP_TABLE_NAME_BYTES = Bytes.toBytes(GROUP_TABLE_NAME);
+  public static final byte[] SERVER_FAMILY_BYTES = Bytes.toBytes("servers");
+  public static final byte[] INFO_FAMILY_BYTES = Bytes.toBytes("info");
+
   /**
    * Adds the group.
    *
