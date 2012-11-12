@@ -1612,8 +1612,10 @@ Server {
 
   @Override
   public void stopMaster() throws IOException{
-    cpHost.preStopMaster();
-    stop("Stopped by " + Thread.currentThread().getName());
+    if (cpHost != null) {
+      cpHost.preStopMaster();
+      stop("Stopped by " + Thread.currentThread().getName());
+    }
   }
 
   @Override
