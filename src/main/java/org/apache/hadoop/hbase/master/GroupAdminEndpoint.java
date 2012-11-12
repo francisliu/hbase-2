@@ -203,7 +203,7 @@ public class GroupAdminEndpoint extends BaseEndpointCoprocessor
     return Collections.unmodifiableMap(serversInTransition);
   }
 
-  private GroupInfoManager getGroupInfoManager() {
+  private GroupInfoManager getGroupInfoManager() throws IOException {
     return ((GroupBasedLoadBalancer)menv.getMasterServices().getLoadBalancer()).getGroupInfoManager();
   }
 
