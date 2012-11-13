@@ -394,7 +394,7 @@ public class TestLogRolling  {
    * restarted.
    * @throws Exception
    */
-  @Test
+  //DISABLED BECAUSE FLAKEY already disabled in trunk see HBASE-5984 @Test
   public void testLogRollOnPipelineRestart() throws Exception {
     LOG.info("Starting testLogRollOnPipelineRestart");
     assertTrue("This test requires HLog file replication.",
