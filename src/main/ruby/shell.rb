@@ -271,6 +271,9 @@ Shell.load_command_group(
     unassign
     zk_dump
     hlog_roll
+    shutdown_cluster
+    stop_master
+    stop_region_server
   ]
 )
 

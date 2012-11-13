@@ -576,5 +576,20 @@ module Hbase
       put.add(org.apache.hadoop.hbase.HConstants::CATALOG_FAMILY, org.apache.hadoop.hbase.HConstants::REGIONINFO_QUALIFIER, org.apache.hadoop.hbase.util.Writables.getBytes(hri))
       meta.put(put)
     end
+    #----------------------------------------------------------------------------------------------
+    # shutdown the cluster
+    def shutdownCluster
+      @admin.shutdown
+    end
+    #----------------------------------------------------------------------------------------------
+    # shutdown the active master
+    def stopMaster
+      @admin.stopMaster
+    end
+    #----------------------------------------------------------------------------------------------
+    # shutdown the active master
+    def stopRegionServer(hostPort)
+      @admin.stopRegionServer(hostPort)
+    end
   end
 end
