@@ -26,6 +26,7 @@ import org.apache.hadoop.hbase.HTableDescriptor;
 import org.apache.hadoop.hbase.coprocessor.BaseMasterObserver;
 import org.apache.hadoop.hbase.coprocessor.MasterCoprocessorEnvironment;
 import org.apache.hadoop.hbase.coprocessor.ObserverContext;
+import org.apache.hadoop.hbase.util.Bytes;
 
 import java.io.IOException;
 import java.util.List;
@@ -41,9 +42,14 @@ public class GroupMasterObserver extends BaseMasterObserver {
 
   @Override
   public void preCreateTable(ObserverContext<MasterCoprocessorEnvironment> ctx, HTableDescriptor desc, HRegionInfo[] regions) throws IOException {
-    String groupName = GroupInfo.getGroupProperty(desc);
-    if(getGroupInfoManager().getGroup(groupName) == null) {
-      throw new DoNotRetryIOException("Group "+groupName+" does not exist.");
+    //We bypass group checking if the table being created is the group table
+    if(getBalancer().isOnline()) {
+      String groupName = GroupInfo.getGroupProperty(desc);
+      if(getGroupInfoManager().getGroup(groupName) == null) {
+        throw new DoNotRetryIOException("Group "+groupName+" does not exist.");
+      }
+    } else if (!Bytes.equals(desc.getName(), GroupInfoManager.GROUP_TABLE_NAME_BYTES)) {
+      throw new DoNotRetryIOException("Failed to retrieve GroupInfoManager");
     }
   }
 
@@ -59,7 +65,11 @@ public class GroupMasterObserver extends BaseMasterObserver {
     master.getAssignmentManager().unassign(tableRegionList);
   }
 
-  private GroupInfoManager getGroupInfoManager() {
+  private GroupBasedLoadBalancer getBalancer() {
+    return (GroupBasedLoadBalancer)menv.getMasterServices().getLoadBalancer();
+  }
+
+  private GroupInfoManager getGroupInfoManager() throws IOException {
     return ((GroupBasedLoadBalancer)menv.getMasterServices().getLoadBalancer()).getGroupInfoManager();
   }
 }

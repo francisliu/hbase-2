@@ -19,7 +19,7 @@
  */
 package org.apache.hadoop.hbase.master;
 
-import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.*;
 
 import java.io.IOException;
 import java.util.List;
@@ -71,6 +71,9 @@ public class TestGroupsWithDeadServers {
 		master = cluster.getMaster();
 		rand = new Random();
     admin = TEST_UTIL.getHBaseAdmin();
+    while(!((GroupBasedLoadBalancer)master.getLoadBalancer()).isOnline()) {
+      Thread.sleep(100);
+    }
 	}
 
 	@AfterClass
@@ -139,7 +142,7 @@ public class TestGroupsWithDeadServers {
     assertTrue("Number of online regions in" + newRSGroup + " " + newGrpRegions.size(),
       newGrpRegions.size() == 0);
 		regions = groupAdmin.listOnlineRegionsOfGroup(GroupInfo.DEFAULT_GROUP);
-		assertTrue(regions.size() == 2);
+		assertEquals(3, regions.size());
 		startServersAndMove(groupAdmin, 1, newRSGroup);
 		while(master.getAssignmentManager().isRegionsInTransition()){
 			Thread.sleep(5);
