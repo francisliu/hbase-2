@@ -187,8 +187,9 @@ public class TestGroups {
 		byte[] familyOneBytes = Bytes.toBytes(familyPrefix + rand.nextInt());
 		HTable ht = TEST_UTIL.createTable(tableOneBytes, familyOneBytes);
 		// All the regions created below will be assigned to the default group.
+    int curMetaCount = TEST_UTIL.getMetaTableRows().size();
     assertTrue(TEST_UTIL.createMultiRegions(master.getConfiguration(), ht, familyOneBytes, 5) == 5);
-    while (groupAdmin.listOnlineRegionsOfGroup(GroupInfo.DEFAULT_GROUP).size() < 5) {
+    while (groupAdmin.listOnlineRegionsOfGroup(GroupInfo.DEFAULT_GROUP).size() < (curMetaCount + 5)) {
       Thread.sleep(100);
     }
 		List<HRegionInfo> regions = groupAdmin
@@ -200,9 +201,7 @@ public class TestGroups {
 		master.move(region.getEncodedNameAsBytes(),
         Bytes.toBytes(tobeAssigned.toString()));
 
-		int tries =10;
-    while (groupAdmin.listOnlineRegionsOfGroup(GroupInfo.DEFAULT_GROUP).size() != regions.size()
-        && tries-- > 0) {
+    while (groupAdmin.listOnlineRegionsOfGroup(GroupInfo.DEFAULT_GROUP).size() != regions.size()) {
       Thread.sleep(100);
     }
     //verify that region was never assigned to the server
