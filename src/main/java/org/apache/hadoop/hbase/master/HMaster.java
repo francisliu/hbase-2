@@ -1564,7 +1564,9 @@ Server {
   @SuppressWarnings("deprecation")
   @Override
   public void shutdown() throws IOException {
-    cpHost.preShutdown();
+    if (cpHost != null) {
+      cpHost.preShutdown();
+    }
     if (mxBean != null) {
       MBeanUtil.unregisterMBean(mxBean);
       mxBean = null;
@@ -1581,8 +1583,10 @@ Server {
   }
 
   @Override
-  public void stopMaster() throws IOException{
-    cpHost.preStopMaster();
+  public void stopMaster() throws IOException {
+    if (cpHost != null) {
+      cpHost.preStopMaster();
+    }
     stop("Stopped by " + Thread.currentThread().getName());
   }
 
