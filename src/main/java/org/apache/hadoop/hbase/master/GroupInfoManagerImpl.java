@@ -22,21 +22,22 @@ package org.apache.hadoop.hbase.master;
 
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
-import org.apache.commons.io.output.ByteArrayOutputStream;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
-import org.apache.hadoop.conf.Configuration;
-import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.hbase.DoNotRetryIOException;
 import org.apache.hadoop.hbase.ServerName;
-import org.apache.hadoop.hbase.util.FSUtils;
+import org.apache.hadoop.hbase.client.Delete;
+import org.apache.hadoop.hbase.client.HTable;
+import org.apache.hadoop.hbase.client.Put;
+import org.apache.hadoop.hbase.client.Result;
+import org.apache.hadoop.hbase.client.Scan;
+import org.apache.hadoop.hbase.util.Bytes;
 import org.apache.hadoop.hbase.zookeeper.ZKUtil;
 import org.apache.hadoop.hbase.zookeeper.ZooKeeperWatcher;
 import org.apache.zookeeper.KeeperException;
 
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
-import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
@@ -44,6 +45,7 @@ import java.io.OutputStream;
 import java.io.OutputStreamWriter;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
@@ -56,24 +58,14 @@ public class GroupInfoManagerImpl implements GroupInfoManager {
 
 	//Access to this map should always be synchronized.
 	private Map<String, GroupInfo> groupMap;
-  private String znodePath;
-  private ZooKeeperWatcher watcher;
   private MasterServices master;
-  private String groupZNode = "group";
+  private HTable table;
+  private ZooKeeperWatcher watcher;
 
-  public GroupInfoManagerImpl(Configuration conf, MasterServices master) throws IOException {
+  public GroupInfoManagerImpl(MasterServices master) throws IOException {
 		this.groupMap = new ConcurrentHashMap<String, GroupInfo>();
     this.master = master;
     this.watcher = master.getZooKeeper();
-    znodePath = ZKUtil.joinZNode(watcher.baseZNode, groupZNode);
-
-    try {
-      if(ZKUtil.checkExists(watcher,znodePath) == -1) {
-        ZKUtil.createSetData(watcher, znodePath, new byte[0]);
-      }
-    } catch (KeeperException e) {
-      throw new IOException("Failed to verify group znode",e);
-    }
     reloadConfig();
   }
 
@@ -174,7 +166,7 @@ public class GroupInfoManagerImpl implements GroupInfoManager {
     synchronized (groupMap) {
       try {
         group = groupMap.remove(groupName);
-        flushConfig();
+        table.delete(new Delete(Bytes.toBytes(groupName)));
       } catch (IOException e) {
         groupMap.put(groupName, group);
         throw e;
@@ -195,22 +187,22 @@ public class GroupInfoManagerImpl implements GroupInfoManager {
 	 * @throws IOException
 	 */
 	synchronized void reloadConfig() throws IOException {
-		List<GroupInfo> groupList;
-    InputStream is = null;
-    try {
-      byte[] payload = ZKUtil.getData(watcher, znodePath);
-      synchronized (groupMap) {
-        this.groupMap.clear();
-        groupList = readGroups(new ByteArrayInputStream(payload));
-        for (GroupInfo group : groupList) {
-          groupMap.put(group.getName(), group);
-        }
+    if(table == null) {
+      table = new HTable(master.getConfiguration(), GROUP_TABLE_NAME_BYTES);
+    }
+		List<GroupInfo> groupList = new LinkedList<GroupInfo>();
+    for(Result result: table.getScanner(new Scan())) {
+      GroupInfo group =
+          new GroupInfo(Bytes.toString(result.getRow()), new HashSet<String>());
+      for(byte[] server: result.getFamilyMap(SERVER_FAMILY_BYTES).keySet()) {
+        group.addServer(Bytes.toString(server));
       }
-    } catch (KeeperException e) {
-      throw new IOException("Failed to read group znode", e);
-    } finally {
-      if(is != null) {
-        is.close();
+      groupList.add(group);
+    }
+    synchronized (groupMap) {
+      this.groupMap.clear();
+      for (GroupInfo group : groupList) {
+        groupMap.put(group.getName(), group);
       }
     }
 	}
@@ -225,18 +217,21 @@ public class GroupInfoManagerImpl implements GroupInfoManager {
 	}
 
 	private synchronized void flushConfig(Map<String,GroupInfo> map) throws IOException {
-    ByteArrayOutputStream os = new ByteArrayOutputStream();
-		try {
-			List<GroupInfo> groups = Lists.newArrayList(map.values());
-			writeGroups(groups, os);
-      ZKUtil.setData(watcher, znodePath, os.toByteArray());
-    } catch (KeeperException e) {
-      throw new IOException("Failed to write to group znode", e);
-    } finally {
-			if(os != null) {
-        os.close();
+    List<Put> puts = new LinkedList<Put>();
+    for(GroupInfo groupInfo : map.values()) {
+      Put put = new Put(Bytes.toBytes(groupInfo.getName()));
+      put.add(INFO_FAMILY_BYTES, Bytes.toBytes("created"),
+          Bytes.toBytes(System.currentTimeMillis()));
+      for(String server: groupInfo.getServers()) {
+        put.add(SERVER_FAMILY_BYTES, Bytes.toBytes(server), new byte[0]);
       }
-		}
+      if(put.size() > 0) {
+        puts.add(put);
+      }
+    }
+    if(puts.size() > 0) {
+      table.put(puts);
+    }
 	}
 
 	/**
