@@ -19,13 +19,21 @@
  */
 package org.apache.hadoop.hbase.regionserver;
 
+import org.apache.commons.logging.Log;
+import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hbase.Chore;
+import org.apache.hadoop.hbase.HConstants;
 import org.apache.hadoop.hbase.Stoppable;
 import org.apache.hadoop.hbase.regionserver.HealthChecker.HealthCheckerExitStatus;
+import org.apache.hadoop.util.StringUtils;
 
-public class RegionServerHealthCheckChore extends Chore {
-
+/**
+ * The Class RegionServerHealthCheckChore for checking the health of
+ * the region server.
+ */
+ class RegionServerHealthCheckChore extends Chore {
+  private static Log LOG = LogFactory.getLog(RegionServerHealthCheckChore.class);
   RegionServerHealthChecker rsHealthChecker;
   Configuration config;
   int threshold;
@@ -33,12 +41,14 @@ public class RegionServerHealthCheckChore extends Chore {
   long failureWindow;
   long startWindow;
 
-  public RegionServerHealthCheckChore(String name, int p, Stoppable stopper, Configuration config) {
-    super(name, p, stopper);
+  RegionServerHealthCheckChore(int sleepTime, Stoppable stopper, Configuration config) {
+    super("RegionHealthChecker", sleepTime, stopper);
+    LOG.info("Health Check Chore runs every " + StringUtils.formatTime(sleepTime));
     rsHealthChecker = new RegionServerHealthChecker();
     rsHealthChecker.init(config);
     this.config = config;
-    // Get script location, threshold count and failure window.
+    this.threshold = config.getInt(HConstants.SERVER_HEALTH_FAILURE_THRESHOLD, 3);
+    this.failureWindow = config.getLong(HConstants.SERVER_HEALTH_FAILURE_WINDOW, 180000);
   }
 
   @Override
@@ -50,27 +60,32 @@ public class RegionServerHealthCheckChore extends Chore {
         this.stopper.stop("The region server reported unhealthy " + threshold
             + "number of times in " + failureWindow + "time.");
       }
+      //Always log health report.
+      LOG.info("Health status at " + StringUtils.formatTime(System.currentTimeMillis()) + ": "
+          + rsHealthChecker.getHealthReport());
     }
   }
 
   private boolean decideToStop() {
     boolean stop = false;
-    if(numTimesUnhealthy == 0){
-      //First time we are seeing a failure. No need to stop, just
-      // record the time. 
+    if (numTimesUnhealthy == 0) {
+      // First time we are seeing a failure. No need to stop, just
+      // record the time.
+      numTimesUnhealthy++;
       stop = false;
-      startWindow = System.currentTimeMillis();     
-    }else{
-      if((System.currentTimeMillis() - startWindow) < failureWindow){
+      startWindow = System.currentTimeMillis();
+    } else {
+      if ((System.currentTimeMillis() - startWindow) < failureWindow) {
         numTimesUnhealthy++;
-        if(numTimesUnhealthy == threshold){
+        if (numTimesUnhealthy == threshold) {
           stop = true;
-        }else {
+        } else {
           stop = false;
         }
-      }else {
-        //Outside of failure window, so we reset to 1.
+      } else {
+        // Outside of failure window, so we reset to 1.
         numTimesUnhealthy = 1;
+        startWindow = System.currentTimeMillis();
         stop = false;
       }
     }

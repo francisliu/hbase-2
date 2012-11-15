@@ -1,15 +1,3 @@
-package org.apache.hadoop.hbase.regionserver;
-
-import java.io.IOException;
-import java.util.ArrayList;
-
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
-import org.apache.hadoop.conf.Configuration;
-import org.apache.hadoop.util.Shell.ExitCodeException;
-import org.apache.hadoop.util.Shell.ShellCommandExecutor;
-
-
 /**
  * Copyright 2011 The Apache Software Foundation
  *
@@ -29,19 +17,34 @@ import org.apache.hadoop.util.Shell.ShellCommandExecutor;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.hadoop.hbase.regionserver;
 
-public class RegionServerHealthChecker implements HealthChecker{
+import java.io.IOException;
+import java.util.ArrayList;
+
+import org.apache.commons.logging.Log;
+import org.apache.commons.logging.LogFactory;
+import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.hbase.HConstants;
+import org.apache.hadoop.util.StringUtils;
+import org.apache.hadoop.util.Shell.ExitCodeException;
+import org.apache.hadoop.util.Shell.ShellCommandExecutor;
+
+/**
+ * The Class RegionServerHealthChecker.
+ */
+class RegionServerHealthChecker implements HealthChecker {
+  
   private static Log LOG = LogFactory.getLog(RegionServerHealthChecker.class);
   
-  ShellCommandExecutor shexec = null;
+  private ShellCommandExecutor shexec = null;
  
   private Configuration conf;
+  
+  private String exceptionStackTrace;
 
   /** Pattern used for searching in the output of the node health script */
   static private final String ERROR_PATTERN = "ERROR";
-
-  /** Time out error message */
-  static final String NODE_HEALTH_SCRIPT_TIMED_OUT_MSG = "Node health script timed out";
 
   private String healthReport;
   private String healthCheckScript;
@@ -50,12 +53,14 @@ public class RegionServerHealthChecker implements HealthChecker{
   @Override
   public void init(Configuration conf) {
     this.conf = conf;
-   // Get all the required variables from config and initialize
+    healthCheckScript = this.conf.get(HConstants.SERVER_HEALTH_SCRIPT_LOC);
+    scriptTimeout = this.conf.getLong(HConstants.SERVER_HEALTH_SCRIPT_TIMEOUT,
+      HConstants.DEFAULT_SERVER_HEALTH_SCRIPT_TIMEOUT);
     ArrayList<String> execScript = new ArrayList<String>();
     execScript.add(healthCheckScript);
-    shexec = new ShellCommandExecutor(execScript
-      .toArray(new String[execScript.size()]), null, null, scriptTimeout);   
-    
+    shexec = new ShellCommandExecutor(execScript.toArray(new String[execScript.size()]), null,
+        null, scriptTimeout);
+
     LOG.info("RegionServerHealthChecker initialized.");
   }
   
@@ -77,6 +82,7 @@ public class RegionServerHealthChecker implements HealthChecker{
       LOG.warn("Caught exception : " + e);
       if (!shexec.isTimedOut()) {
         status = HealthCheckerExitStatus.FAILED_WITH_EXCEPTION;
+        exceptionStackTrace = StringUtils.stringifyException(e);
       } else {
         status = HealthCheckerExitStatus.TIMED_OUT;
       }
@@ -87,6 +93,7 @@ public class RegionServerHealthChecker implements HealthChecker{
         }
       }
     }
+    setHealthReport(status);
     return status;
   }    
   
@@ -99,6 +106,26 @@ public class RegionServerHealthChecker implements HealthChecker{
       }
     }
     return false;
+  }
+  
+  private void setHealthReport(HealthCheckerExitStatus status){
+    switch (status) {
+    case SUCCESS:
+      this.healthReport = "Server is healthy.";
+      break;
+    case TIMED_OUT:
+      this.healthReport = "health script timed out";
+      break;
+    case FAILED_WITH_EXCEPTION:
+      this.healthReport = exceptionStackTrace;
+      break;
+    case FAILED_WITH_EXIT_CODE:
+      this.healthReport = "health script failed with exit code.";
+      break;
+    case FAILED:
+      this.healthReport = shexec.getOutput();
+      break;
+    }
   }
 
 }

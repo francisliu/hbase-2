@@ -21,12 +21,34 @@ package org.apache.hadoop.hbase.regionserver;
 
 import org.apache.hadoop.conf.Configuration;
 
+/**
+ * The Interface HealthChecker for providing methods for regularly checking
+ * health of region servers.
+ */
 public interface HealthChecker {
+  
+  /**
+   * Initialize.
+   *
+   * @param configuration
+   */
   public void init(Configuration config);
+  
+  /**
+   * Check health of the server.
+   *
+   * @return HealthCheckerExitStatus - The status of the server. 
+   */
   public HealthCheckerExitStatus checkHealth();
+  
+  /**
+   * Gets the health report of the region server.
+   *
+   * @return the health report
+   */
   public String getHealthReport();
   
-  public enum HealthCheckerExitStatus {
+  enum HealthCheckerExitStatus {
     SUCCESS,
     TIMED_OUT,
     FAILED_WITH_EXIT_CODE,

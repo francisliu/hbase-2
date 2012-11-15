@@ -668,7 +668,22 @@ public final class HConstants {
       Arrays.asList(new String[] { HREGION_LOGDIR_NAME, HREGION_OLDLOGDIR_NAME, CORRUPT_DIR_NAME,
           Bytes.toString(META_TABLE_NAME), Bytes.toString(ROOT_TABLE_NAME), SPLIT_LOGDIR_NAME,
           HBCK_SIDELINEDIR_NAME, HFILE_ARCHIVE_DIRECTORY }));
-
+  
+  /** Health script related settings */
+  public static final String SERVER_HEALTH_SCRIPT_LOC = "server.health.script.location";
+  public static final String SERVER_HEALTH_SCRIPT_TIMEOUT = "server.health.script.timeout";
+  public static final long DEFAULT_SERVER_HEALTH_SCRIPT_TIMEOUT = 10000;
+  /**
+   * The maximum number of health check failures a server can encounter within a given failure
+   * window time.
+   */
+  public static final String SERVER_HEALTH_FAILURE_THRESHOLD = "server.health.failure.threshold";
+  /**
+   * The time period (in milliseconds ) within which, if number of negative health check reports
+   * exceed threshold, then the server will shutdown itself.
+   */
+  public static final String SERVER_HEALTH_FAILURE_WINDOW = "server.health.failure.window";
+  
   private HConstants() {
     // Can't be instantiated with this ctor.
   }
