@@ -362,6 +362,8 @@ public class HRegionServer implements HRegionInterface, HBaseRPCErrorHandler,
    * ClusterId
    */
   private ClusterId clusterId = null;
+  
+  private RegionServerHealthCheckChore healthCheckChore;
 
   /**
    * Starts a HRegionServer at the default location
@@ -1576,8 +1578,15 @@ public class HRegionServer implements HRegionInterface, HBaseRPCErrorHandler,
     this.splitLogWorker = new SplitLogWorker(this.zooKeeper,
         this.getConfiguration(), this.getServerName().toString());
     splitLogWorker.start();
+    
+    //Start health check chore.
+    String name = n + "-RegionServerHealthCheckChore";
+    int healthCheckPeriod = getConfiguration().getInt("hbase.healthcheck.period", 300000);
+    healthCheckChore = new RegionServerHealthCheckChore(name, healthCheckPeriod, this,
+        getConfiguration());
+    Threads.setDaemonThreadRunning(this.healthCheckChore.getThread(), name , handler);
   }
-
+  
   /**
    * Puts up the webui.
    * @return Returns final port -- maybe different from what we started with.
@@ -1773,6 +1782,7 @@ public class HRegionServer implements HRegionInterface, HBaseRPCErrorHandler,
   protected void join() {
     Threads.shutdown(this.compactionChecker.getThread());
     Threads.shutdown(this.cacheFlusher.getThread());
+    Threads.shutdown(this.healthCheckChore.getThread());
     if (this.hlogRoller != null) {
       Threads.shutdown(this.hlogRoller.getThread());
     }
