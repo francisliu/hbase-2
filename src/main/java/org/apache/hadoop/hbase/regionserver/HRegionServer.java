@@ -654,8 +654,8 @@ public class HRegionServer implements HRegionInterface, HBaseRPCErrorHandler,
       this.threadWakeFrequency * multiplier, this);
     
     //Health checker thread.
-    healthCheckChore = new RegionServerHealthCheckChore(this.threadWakeFrequency * multiplier, this,
-        getConfiguration());
+    int sleepTime =  this.conf.getInt(HConstants.SERVER_HEALTH_CHORE_WAKE_FREQ, 180000);
+    healthCheckChore = new RegionServerHealthCheckChore(sleepTime, this, getConfiguration());
 
     this.leases = new Leases((int) conf.getLong(
         HConstants.HBASE_REGIONSERVER_LEASE_PERIOD_KEY,

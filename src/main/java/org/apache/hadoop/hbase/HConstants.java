@@ -672,6 +672,7 @@ public final class HConstants {
   /** Health script related settings */
   public static final String SERVER_HEALTH_SCRIPT_LOC = "server.health.script.location";
   public static final String SERVER_HEALTH_SCRIPT_TIMEOUT = "server.health.script.timeout";
+  public static final String SERVER_HEALTH_CHORE_WAKE_FREQ = "server.health.script.frequency";
   public static final long DEFAULT_SERVER_HEALTH_SCRIPT_TIMEOUT = 10000;
   /**
    * The maximum number of health check failures a server can encounter within a given failure
