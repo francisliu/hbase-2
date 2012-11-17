@@ -34,7 +34,7 @@ import org.apache.hadoop.util.StringUtils;
  */
  class RegionServerHealthCheckChore extends Chore {
   private static Log LOG = LogFactory.getLog(RegionServerHealthCheckChore.class);
-  RegionServerHealthChecker rsHealthChecker;
+  HealthChecker rsHealthChecker;
   Configuration config;
   int threshold;
   int numTimesUnhealthy = 0;
@@ -44,25 +44,34 @@ import org.apache.hadoop.util.StringUtils;
   RegionServerHealthCheckChore(int sleepTime, Stoppable stopper, Configuration config) {
     super("RegionHealthChecker", sleepTime, stopper);
     LOG.info("Health Check Chore runs every " + StringUtils.formatTime(sleepTime));
-    rsHealthChecker = new RegionServerHealthChecker();
-    rsHealthChecker.init(config);
     this.config = config;
-    this.threshold = config.getInt(HConstants.SERVER_HEALTH_FAILURE_THRESHOLD, 3);
-    this.failureWindow = config.getLong(HConstants.SERVER_HEALTH_FAILURE_WINDOW, 180000);
+    String healthCheckScript = this.config.get(HConstants.RS_HEALTH_SCRIPT_LOC);
+    long scriptTimeout = this.config.getLong(HConstants.RS_HEALTH_SCRIPT_TIMEOUT,
+      HConstants.DEFAULT_RS_HEALTH_SCRIPT_TIMEOUT);
+    rsHealthChecker = new HealthChecker();
+    rsHealthChecker.init(healthCheckScript, scriptTimeout);    
+    this.threshold = config.getInt(HConstants.RS_HEALTH_FAILURE_THRESHOLD,
+      HConstants.DEFAULT_RS_HEALTH_FAILURE_THRESHOLD);
+    this.failureWindow = this.threshold * sleepTime;
   }
 
   @Override
   protected void chore() {
-    boolean isHealthy = (rsHealthChecker.checkHealth() == HealthCheckerExitStatus.SUCCESS);
-    if(!isHealthy){
-      boolean needToStop = decideToStop();
-      if (needToStop) {
-        this.stopper.stop("The region server reported unhealthy " + threshold
-            + "number of times in " + failureWindow + "time.");
+    if (rsHealthChecker.shouldRun()) {
+      HealthReport report = rsHealthChecker.checkHealth();
+      boolean isHealthy = (report.getStatus() == HealthCheckerExitStatus.SUCCESS);
+      if (!isHealthy) {
+        boolean needToStop = decideToStop();
+        if (needToStop) {
+          this.stopper.stop("The region server reported unhealthy " + threshold
+              + "number of times in " + failureWindow + "time.");
+        }
+        // Always log health report.
+        LOG.info("Health status at " + StringUtils.formatTime(System.currentTimeMillis()) + ": "
+            + report.getHealthReport());
       }
-      //Always log health report.
-      LOG.info("Health status at " + StringUtils.formatTime(System.currentTimeMillis()) + ": "
-          + rsHealthChecker.getHealthReport());
+    } else {
+      LOG.info("Health checker did not run.");
     }
   }
 

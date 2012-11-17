@@ -19,34 +19,30 @@
  */
 package org.apache.hadoop.hbase.regionserver;
 
-import org.apache.hadoop.conf.Configuration;
+import java.io.IOException;
+import java.util.ArrayList;
+
+import org.apache.commons.lang.StringUtils;
+import org.apache.commons.logging.Log;
+import org.apache.commons.logging.LogFactory;
+import org.apache.hadoop.util.Shell.ExitCodeException;
+import org.apache.hadoop.util.Shell.ShellCommandExecutor;
+
 
 /**
- * The Interface HealthChecker for providing methods for regularly checking
- * health of region servers.
+ * The Class HealthChecker to check health of the region server.
  */
-public interface HealthChecker {
+class HealthChecker {
   
-  /**
-   * Initialize.
-   *
-   * @param configuration
-   */
-  public void init(Configuration config);
-  
-  /**
-   * Check health of the server.
-   *
-   * @return HealthCheckerExitStatus - The status of the server. 
-   */
-  public HealthCheckerExitStatus checkHealth();
-  
-  /**
-   * Gets the health report of the region server.
-   *
-   * @return the health report
-   */
-  public String getHealthReport();
+  private static Log LOG = LogFactory.getLog(HealthChecker.class); 
+  private ShellCommandExecutor shexec = null; 
+  private String exceptionStackTrace;
+
+  /** Pattern used for searching in the output of the node health script */
+  static private final String ERROR_PATTERN = "ERROR";
+
+  private String healthCheckScript;
+  private long scriptTimeout;
   
   enum HealthCheckerExitStatus {
     SUCCESS,
@@ -55,4 +51,90 @@ public interface HealthChecker {
     FAILED_WITH_EXCEPTION,
     FAILED
   }
+  
+  /**
+   * Initialize.
+   *
+   * @param configuration
+   */
+  public void init(String location, long timeout) {
+    this.healthCheckScript = location;
+    this.scriptTimeout = timeout;  
+    ArrayList<String> execScript = new ArrayList<String>();
+    execScript.add(healthCheckScript);
+    shexec = new ShellCommandExecutor(execScript.toArray(new String[execScript.size()]), null,
+        null, scriptTimeout);
+    LOG.info("RegionServerHealthChecker initialized.");
+  }
+  
+  
+  public HealthReport checkHealth() {
+    HealthCheckerExitStatus status = HealthCheckerExitStatus.SUCCESS;
+    try {
+      shexec.execute();
+    } catch (ExitCodeException e) {
+      // ignore the exit code of the script
+      LOG.warn("Caught exception : " + e);
+      status = HealthCheckerExitStatus.FAILED_WITH_EXIT_CODE;    
+    } catch (IOException e) {
+      LOG.warn("Caught exception : " + e);
+      if (!shexec.isTimedOut()) {
+        status = HealthCheckerExitStatus.FAILED_WITH_EXCEPTION;
+        exceptionStackTrace = org.apache.hadoop.util.StringUtils.stringifyException(e);
+      } else {
+        status = HealthCheckerExitStatus.TIMED_OUT;
+      }
+    } finally {
+      if (status == HealthCheckerExitStatus.SUCCESS) {
+        if (hasErrors(shexec.getOutput())) {
+          status = HealthCheckerExitStatus.FAILED;
+        }
+      }
+    }
+    return new HealthReport(status, getHealthReport(status));
+  }    
+  
+
+  private boolean hasErrors(String output) {
+    String[] splits = output.split("\n");
+    for (String split : splits) {
+      if (split.startsWith(ERROR_PATTERN)) {
+        return true;
+      }
+    }
+    return false;
+  }
+  
+  
+  private String getHealthReport(HealthCheckerExitStatus status){
+    String healthReport = null;
+    switch (status) {
+    case SUCCESS:
+      healthReport = "Server is healthy.";
+      break;
+    case TIMED_OUT:
+      healthReport = "Health script timed out";
+      break;
+    case FAILED_WITH_EXCEPTION:
+      healthReport = exceptionStackTrace;
+      break;
+    case FAILED_WITH_EXIT_CODE:
+      healthReport = "Health script failed with exit code.";
+      break;
+    case FAILED:
+      healthReport = shexec.getOutput();
+      break;
+    }
+    return healthReport;
+  }
+
+  /**
+   * Returns whether the health checker should run or not. 
+   *
+   * @return true or false.
+   */
+  public boolean shouldRun() {
+    return StringUtils.isNotBlank(healthCheckScript);
+  }
+
 }

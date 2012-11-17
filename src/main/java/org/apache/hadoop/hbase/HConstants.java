@@ -670,20 +670,15 @@ public final class HConstants {
           HBCK_SIDELINEDIR_NAME, HFILE_ARCHIVE_DIRECTORY }));
   
   /** Health script related settings */
-  public static final String SERVER_HEALTH_SCRIPT_LOC = "server.health.script.location";
-  public static final String SERVER_HEALTH_SCRIPT_TIMEOUT = "server.health.script.timeout";
-  public static final String SERVER_HEALTH_CHORE_WAKE_FREQ = "server.health.script.frequency";
-  public static final long DEFAULT_SERVER_HEALTH_SCRIPT_TIMEOUT = 10000;
+  public static final String RS_HEALTH_SCRIPT_LOC = "regionserver.health.script.location";
+  public static final String RS_HEALTH_SCRIPT_TIMEOUT = "regionserver.health.script.timeout";
+  public static final String RS_HEALTH_CHORE_WAKE_FREQ = "regionserver.health.script.frequency";
+  public static final long DEFAULT_RS_HEALTH_SCRIPT_TIMEOUT = 60000;
   /**
-   * The maximum number of health check failures a server can encounter within a given failure
-   * window time.
+   * The maximum number of health check failures a server can encounter consecutively.
    */
-  public static final String SERVER_HEALTH_FAILURE_THRESHOLD = "server.health.failure.threshold";
-  /**
-   * The time period (in milliseconds ) within which, if number of negative health check reports
-   * exceed threshold, then the server will shutdown itself.
-   */
-  public static final String SERVER_HEALTH_FAILURE_WINDOW = "server.health.failure.window";
+  public static final String RS_HEALTH_FAILURE_THRESHOLD = "regionserver.health.failure.threshold";
+  public static final int DEFAULT_RS_HEALTH_FAILURE_THRESHOLD = 3;
   
   private HConstants() {
     // Can't be instantiated with this ctor.
