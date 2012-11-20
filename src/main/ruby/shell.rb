@@ -79,6 +79,10 @@ module Shell
       @hbase_admin ||= hbase.admin(formatter)
     end
 
+    def group_admin
+      @group_admin ||= hbase.group_admin(formatter)
+    end
+
     def hbase_table(name)
       hbase.table(name, formatter)
     end
@@ -297,6 +301,22 @@ Shell.load_command_group(
     grant
     revoke
     user_permission
+  ]
+)
+
+Shell.load_command_group(
+  'group',
+  :full_name => 'Groups',
+  :comment => "NOTE: Above commands are only applicable if running with the Groups setup",
+  :commands => %w[
+    group_list
+    group_get
+    group_add
+    group_remove
+    group_move_servers
+    group_of_server
+    group_list_tables
+    group_list_transitions
   ]
 )
 

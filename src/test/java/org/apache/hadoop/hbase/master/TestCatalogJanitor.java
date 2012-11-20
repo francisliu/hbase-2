@@ -285,6 +285,11 @@ public class TestCatalogJanitor {
     public <T extends CoprocessorProtocol> boolean registerProtocol(Class<T> protocol, T handler) {
       return false;
     }
+
+    @Override
+    public LoadBalancer getLoadBalancer() {
+      return null;
+    }
   }
 
   @Test
