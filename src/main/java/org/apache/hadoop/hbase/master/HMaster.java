@@ -1797,6 +1797,11 @@ Server {
   }
 
   @Override
+  public LoadBalancer getLoadBalancer() {
+    return balancer;
+  }
+
+  @Override
   public ExecResult execCoprocessor(Exec call) throws IOException {
     Class<? extends CoprocessorProtocol> protocol = call.getProtocol();
     if (protocol == null) {
