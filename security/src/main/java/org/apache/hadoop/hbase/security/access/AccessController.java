@@ -38,6 +38,7 @@ import org.apache.hadoop.hbase.ServerName;
 import org.apache.hadoop.hbase.client.Append;
 import org.apache.hadoop.hbase.client.Delete;
 import org.apache.hadoop.hbase.client.Get;
+import org.apache.hadoop.hbase.client.HTable;
 import org.apache.hadoop.hbase.client.Increment;
 import org.apache.hadoop.hbase.client.Put;
 import org.apache.hadoop.hbase.client.Result;
@@ -71,6 +72,7 @@ import com.google.common.collect.Lists;
 import com.google.common.collect.MapMaker;
 import com.google.common.collect.Maps;
 import com.google.common.collect.Sets;
+import org.apache.hadoop.security.authorize.ProxyUsers;
 
 /**
  * Provides basic authorization checks for data access and administrative
@@ -186,6 +188,7 @@ public class AccessController extends BaseRegionObserver
   // defined only for Endpoint implementation, so it can have way to
   // access region services.
   private RegionCoprocessorEnvironment regionEnv;
+  private MasterCoprocessorEnvironment masterEnv;
 
   /** Mapping of scanner instances to the user who created them */
   private Map<InternalScanner,String> scannerOwners =
@@ -516,10 +519,10 @@ public class AccessController extends BaseRegionObserver
   public void start(CoprocessorEnvironment env) throws IOException {
     // if running on HMaster
     if (env instanceof MasterCoprocessorEnvironment) {
-      MasterCoprocessorEnvironment e = (MasterCoprocessorEnvironment)env;
+      masterEnv  = (MasterCoprocessorEnvironment)env;
       this.authManager = TableAuthManager.get(
-          e.getMasterServices().getZooKeeper(),
-          e.getConfiguration());
+          masterEnv.getMasterServices().getZooKeeper(),
+          masterEnv.getConfiguration());
     }
 
     // if running at region
@@ -1165,6 +1168,24 @@ public class AccessController extends BaseRegionObserver
       } else {
         for (Permission.Action action : permission.getActions()) {
           requirePermission(action);
+        }
+      }
+    }
+  }
+
+  @Override
+  public void refreshSuperUserGroupsConfiguration() throws IOException {
+    LOG.info("Refreshing super user/groups configuration");
+    ProxyUsers.refreshSuperUserGroupsConfiguration();
+    if(masterEnv != null) {
+      for(Map.Entry<ServerName,List<HRegionInfo>> el:
+          masterEnv.getMasterServices().getAssignmentManager().getAssignments().entrySet()) {
+        if(el.getValue().size() > 0) {
+          HRegionInfo first = el.getValue().get(0);
+          LOG.debug("Sending refreshSuperUserGroupsConfiguration to "+el.getKey().getHostAndPort());
+          new HTable(masterEnv.getConfiguration(), first.getTableName())
+              .coprocessorProxy(AccessControllerProtocol.class, first.getStartKey())
+              .refreshSuperUserGroupsConfiguration();
         }
       }
     }
