@@ -1008,6 +1008,7 @@
     <junit.version>4.10-HBASE-1</junit.version>
     <slf4j.version>1.4.3</slf4j.version>
     <log4j.version>1.2.16</log4j.version>
+    <apache-log4j-extras.version>1.1</apache-log4j-extras.version>
     <mockito-all.version>1.8.5</mockito-all.version>
     <protobuf.version>2.4.0a</protobuf.version>
     <stax-api.version>1.0.1</stax-api.version>
@@ -1112,6 +1113,11 @@
       <groupId>log4j</groupId>
       <artifactId>log4j</artifactId>
       <version>${log4j.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>log4j</groupId>
+      <artifactId>apache-log4j-extras</artifactId>
+      <version>${apache-log4j-extras.version}</version>
     </dependency>
     <dependency>
       <groupId>org.apache.avro</groupId>
