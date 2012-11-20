@@ -1590,13 +1590,9 @@ Server {
 
   @SuppressWarnings("deprecation")
   @Override
-  public void shutdown() {
+  public void shutdown() throws IOException {
     if (cpHost != null) {
-      try {
-        cpHost.preShutdown();
-      } catch (IOException ioe) {
-        LOG.error("Error call master coprocessor preShutdown()", ioe);
-      }
+      cpHost.preShutdown();
     }
     if (mxBean != null) {
       MBeanUtil.unregisterMBean(mxBean);
@@ -1614,13 +1610,9 @@ Server {
   }
 
   @Override
-  public void stopMaster() {
+  public void stopMaster() throws IOException {
     if (cpHost != null) {
-      try {
-        cpHost.preStopMaster();
-      } catch (IOException ioe) {
-        LOG.error("Error call master coprocessor preStopMaster()", ioe);
-      }
+      cpHost.preStopMaster();
     }
     stop("Stopped by " + Thread.currentThread().getName());
   }
