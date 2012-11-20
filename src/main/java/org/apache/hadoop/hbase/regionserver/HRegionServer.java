@@ -362,6 +362,8 @@ public class HRegionServer implements HRegionInterface, HBaseRPCErrorHandler,
    * ClusterId
    */
   private ClusterId clusterId = null;
+  
+  private RegionServerHealthCheckChore healthCheckChore;
 
   /**
    * Starts a HRegionServer at the default location
@@ -650,6 +652,10 @@ public class HRegionServer implements HRegionInterface, HBaseRPCErrorHandler,
       ".multiplier", 1000);
     this.compactionChecker = new CompactionChecker(this,
       this.threadWakeFrequency * multiplier, this);
+    
+    //Health checker thread.
+    int sleepTime =  this.conf.getInt(HConstants.RS_HEALTH_CHORE_WAKE_FREQ, 180000);
+    healthCheckChore = new RegionServerHealthCheckChore(sleepTime, this, getConfiguration());
 
     this.leases = new Leases((int) conf.getLong(
         HConstants.HBASE_REGIONSERVER_LEASE_PERIOD_KEY,
@@ -1549,6 +1555,8 @@ public class HRegionServer implements HRegionInterface, HBaseRPCErrorHandler,
       handler);
     Threads.setDaemonThreadRunning(this.compactionChecker.getThread(), n +
       ".compactionChecker", handler);
+    Threads
+        .setDaemonThreadRunning(this.healthCheckChore.getThread(), n + ".healthChecker", handler);
 
     // Leases is not a Thread. Internally it runs a daemon thread. If it gets
     // an unhandled exception, it will just exit.
@@ -1576,8 +1584,9 @@ public class HRegionServer implements HRegionInterface, HBaseRPCErrorHandler,
     this.splitLogWorker = new SplitLogWorker(this.zooKeeper,
         this.getConfiguration(), this.getServerName().toString());
     splitLogWorker.start();
+     
   }
-
+  
   /**
    * Puts up the webui.
    * @return Returns final port -- maybe different from what we started with.
@@ -1771,8 +1780,9 @@ public class HRegionServer implements HRegionInterface, HBaseRPCErrorHandler,
    * have already been called.
    */
   protected void join() {
+    Threads.shutdown(this.healthCheckChore.getThread());
     Threads.shutdown(this.compactionChecker.getThread());
-    Threads.shutdown(this.cacheFlusher.getThread());
+    Threads.shutdown(this.cacheFlusher.getThread());   
     if (this.hlogRoller != null) {
       Threads.shutdown(this.hlogRoller.getThread());
     }
