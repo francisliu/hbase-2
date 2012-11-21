@@ -91,11 +91,12 @@ public class MasterDumpServlet extends StateDumpServlet {
     out.println("\n\nRecent regionserver aborts:");
     out.println(LINE);
     master.getRegionServerFatalLogBuffer().dumpTo(out);
-    
-    out.println("\n\nLogs");
-    out.println(LINE);
-    long tailKb = getTailKbParam(request);
-    LogMonitoring.dumpTailOfLogs(out, tailKb);
+
+//  disabled logs for security reasons
+//    out.println("\n\nLogs");
+//    out.println(LINE);
+//    long tailKb = getTailKbParam(request);
+//    LogMonitoring.dumpTailOfLogs(out, tailKb);
     
     out.flush();
   }

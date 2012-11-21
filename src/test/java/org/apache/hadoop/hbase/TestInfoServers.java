@@ -32,6 +32,7 @@ import org.junit.BeforeClass;
 import org.junit.Test;
 import org.junit.experimental.categories.Category;
 
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 
 /**
@@ -108,6 +109,22 @@ public class TestInfoServers {
     assertDoesNotContainContent(
       new URL("http://localhost:" + port + "/table.jsp?name=" + sTableName),
       "Actions:");
+  }
+
+  @Test
+  public void testDisabledHttpAccess() throws Exception {
+    int masterPort = UTIL.getHBaseCluster().getMaster().getInfoServer().getPort();
+    int rsPort = UTIL.getHBaseCluster().getRegionServer(0).getInfoServer().getPort();
+
+    URL u = new URL("http://localhost:" + masterPort + "/logs");
+    java.net.HttpURLConnection c = (java.net.HttpURLConnection)u.openConnection();
+    c.connect();
+    assertEquals(404, c.getResponseCode());
+
+    u = new URL("http://localhost:" + rsPort + "/logs");
+    c = (java.net.HttpURLConnection)u.openConnection();
+    c.connect();
+    assertEquals(404, c.getResponseCode());
   }
 
   private void assertContainsContent(final URL u, final String expected)
