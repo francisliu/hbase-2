@@ -18,9 +18,8 @@
  * limitations under the License.
  */
 
-package org.apache.hadoop.hbase.master;
+package org.apache.hadoop.hbase.group;
 
-import org.apache.hadoop.hbase.HTableDescriptor;
 import org.apache.hadoop.hbase.util.Bytes;
 
 import java.io.IOException;

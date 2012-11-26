@@ -18,7 +18,7 @@
  * limitations under the License.
  */
 
-package org.apache.hadoop.hbase.master;
+package org.apache.hadoop.hbase.group;
 
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
@@ -38,6 +38,7 @@ import org.apache.hadoop.hbase.client.MetaScanner;
 import org.apache.hadoop.hbase.client.Put;
 import org.apache.hadoop.hbase.client.Result;
 import org.apache.hadoop.hbase.client.Scan;
+import org.apache.hadoop.hbase.master.MasterServices;
 import org.apache.hadoop.hbase.util.Bytes;
 import org.apache.hadoop.hbase.util.Writables;
 import org.apache.hadoop.hbase.zookeeper.ZKUtil;
@@ -47,7 +48,6 @@ import org.apache.zookeeper.KeeperException;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
@@ -74,7 +74,7 @@ public class GroupInfoManagerImpl implements GroupInfoManager {
     this.master = master;
     this.watcher = master.getZooKeeper();
     this.admin = new HBaseAdmin(master.getConfiguration());
-    groupStartupWorker = new GroupStartupWorker(this, master, GroupInfoManager.GROUP_TABLE_NAME_BYTES);
+    groupStartupWorker = new GroupStartupWorker(this, master, GROUP_TABLE_NAME_BYTES);
     groupStartupWorker.start();
   }
 
@@ -393,12 +393,12 @@ public class GroupInfoManagerImpl implements GroupInfoManager {
           };
           MetaScanner.metaScan(conf, visitor);
           assignCount =
-              masterServices.getAssignmentManager().getRegionsOfTable(GroupInfoManager.GROUP_TABLE_NAME_BYTES).size();
+              masterServices.getAssignmentManager().getRegionsOfTable(GROUP_TABLE_NAME_BYTES).size();
           if(regionCount.get() < 1) {
             HBaseAdmin admin = new HBaseAdmin(conf);
             HTableDescriptor desc = new HTableDescriptor(tableName);
-            desc.addFamily(new HColumnDescriptor(GroupInfoManager.SERVER_FAMILY_BYTES));
-            desc.addFamily(new HColumnDescriptor(GroupInfoManager.INFO_FAMILY_BYTES));
+            desc.addFamily(new HColumnDescriptor(SERVER_FAMILY_BYTES));
+            desc.addFamily(new HColumnDescriptor(INFO_FAMILY_BYTES));
             admin.createTable(desc);
           }
           LOG.info("isOnline: "+found.get()+", regionCount: "+regionCount.get()+", assignCount: "+assignCount);

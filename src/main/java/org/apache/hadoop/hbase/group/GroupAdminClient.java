@@ -17,7 +17,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.apache.hadoop.hbase.client;
+package org.apache.hadoop.hbase.group;
 
 import java.io.IOException;
 import java.util.Collection;
@@ -33,9 +33,7 @@ import org.apache.hadoop.hbase.HConstants;
 import org.apache.hadoop.hbase.HRegionInfo;
 import org.apache.hadoop.hbase.MasterNotRunningException;
 import org.apache.hadoop.hbase.ZooKeeperConnectionException;
-import org.apache.hadoop.hbase.master.GroupAdmin;
-import org.apache.hadoop.hbase.master.GroupAdminProtocol;
-import org.apache.hadoop.hbase.master.GroupInfo;
+import org.apache.hadoop.hbase.client.HBaseAdmin;
 
 /**
  * This class is responsible for managing region server group information.

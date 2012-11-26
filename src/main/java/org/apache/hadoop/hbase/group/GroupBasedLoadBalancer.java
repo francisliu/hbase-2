@@ -18,7 +18,7 @@
  * limitations under the License.
  */
 
-package org.apache.hadoop.hbase.master;
+package org.apache.hadoop.hbase.group;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -30,26 +30,23 @@ import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
 import java.util.TreeSet;
-import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicInteger;
 
 import com.google.common.collect.ListMultimap;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
+import org.apache.hadoop.classification.InterfaceAudience;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hbase.ClusterStatus;
-import org.apache.hadoop.hbase.HColumnDescriptor;
 import org.apache.hadoop.hbase.HConstants;
 import org.apache.hadoop.hbase.HRegionInfo;
-import org.apache.hadoop.hbase.HTableDescriptor;
 import org.apache.hadoop.hbase.ServerName;
 
 import com.google.common.collect.ArrayListMultimap;
-import org.apache.hadoop.hbase.client.HBaseAdmin;
-import org.apache.hadoop.hbase.client.MetaScanner;
-import org.apache.hadoop.hbase.client.Result;
+import org.apache.hadoop.hbase.master.DefaultLoadBalancer;
+import org.apache.hadoop.hbase.master.LoadBalancer;
+import org.apache.hadoop.hbase.master.MasterServices;
+import org.apache.hadoop.hbase.master.RegionPlan;
 import org.apache.hadoop.hbase.util.Bytes;
-import org.apache.hadoop.hbase.util.Writables;
 import org.apache.hadoop.util.ReflectionUtils;
 
 /**
@@ -83,11 +80,13 @@ public class GroupBasedLoadBalancer implements LoadBalancer {
   private LoadBalancer internalBalancer;
 
   //used during reflection by LoadBalancerFactory
+  @InterfaceAudience.Private
   public GroupBasedLoadBalancer() {
   }
 
   //This constructor should only be used for unit testing
-  GroupBasedLoadBalancer(GroupInfoManager groupManager) {
+  @InterfaceAudience.Private
+  public GroupBasedLoadBalancer(GroupInfoManager groupManager) {
     this.groupManager = groupManager;
   }
 
@@ -400,7 +399,8 @@ public class GroupBasedLoadBalancer implements LoadBalancer {
     return groupManager.isOnline();
   }
 
-  GroupInfoManager getGroupInfoManager() throws IOException {
+  @InterfaceAudience.Private
+  public GroupInfoManager getGroupInfoManager() throws IOException {
     return groupManager;
   }
 }

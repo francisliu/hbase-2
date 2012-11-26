@@ -18,20 +18,14 @@
  * limitations under the License.
  */
 
-package org.apache.hadoop.hbase.master;
+package org.apache.hadoop.hbase.group;
 
-import java.io.BufferedWriter;
-import java.io.IOException;
 import java.io.Serializable;
 import java.util.Collection;
 import java.util.HashSet;
-import java.util.NavigableSet;
 import java.util.Set;
 
 import com.google.common.collect.Sets;
-import org.apache.commons.lang.StringUtils;
-import org.apache.hadoop.hbase.HTableDescriptor;
-import org.apache.hadoop.hbase.util.Bytes;
 
 /**
  * Stores the group information of region server groups.
