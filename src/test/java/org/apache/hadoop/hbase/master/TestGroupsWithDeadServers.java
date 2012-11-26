@@ -27,6 +27,7 @@ import java.util.Random;
 import java.util.Set;
 import java.util.TreeSet;
 
+import com.google.common.collect.Sets;
 import org.apache.hadoop.hbase.HBaseTestingUtility;
 import org.apache.hadoop.hbase.HConstants;
 import org.apache.hadoop.hbase.HRegionInfo;
@@ -107,9 +108,7 @@ public class TestGroupsWithDeadServers {
 		assertTrue(regions.size() >= NUM_REGIONS);
     //move table to new group
     admin.disableTable(tableNameTwo);
-    HTableDescriptor desc = admin.getTableDescriptor(tableTwoBytes);
-    GroupInfo.setGroupProperty(newRSGroup, desc);
-    admin.modifyTable(tableTwoBytes, desc);
+    groupAdmin.moveTables(Sets.newHashSet(tableNameTwo), newRSGroup);
     admin.enableTable(tableTwoBytes);
 
 		TEST_UTIL.waitUntilAllRegionsAssigned(baseNumRegions+NUM_REGIONS);
@@ -150,8 +149,6 @@ public class TestGroupsWithDeadServers {
 		scanTableForPositiveResults(ht);
 		newGrpRegions = groupAdmin.listOnlineRegionsOfGroup(newRSGroup);
 		assertTrue(newGrpRegions.size() == NUM_REGIONS);
-		TEST_UTIL.deleteTable(tableTwoBytes);
-    groupAdmin.removeGroup(newRSGroup);
 	}
 
 	private int getServerNumber(List<JVMClusterUtil.RegionServerThread> servers, String sName){

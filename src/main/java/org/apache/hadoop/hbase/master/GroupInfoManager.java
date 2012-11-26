@@ -31,6 +31,7 @@ public interface GroupInfoManager {
   public static final String GROUP_TABLE_NAME = "_GROUP_";
   public static final byte[] GROUP_TABLE_NAME_BYTES = Bytes.toBytes(GROUP_TABLE_NAME);
   public static final byte[] SERVER_FAMILY_BYTES = Bytes.toBytes("servers");
+  public static final byte[] TABLE_FAMILY_BYTES = Bytes.toBytes("tables");
   public static final byte[] INFO_FAMILY_BYTES = Bytes.toBytes("info");
 
   /**
@@ -49,6 +50,14 @@ public interface GroupInfoManager {
    */
   void removeGroup(String groupName) throws IOException;
 
+  /**
+   * move servers to a new group.
+   * @param hostPort list of servers, must be part of the same group
+   * @param srcGroup
+   * @param dstGroup
+   * @return
+   * @throws IOException
+   */
   boolean moveServers(Set<String> hostPort, String srcGroup, String dstGroup) throws IOException;
 
   /**
@@ -67,5 +76,46 @@ public interface GroupInfoManager {
    */
   GroupInfo getGroup(String groupName) throws IOException;
 
+  /**
+   * Get the group membership of a table
+   * @param tableName
+   * @return
+   * @throws IOException
+   */
+	String getGroupOfTable(String tableName) throws IOException;
+
+  /**
+   * Set the group membership of a table
+   *
+   *
+   * @param tableName
+   * @param groupName
+   * @return
+   * @throws IOException
+   */
+  void moveTables(Set<String> tableName, String groupName) throws IOException;
+
+  /**
+   * List the groups
+   *
+   * @return
+   * @throws IOException
+   */
   List<GroupInfo> listGroups() throws IOException;
+
+  /**
+   * Refresh/reload the group information from
+   * the persistent store
+   *
+   * @throws IOException
+   */
+  void refresh() throws IOException;
+
+  /**
+   * Wether the manager is able to fully
+   * return group metadata
+   *
+   * @return
+   */
+  boolean isOnline();
 }

@@ -19,6 +19,7 @@
  */
 package org.apache.hadoop.hbase.master;
 
+import com.google.common.collect.Sets;
 import org.apache.hadoop.hbase.CoprocessorEnvironment;
 import org.apache.hadoop.hbase.DoNotRetryIOException;
 import org.apache.hadoop.hbase.HRegionInfo;
@@ -41,28 +42,12 @@ public class GroupMasterObserver extends BaseMasterObserver {
   }
 
   @Override
-  public void preCreateTable(ObserverContext<MasterCoprocessorEnvironment> ctx, HTableDescriptor desc, HRegionInfo[] regions) throws IOException {
-    //We bypass group checking if the table being created is the group table
-    if(getBalancer().isOnline()) {
-      String groupName = GroupInfo.getGroupProperty(desc);
-      if(getGroupInfoManager().getGroup(groupName) == null) {
-        throw new DoNotRetryIOException("Group "+groupName+" does not exist.");
-      }
-    } else if (!Bytes.equals(desc.getName(), GroupInfoManager.GROUP_TABLE_NAME_BYTES)) {
-      throw new DoNotRetryIOException("Failed to retrieve GroupInfoManager");
+  public void postDeleteTable(ObserverContext<MasterCoprocessorEnvironment> ctx, byte[] tableName) throws IOException {
+    String table = Bytes.toString(tableName);
+    String groupName = getGroupInfoManager().getGroupOfTable(table);
+    if(!GroupInfo.DEFAULT_GROUP.equals(groupName)) {
+      getGroupInfoManager().moveTables(Sets.newHashSet(table), GroupInfo.DEFAULT_GROUP);
     }
-  }
-
-  @Override
-  public void preModifyTable(ObserverContext<MasterCoprocessorEnvironment> ctx, byte[] tableName, HTableDescriptor htd) throws IOException {
-    MasterServices master = ctx.getEnvironment().getMasterServices();
-    String groupName = GroupInfo.getGroupProperty(htd);
-    if(getGroupInfoManager().getGroup(groupName) == null) {
-      throw new DoNotRetryIOException("Group "+groupName+" does not exist.");
-    }
-
-    List<HRegionInfo> tableRegionList = master.getAssignmentManager().getRegionsOfTable(tableName);
-    master.getAssignmentManager().unassign(tableRegionList);
   }
 
   private GroupBasedLoadBalancer getBalancer() {

@@ -38,25 +38,24 @@ import org.apache.hadoop.hbase.util.Bytes;
  */
 public class GroupInfo implements Serializable {
 
-	private Set<String> servers;
 	public static final String DEFAULT_GROUP = "default";
   public static final String TRANSITION_GROUP_PREFIX = "_transition_";
 	public static final String GROUP_KEY = "rs_group";
 
-	private String name;
+  private String name;
+  private Set<String> servers;
+  private Set<String> tables;
 
-  public GroupInfo() {
-    this.servers = new HashSet<String>();
-  }
-
-	public GroupInfo(String name, Set<String> servers) {
+  public GroupInfo(String name) {
 		this.name = name;
-    this.servers = servers;
+    this.servers = new HashSet<String>();
+    this.tables = new HashSet<String>();
 	}
 
   public GroupInfo(GroupInfo src) {
-    servers = Sets.newTreeSet(src.getServers());
     name = src.getName();
+    servers = Sets.newHashSet(src.getServers());
+    tables = Sets.newHashSet(src.getTables());
   }
 
 	/**
@@ -121,47 +120,6 @@ public class GroupInfo implements Serializable {
 	}
 
 	/**
-	 * Write the group out.
-	 *
-	 * @param out
-	 * @throws IOException
-	 */
-	public void write(BufferedWriter out) throws IOException {
-		StringBuffer sb = new StringBuffer();
-		sb.append(getName());
-		sb.append("\t");
-		for (String sName : servers) {
-			if (sb.length() != (getName().length() + 1)) {
-				sb.append(",");
-			}
-			sb.append(sName);
-		}
-		out.write(sb.toString());
-		out.newLine();
-	}
-
-	public boolean readFields(String line) throws IOException {
-		boolean isWellFormed = false;
-		String[] groupSplit = line.split("\t");
-		switch(groupSplit.length) {
-		case 1: this.name = groupSplit[0].trim();
-				isWellFormed = true;
-				break;
-		case 2: this.name = groupSplit[0].trim();
-				String[] hostPortPairs = groupSplit[1].trim().split(",");
-				for (String sName : hostPortPairs) {
-					if (StringUtils.isNotEmpty(sName)) {
-						this.servers.add(sName);
-					}
-				}
-				isWellFormed = true;
-				break;
-		}
-
-		return isWellFormed;
-	}
-
-	/**
 	 * Remove a server from this group.
 	 *
 	 * @param hostPort
@@ -170,32 +128,27 @@ public class GroupInfo implements Serializable {
     return this.servers.remove(hostPort);
 	}
 
-	/**
-	 * Get group attribute from a table descriptor.
-	 *
-	 * @param des
-	 * @return The group name of the table.
-	 */
-	public static String getGroupProperty(HTableDescriptor des) {
-		String group = des.getValue(GROUP_KEY);
-		if (group!= null) {
-			return group;
-		} else {
-			return GroupInfo.DEFAULT_GROUP;
-    }
-	}
+  /**
+   * Set of tables that are members of this group
+   * @return
+   */
+  public Set<String> getTables() {
+    return tables;
+  }
 
+  public void addTable(String table) {
+    tables.add(table);
+  }
 
-	public static void setGroupProperty(String group, HTableDescriptor des) {
-    if(group.equals(DEFAULT_GROUP)) {
-      des.remove(group);
-    }
-    else {
-		  des.setValue(GROUP_KEY, group);
-    }
-	}
+  public boolean containsTable(String table) {
+    return tables.contains(table);
+  }
 
-	@Override
+  public boolean removeTable(String table) {
+    return tables.remove(table);
+  }
+
+  @Override
 	public String toString() {
 		StringBuffer sb = new StringBuffer();
 		sb.append("{GroupName:");
@@ -207,39 +160,26 @@ public class GroupInfo implements Serializable {
 
 	}
 
-	@Override
-	public int hashCode() {
-		final int prime = 31;
-		int result = 1;
-		result = prime * result + ((name == null) ? 0 : name.hashCode());
-		result = prime * result
-				+ ((servers == null) ? 0 : servers.hashCode());
-		return result;
-	}
+  @Override
+  public boolean equals(Object o) {
+    if (this == o) return true;
+    if (o == null || getClass() != o.getClass()) return false;
 
-	@Override
-	public boolean equals(Object obj) {
-		if (this == obj)
-			return true;
-		if (obj == null)
-			return false;
-		if (!(obj instanceof GroupInfo))
-			return false;
-		GroupInfo other = (GroupInfo) obj;
-		if (name == null) {
-			if (other.name != null)
-				return false;
-		} else if (!name.equals(other.name))
-			return false;
-		if (servers == null) {
-			if (other.servers != null)
-				return false;
-		} else if (servers.size() != other.getServers().size()){
-			return false;
-		}else if(!containsServer(other.getServers())){
-			return false;
-		}
+    GroupInfo groupInfo = (GroupInfo) o;
 
-		return true;
-	}
+    if (!name.equals(groupInfo.name)) return false;
+    if (!servers.equals(groupInfo.servers)) return false;
+    if (!tables.equals(groupInfo.tables)) return false;
+
+    return true;
+  }
+
+  @Override
+  public int hashCode() {
+    int result = servers.hashCode();
+    result = 31 * result + tables.hashCode();
+    result = 31 * result + name.hashCode();
+    return result;
+  }
+
 }

@@ -107,23 +107,7 @@ public class GroupAdminEndpoint extends BaseEndpointCoprocessor
 
   @Override
   public Collection<String> listTablesOfGroup(String groupName) throws IOException {
-		Set<String> set = new HashSet<String>();
-		if (groupName == null) {
-      throw new NullPointerException("groupName can't be null");
-    }
-
-    GroupInfo groupInfo = getGroupInfoManager().getGroup(groupName);
-    if (groupInfo == null) {
-			return null;
-		} else {
-      HTableDescriptor[] tables =
-          master.getTableDescriptors().getAll().values().toArray(new HTableDescriptor[0]);
-      for (HTableDescriptor table : tables) {
-        if(GroupInfo.getGroupProperty(table).equals(groupName))
-          set.add(table.getNameAsString());
-      }
-    }
-		return set;
+    return getGroupInfoManager().getGroup(groupName).getTables();
 	}
 
 
@@ -134,13 +118,8 @@ public class GroupAdminEndpoint extends BaseEndpointCoprocessor
 
 
   @Override
-  public GroupInfo getGroupInfoOfTable(byte[] tableName) throws IOException {
-		HTableDescriptor des;
-		GroupInfo tableRSGroup;
-    des =  master.getTableDescriptors().get(tableName);
-		String group = GroupInfo.getGroupProperty(des);
-		tableRSGroup = getGroupInfoManager().getGroup(group);
-		return tableRSGroup;
+  public GroupInfo getGroupInfoOfTable(String tableName) throws IOException {
+    return getGroupInfoManager().getGroup(getGroupInfoManager().getGroupOfTable(tableName));
 	}
 
   @Override
@@ -172,8 +151,13 @@ public class GroupAdminEndpoint extends BaseEndpointCoprocessor
 	}
 
   @Override
+  public void moveTables(Set<String> tables, String targetGroup) throws IOException {
+    getGroupInfoManager().moveTables(tables, targetGroup);
+  }
+
+  @Override
   public void addGroup(String name) throws IOException {
-    getGroupInfoManager().addGroup(new GroupInfo(name, new HashSet<String>()));
+    getGroupInfoManager().addGroup(new GroupInfo(name));
   }
 
   @Override

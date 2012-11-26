@@ -81,7 +81,6 @@ public class GroupBasedLoadBalancer implements LoadBalancer {
   private MasterServices masterServices;
   private GroupInfoManager groupManager;
   private LoadBalancer internalBalancer;
-  private GroupStartupWorker groupStartupWorker;
 
   //used during reflection by LoadBalancerFactory
   public GroupBasedLoadBalancer() {
@@ -205,8 +204,7 @@ public class GroupBasedLoadBalancer implements LoadBalancer {
       List<HRegionInfo> misplacedRegions = getMisplacedRegions(regions);
       for (HRegionInfo region : regions.keySet()) {
         if (misplacedRegions.contains(region) == false) {
-          String groupName = GroupInfo.getGroupProperty(masterServices.getTableDescriptors().get(
-            region.getTableNameAsString()));
+          String groupName = groupManager.getGroupOfTable(region.getTableNameAsString());
           rGroup.put(groupName, region);
         }
       }
@@ -225,8 +223,8 @@ public class GroupBasedLoadBalancer implements LoadBalancer {
       }
 
       for (HRegionInfo region : misplacedRegions) {
-        String groupName = GroupInfo.getGroupProperty(masterServices.getTableDescriptors().get(
-            region.getTableNameAsString()));
+        String groupName = groupManager.getGroupOfTable(
+            region.getTableNameAsString());
         GroupInfo info = groupManager.getGroup(groupName);
         List<ServerName> candidateList = getServerToAssign(info, servers);
         ServerName server = this.internalBalancer.randomAssignment(region,
@@ -283,9 +281,8 @@ public class GroupBasedLoadBalancer implements LoadBalancer {
       String tableName = region.getTableNameAsString();
       List<ServerName> candidateList = Collections.EMPTY_LIST;
       if(isOnline()) {
-        GroupInfo groupInfo = groupManager.getGroup(GroupInfo
-            .getGroupProperty(masterServices.getTableDescriptors()
-                .get(tableName)));
+        GroupInfo groupInfo = groupManager.getGroup(
+            groupManager.getGroupOfTable(region.getTableNameAsString()));
         candidateList = getServerToAssign(groupInfo, servers);
       } else if(SPECIAL_TABLES.contains(region.getTableName())){
         candidateList = servers;
@@ -334,8 +331,7 @@ public class GroupBasedLoadBalancer implements LoadBalancer {
     ListMultimap<String, HRegionInfo> regionGroup = ArrayListMultimap
         .create();
     for (HRegionInfo region : regionList) {
-      String groupName = GroupInfo.getGroupProperty(masterServices
-          .getTableDescriptors().get(region.getTableNameAsString()));
+      String groupName = groupManager.getGroupOfTable(region.getTableNameAsString());
       regionGroup.put(groupName, region);
     }
     return regionGroup;
@@ -346,9 +342,7 @@ public class GroupBasedLoadBalancer implements LoadBalancer {
     List<HRegionInfo> misplacedRegions = new ArrayList<HRegionInfo>();
     for (HRegionInfo region : regions.keySet()) {
       ServerName assignedServer = regions.get(region);
-      GroupInfo info = groupManager.getGroup(GroupInfo
-          .getGroupProperty(masterServices.getTableDescriptors().get(
-              region.getTableNameAsString())));
+      GroupInfo info = groupManager.getGroup(groupManager.getGroupOfTable(region.getTableNameAsString()));
       if ((info == null)|| (!info.containsServer(assignedServer.getHostAndPort()))) {
         misplacedRegions.add(region);
       }
@@ -366,8 +360,7 @@ public class GroupBasedLoadBalancer implements LoadBalancer {
       for (HRegionInfo region : regions) {
         GroupInfo info = null;
         try {
-          info = groupManager.getGroup(GroupInfo.getGroupProperty(masterServices
-              .getTableDescriptors().get(region.getTableNameAsString())));
+          info = groupManager.getGroup(groupManager.getGroupOfTable(region.getTableNameAsString()));
         }catch(IOException exp){
           LOG.debug("Group information null for region of table " + region.getTableNameAsString(),
               exp);
@@ -399,117 +392,15 @@ public class GroupBasedLoadBalancer implements LoadBalancer {
     internalBalancer.configure();
     //this will only happen if the unit tests constructor is used
     if(groupManager == null) {
-      groupStartupWorker = new GroupStartupWorker(masterServices, GroupInfoManager.GROUP_TABLE_NAME_BYTES);
-      groupStartupWorker.start();
+      groupManager = new GroupInfoManagerImpl(masterServices);
     }
   }
 
   public boolean isOnline() {
-    try {
-      return (getGroupInfoManager() != null);
-    } catch (IOException e) {
-      LOG.error("Failed to verify isOnline",e );
-    }
-    return false;
+    return groupManager.isOnline();
   }
 
   GroupInfoManager getGroupInfoManager() throws IOException {
-    if (this.groupManager == null) {
-      if(groupStartupWorker.isOnline()) {
-        this.groupManager = new GroupInfoManagerImpl(masterServices);
-      }
-    }
     return groupManager;
-  }
-
-  private static class GroupStartupWorker extends Thread {
-    private static final Log LOG = LogFactory.getLog(GroupStartupWorker.class);
-
-    private Configuration conf;
-    private volatile boolean isOnline = false;
-    private byte[] tableName;
-    private MasterServices masterServices;
-
-    public GroupStartupWorker(MasterServices masterServices, byte[] tableName) {
-      this.conf = masterServices.getConfiguration();
-      this.tableName = tableName;
-      this.masterServices = masterServices;
-      setName(GroupStartupWorker.class.getName()+"-"+masterServices.getServerName());
-    }
-
-    @Override
-    public void run() {
-      waitForGroupTableOnline();
-      isOnline = true;
-      LOG.info("GroupBasedLoadBalancer is now online");
-      //balance cluster to correct the random assignments if needed
-      while(masterServices.getAssignmentManager().getRegionsInTransition().size() > 0) {
-        try {
-          Thread.sleep(100);
-        } catch (InterruptedException e) {
-          LOG.info("Sleep Interrupted", e);
-        }
-      }
-      //TODO correct assignment for special tables here?
-    }
-
-    public void waitForGroupTableOnline() {
-      final AtomicInteger regionCount = new AtomicInteger(0);
-      final AtomicBoolean found = new AtomicBoolean(false);
-      int assignCount = 0;
-      while(!found.get()) {
-        regionCount.set(0);
-        found.set(true);
-        try {
-          MetaScanner.MetaScannerVisitor visitor = new MetaScanner.MetaScannerVisitorBase() {
-            @Override
-            public boolean processRow(Result row) throws IOException {
-              byte[] value = row.getValue(HConstants.CATALOG_FAMILY,
-                  HConstants.REGIONINFO_QUALIFIER);
-              HRegionInfo info = Writables.getHRegionInfoOrNull(value);
-              if (info != null) {
-                if (Bytes.equals(tableName, info.getTableName())) {
-                  value = row.getValue(HConstants.CATALOG_FAMILY,
-                      HConstants.SERVER_QUALIFIER);
-                  if (value == null) {
-                    found.set(false);
-                    return false;
-                  }
-                  regionCount.incrementAndGet();
-                }
-              }
-              return true;
-            }
-          };
-          MetaScanner.metaScan(conf, visitor);
-          assignCount =
-              masterServices.getAssignmentManager().getRegionsOfTable(GroupInfoManager.GROUP_TABLE_NAME_BYTES).size();
-          if(regionCount.get() < 1) {
-            HBaseAdmin admin = new HBaseAdmin(conf);
-            HTableDescriptor desc = new HTableDescriptor(tableName);
-            desc.addFamily(new HColumnDescriptor(GroupInfoManager.SERVER_FAMILY_BYTES));
-            desc.addFamily(new HColumnDescriptor(GroupInfoManager.INFO_FAMILY_BYTES));
-            admin.createTable(desc);
-          }
-          LOG.info("isOnline: "+found.get()+", regionCount: "+regionCount.get()+", assignCount: "+assignCount);
-          found.set(found.get() && assignCount == regionCount.get() && regionCount.get() > 0);
-          if(found.get()) {
-            ((GroupBasedLoadBalancer)masterServices.getLoadBalancer()).getGroupInfoManager();
-          }
-        } catch(Exception e) {
-          found.set(false);
-          LOG.info("Failed to perform check",e);
-        }
-        try {
-          Thread.sleep(100);
-        } catch (InterruptedException e) {
-          LOG.info("Sleep interrupted", e);
-        }
-      }
-    }
-
-    public boolean isOnline() {
-      return isOnline;
-    }
   }
 }
