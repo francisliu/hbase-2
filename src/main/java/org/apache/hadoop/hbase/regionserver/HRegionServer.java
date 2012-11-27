@@ -1651,7 +1651,7 @@ public class HRegionServer implements HRegionInterface, HBaseRPCErrorHandler,
   public void stop(final String msg) {
     try {
       if (this.dummyForSecurity.getCoprocessorHost() != null) {
-        this.dummyForSecurity.getCoprocessorHost().preStop();
+        this.dummyForSecurity.getCoprocessorHost().preStop(msg);
       }
       this.stopped = true;
       LOG.info("STOPPED: " + msg);
@@ -3827,6 +3827,9 @@ public class HRegionServer implements HRegionInterface, HBaseRPCErrorHandler,
   private void createDummyRegionForSecurity() throws IOException {
     HTableDescriptor desc = new HTableDescriptor("dummy");
     HRegionInfo hri = new HRegionInfo(desc.getName(), Bytes.toBytes("AAA"), Bytes.toBytes("ZZZ"));
+    if(this.rootDir == null){
+      this.rootDir = new Path(this.conf.get(HConstants.HBASE_DIR));
+    }
     this.dummyForSecurity = HRegion.createHRegion(hri, rootDir, conf, desc);
   }
 }
