@@ -338,4 +338,19 @@ public abstract class BaseRegionObserver implements RegionObserver {
   public void preUnlockRow(ObserverContext<RegionCoprocessorEnvironment> ctx, byte[] regionName,
       long lockId) throws IOException {
   }
+
+  @Override
+  public void postStopRegionServer(ObserverContext<RegionCoprocessorEnvironment> c)
+      throws IOException {
+  }
+
+  @Override
+  public void postLockRow(ObserverContext<RegionCoprocessorEnvironment> ctx, byte[] regionName,
+      byte[] row) throws IOException {
+  }
+
+  @Override
+  public void postUnlockRow(ObserverContext<RegionCoprocessorEnvironment> ctx, byte[] regionName,
+      long lockId) throws IOException {
+  }
 }

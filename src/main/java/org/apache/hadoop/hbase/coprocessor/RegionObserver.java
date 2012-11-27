@@ -776,9 +776,18 @@ public interface RegionObserver extends Coprocessor {
   void preStopRegionServer(final ObserverContext<RegionCoprocessorEnvironment> c)
       throws IOException;
   
+  void postStopRegionServer(final ObserverContext<RegionCoprocessorEnvironment> c)
+      throws IOException; 
+  
   void preLockRow(final ObserverContext<RegionCoprocessorEnvironment> ctx,
       final byte[] regionName, final byte[] row) throws IOException; 
   
+  void postLockRow(final ObserverContext<RegionCoprocessorEnvironment> ctx,
+      final byte[] regionName, final byte[] row) throws IOException;
+  
   void preUnlockRow(final ObserverContext<RegionCoprocessorEnvironment> ctx,
       final byte[] regionName, final long lockId) throws IOException; 
+  
+  void postUnlockRow(final ObserverContext<RegionCoprocessorEnvironment> ctx,
+      final byte[] regionName, final long lockId) throws IOException;
 }

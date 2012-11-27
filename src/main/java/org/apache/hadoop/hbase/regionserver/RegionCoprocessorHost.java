@@ -1484,7 +1484,7 @@ public class RegionCoprocessorHost
     return hasLoaded;
   }
   
-  public void preStop() throws IOException {
+  public void preStop(String message) throws IOException {
     ObserverContext<RegionCoprocessorEnvironment> ctx = null;
     for (RegionEnvironment env : coprocessors) {
       if (env.getInstance() instanceof RegionObserver) {
