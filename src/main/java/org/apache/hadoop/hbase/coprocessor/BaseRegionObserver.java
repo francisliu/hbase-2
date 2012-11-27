@@ -58,14 +58,17 @@ public abstract class BaseRegionObserver implements RegionObserver {
   public void stop(CoprocessorEnvironment e) throws IOException { }
 
   @Override
-  public void preOpen(ObserverContext<RegionCoprocessorEnvironment> e) { }
+  public void preOpen(ObserverContext<RegionCoprocessorEnvironment> e) throws IOException {
+  }
 
   @Override
-  public void postOpen(ObserverContext<RegionCoprocessorEnvironment> e) { }
+  public void postOpen(ObserverContext<RegionCoprocessorEnvironment> e) throws IOException {
+  }
 
   @Override
-  public void preClose(ObserverContext<RegionCoprocessorEnvironment> e,
-      boolean abortRequested) { }
+  public void preClose(ObserverContext<RegionCoprocessorEnvironment> c, boolean abortRequested)
+      throws IOException {
+  }
 
   @Override
   public void postClose(ObserverContext<RegionCoprocessorEnvironment> e,
@@ -319,5 +322,20 @@ public abstract class BaseRegionObserver implements RegionObserver {
   public boolean postBulkLoadHFile(ObserverContext<RegionCoprocessorEnvironment> ctx,
     List<Pair<byte[], String>> familyPaths, boolean hasLoaded) throws IOException {
     return hasLoaded;
+  }
+
+  @Override
+  public void preStopRegionServer(ObserverContext<RegionCoprocessorEnvironment> c)
+      throws IOException {
+  }
+
+  @Override
+  public void preLockRow(ObserverContext<RegionCoprocessorEnvironment> ctx, byte[] regionName,
+      byte[] row) throws IOException {
+  }
+
+  @Override
+  public void preUnlockRow(ObserverContext<RegionCoprocessorEnvironment> ctx, byte[] regionName,
+      long lockId) throws IOException {
   }
 }

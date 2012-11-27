@@ -1127,4 +1127,33 @@ public class AccessController extends BaseRegionObserver
     }
     return tableName;
   }
+  
+  @Override
+  public void preOpen(ObserverContext<RegionCoprocessorEnvironment> e) throws IOException {
+    requirePermission(Permission.Action.ADMIN);
+  }
+
+  @Override
+  public void preClose(ObserverContext<RegionCoprocessorEnvironment> e, boolean abortRequested)
+      throws IOException {
+    requirePermission(Permission.Action.ADMIN);
+  }
+
+  @Override
+  public void preStopRegionServer(ObserverContext<RegionCoprocessorEnvironment> c)
+      throws IOException {
+    requirePermission(Permission.Action.ADMIN);
+  }
+
+  @Override
+  public void preLockRow(ObserverContext<RegionCoprocessorEnvironment> ctx, byte[] regionName,
+      byte[] row) throws IOException {
+    requirePermission(getTableName(ctx.getEnvironment()), null, null, Action.WRITE);
+  }
+
+  @Override
+  public void preUnlockRow(ObserverContext<RegionCoprocessorEnvironment> ctx, byte[] regionName,
+      long lockId) throws IOException {
+    requirePermission(getTableName(ctx.getEnvironment()), null, null, Action.WRITE);
+  }
 }

@@ -56,13 +56,13 @@ public interface RegionObserver extends Coprocessor {
    * Called before the region is reported as open to the master.
    * @param c the environment provided by the region server
    */
-  void preOpen(final ObserverContext<RegionCoprocessorEnvironment> c);
+  void preOpen(final ObserverContext<RegionCoprocessorEnvironment> c) throws IOException;
 
   /**
    * Called after the region is reported as open to the master.
    * @param c the environment provided by the region server
    */
-  void postOpen(final ObserverContext<RegionCoprocessorEnvironment> c);
+  void postOpen(final ObserverContext<RegionCoprocessorEnvironment> c) throws IOException;
 
   /**
    * Called before a memstore is flushed to disk and prior to creating the scanner to read from
@@ -227,9 +227,10 @@ public interface RegionObserver extends Coprocessor {
    * Called before the region is reported as closed to the master.
    * @param c the environment provided by the region server
    * @param abortRequested true if the region server is aborting
+   * @throws IOException 
    */
   void preClose(final ObserverContext<RegionCoprocessorEnvironment> c,
-      boolean abortRequested);
+      boolean abortRequested) throws IOException;
 
   /**
    * Called after the region is reported as closed to the master.
@@ -771,4 +772,13 @@ public interface RegionObserver extends Coprocessor {
    */
   boolean postBulkLoadHFile(final ObserverContext<RegionCoprocessorEnvironment> ctx,
     List<Pair<byte[], String>> familyPaths, boolean hasLoaded) throws IOException;
+  
+  void preStopRegionServer(final ObserverContext<RegionCoprocessorEnvironment> c)
+      throws IOException;
+  
+  void preLockRow(final ObserverContext<RegionCoprocessorEnvironment> ctx,
+      final byte[] regionName, final byte[] row) throws IOException; 
+  
+  void preUnlockRow(final ObserverContext<RegionCoprocessorEnvironment> ctx,
+      final byte[] regionName, final long lockId) throws IOException; 
 }
