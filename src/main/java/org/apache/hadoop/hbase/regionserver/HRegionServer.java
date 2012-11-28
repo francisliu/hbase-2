@@ -3830,6 +3830,6 @@ public class HRegionServer implements HRegionInterface, HBaseRPCErrorHandler,
     if (this.rootDir == null) {
       this.rootDir = new Path(this.conf.get(HConstants.HBASE_DIR));
     }
-    this.dummyForSecurity = HRegion.createHRegion(hri, new Path("/tmp"), conf, desc);
+    this.dummyForSecurity = HRegion.createHRegion(hri, new Path("/tmp/.dummyregion"), conf, desc);
   }
 }
