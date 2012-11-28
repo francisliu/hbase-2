@@ -142,8 +142,4 @@
     version is X.X.X-SNAPSHOT"
     </description>
   </property>
-  <property>
-   <name>yarn.nodemanager.delete.debug-delay-sec</name>
-   <value>10000</value>
-  </property>
 </configuration>
