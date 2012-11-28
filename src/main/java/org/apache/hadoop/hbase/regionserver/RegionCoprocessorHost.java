@@ -1489,11 +1489,11 @@ public class RegionCoprocessorHost
     for (RegionEnvironment env : coprocessors) {
       if (env.getInstance() instanceof RegionObserver) {
         ctx = ObserverContext.createAndPrepare(env, ctx);
-        ((RegionObserver) env.getInstance()).preStopRegionServer(ctx);
-      }
-      if (ctx.shouldComplete()) {
-        break;
-      }
+        ((RegionObserver) env.getInstance()).preStopRegionServer(ctx);        
+        if (ctx.shouldComplete()) {
+          break;
+        }
+      }     
     }
   }
   
@@ -1503,22 +1503,22 @@ public class RegionCoprocessorHost
       if (env.getInstance() instanceof RegionObserver) {
         ctx = ObserverContext.createAndPrepare(env, ctx);
         ((RegionObserver) env.getInstance()).preLockRow(ctx, regionName, row);
-      }
-      if (ctx.shouldComplete()) {
-        break;
+        if (ctx.shouldComplete()) {
+          break;
+        }
       }
     }
   }
-  
+
   public void preUnLockRow(byte[] regionName, long lockId) throws IOException {
     ObserverContext<RegionCoprocessorEnvironment> ctx = null;
     for (RegionEnvironment env : coprocessors) {
       if (env.getInstance() instanceof RegionObserver) {
         ctx = ObserverContext.createAndPrepare(env, ctx);
         ((RegionObserver) env.getInstance()).preUnlockRow(ctx, regionName, lockId);
-      }
-      if (ctx.shouldComplete()) {
-        break;
+        if (ctx.shouldComplete()) {
+          break;
+        }
       }
     }
   }
