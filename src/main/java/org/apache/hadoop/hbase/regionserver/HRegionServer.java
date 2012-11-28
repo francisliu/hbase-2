@@ -1015,8 +1015,8 @@ public class HRegionServer implements HRegionInterface, HBaseRPCErrorHandler,
       // Init in here rather than in constructor after thread name has been set
       this.metrics = new RegionServerMetrics();
       this.dynamicMetrics = RegionServerDynamicMetrics.newInstance(this);
-      startServiceThreads();
       createDummyRegionForSecurity();
+      startServiceThreads();  
       LOG.info("Serving as " + this.serverNameFromMasterPOV +
         ", RPC listening on " + this.isa +
         ", sessionid=0x" +
@@ -1025,6 +1025,7 @@ public class HRegionServer implements HRegionInterface, HBaseRPCErrorHandler,
     } catch (Throwable e) {
       this.isOnline = false;
       stop("Failed initialization");
+      LOG.warn("Exception in region server : ", e);
       throw convertThrowableToIOE(cleanup(e, "Failed init"),
           "Region server startup failed");
     } finally {
