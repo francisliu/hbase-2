@@ -1032,9 +1032,9 @@ public class HRegionServer implements HRegionInterface, HBaseRPCErrorHandler,
         Long.toHexString(this.zooKeeper.getRecoverableZooKeeper().getSessionId()));
       isOnline = true;
     } catch (Throwable e) {
+      LOG.warn("Exception in region server : ", e);
       this.isOnline = false;
       stop("Failed initialization");
-      LOG.warn("Exception in region server : ", e);
       throw convertThrowableToIOE(cleanup(e, "Failed init"),
           "Region server startup failed");
     } finally {
