@@ -774,9 +774,6 @@ public interface RegionObserver extends Coprocessor {
     List<Pair<byte[], String>> familyPaths, boolean hasLoaded) throws IOException;
   
   void preStopRegionServer(final ObserverContext<RegionCoprocessorEnvironment> c)
-      throws IOException;
-  
-  void postStopRegionServer(final ObserverContext<RegionCoprocessorEnvironment> c)
       throws IOException; 
   
   void preLockRow(final ObserverContext<RegionCoprocessorEnvironment> ctx,
