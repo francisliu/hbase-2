@@ -3827,9 +3827,9 @@ public class HRegionServer implements HRegionInterface, HBaseRPCErrorHandler,
   private void createDummyRegionForSecurity() throws IOException {
     HTableDescriptor desc = new HTableDescriptor("dummy");
     HRegionInfo hri = new HRegionInfo(desc.getName(), Bytes.toBytes("AAA"), Bytes.toBytes("ZZZ"));
-    if(this.rootDir == null){
+    if (this.rootDir == null) {
       this.rootDir = new Path(this.conf.get(HConstants.HBASE_DIR));
     }
-    this.dummyForSecurity = HRegion.createHRegion(hri, rootDir, conf, desc);
+    this.dummyForSecurity = HRegion.createHRegion(hri, new Path("/tmp"), conf, desc);
   }
 }
