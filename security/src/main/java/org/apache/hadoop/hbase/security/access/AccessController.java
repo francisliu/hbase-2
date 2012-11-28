@@ -517,6 +517,12 @@ public class AccessController extends BaseRegionObserver
 
   /* ---- MasterObserver implementation ---- */
   public void start(CoprocessorEnvironment env) throws IOException {
+    //This a hacky fix to guarantee that regionservers
+    //which never had regions will have an up to date
+    //proxy user configuration, once it starts serving a region
+    //the same thing goes for the backup master
+    ProxyUsers.refreshSuperUserGroupsConfiguration();
+
     // if running on HMaster
     if (env instanceof MasterCoprocessorEnvironment) {
       masterEnv  = (MasterCoprocessorEnvironment)env;
