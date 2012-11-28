@@ -26,6 +26,7 @@ import java.io.IOException;
 import java.security.PrivilegedExceptionAction;
 import java.util.List;
 import java.util.Map;
+import java.util.Random;
 
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileStatus;
@@ -51,6 +52,7 @@ import org.apache.hadoop.hbase.client.Put;
 import org.apache.hadoop.hbase.client.Result;
 import org.apache.hadoop.hbase.client.ResultScanner;
 import org.apache.hadoop.hbase.client.RetriesExhaustedWithDetailsException;
+import org.apache.hadoop.hbase.client.RowLock;
 import org.apache.hadoop.hbase.client.Scan;
 import org.apache.hadoop.hbase.coprocessor.CoprocessorException;
 import org.apache.hadoop.hbase.coprocessor.MasterCoprocessorEnvironment;
@@ -87,6 +89,7 @@ public class TestAccessController {
   private static User USER_ADMIN;
   // user with rw permissions
   private static User USER_RW;
+  private static User USER_RW_1;
   // user with read-only permissions
   private static User USER_RO;
   // user is table owner. will have all permissions on table
@@ -123,6 +126,7 @@ public class TestAccessController {
     SUPERUSER = User.createUserForTesting(conf, "admin", new String[] { "supergroup" });
     USER_ADMIN = User.createUserForTesting(conf, "admin2", new String[0]);
     USER_RW = User.createUserForTesting(conf, "rwuser", new String[0]);
+    USER_RW_1 = User.createUserForTesting(conf, "rwuser_1", new String[0]);
     USER_RO = User.createUserForTesting(conf, "rouser", new String[0]);
     USER_OWNER = User.createUserForTesting(conf, "owner", new String[0]);
     USER_CREATE = User.createUserForTesting(conf, "tbl_create", new String[0]);
@@ -150,6 +154,9 @@ public class TestAccessController {
 
     protocol.grant(new UserPermission(Bytes.toBytes(USER_RW.getShortName()), TEST_TABLE,
         TEST_FAMILY, Permission.Action.READ, Permission.Action.WRITE));
+    
+    protocol.grant(new UserPermission(Bytes.toBytes(USER_RW_1.getShortName()), TEST_TABLE,
+      null, Permission.Action.READ, Permission.Action.WRITE));
 
     protocol.grant(new UserPermission(Bytes.toBytes(USER_RO.getShortName()), TEST_TABLE,
         TEST_FAMILY, Permission.Action.READ));
@@ -461,6 +468,19 @@ public class TestAccessController {
     verifyAllowed(action, SUPERUSER, USER_ADMIN);
     verifyDenied(action, USER_CREATE, USER_OWNER, USER_RW, USER_RO, USER_NONE);
   }
+  
+  @Test
+  public void testStopRegionServer() throws Exception {
+    PrivilegedExceptionAction action = new PrivilegedExceptionAction() {
+      public Object run() throws Exception {
+        ACCESS_CONTROLLER.preStopRegionServer(ObserverContext.createAndPrepare(RCP_ENV, null));
+        return null;
+      }
+    };
+
+    verifyAllowed(action, SUPERUSER, USER_ADMIN);
+    verifyDenied(action, USER_CREATE, USER_OWNER, USER_RW, USER_RO, USER_NONE);
+  }
 
   private void verifyWrite(PrivilegedExceptionAction action) throws Exception {
     verifyAllowed(action, SUPERUSER, USER_ADMIN, USER_OWNER, USER_RW);
@@ -602,8 +622,46 @@ public class TestAccessController {
         return null;
       }
     };
-    verifyWrite(incrementAction);
+    verifyWrite(incrementAction);  
   }
+  
+  @Test
+  public void testLockAction() throws Exception {
+ 
+    // lock action
+    PrivilegedExceptionAction lockAction = new PrivilegedExceptionAction() {
+      public Object run() throws Exception {
+        byte[] rowKey = Bytes.toBytes("random_row");
+        //Put p = new Put(rowKey);
+       // p.add(TEST_FAMILY, Bytes.toBytes("Qualifier"), Bytes.toBytes(1));      
+        HTable t = new HTable(conf, TEST_TABLE);
+        //t.put(p);
+        RowLock rl = t.lockRow(rowKey);
+        t.unlockRow(rl);
+        return null;
+      }
+    };
+    verifyAllowed(lockAction, SUPERUSER, USER_ADMIN, USER_OWNER, USER_CREATE, USER_RW_1);
+    verifyDenied(lockAction, USER_NONE,USER_RO, USER_RW);
+  }
+  
+ /* @Test
+  public void testUnLockAction() throws Exception {
+    // Unlock action
+    PrivilegedExceptionAction unLockAction = new PrivilegedExceptionAction() {
+      Random rand = new Random();
+
+      public Object run() throws Exception {
+        byte[] rowKey = Bytes.toBytes("random_row");
+        RowLock rl = new RowLock(rowKey, rand.nextLong());
+        HTable t = new HTable(conf, TEST_TABLE);
+        t.unlockRow(rl);
+        return null;
+      }
+    };
+    verifyAllowed(unLockAction, SUPERUSER, USER_ADMIN, USER_OWNER, USER_CREATE, USER_RW_1);
+    verifyDenied(unLockAction, USER_NONE, USER_RO, USER_RW);
+  }*/
 
   @Test
   public void testReadWrite() throws Exception {

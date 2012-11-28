@@ -362,8 +362,9 @@ public class HRegionServer implements HRegionInterface, HBaseRPCErrorHandler,
    * ClusterId
    */
   private ClusterId clusterId = null;
-  
+
   private RegionServerHealthCheckChore healthCheckChore;
+  private HRegion dummyForSecurity = null;
 
   /**
    * Starts a HRegionServer at the default location
@@ -1023,7 +1024,8 @@ public class HRegionServer implements HRegionInterface, HBaseRPCErrorHandler,
       // Init in here rather than in constructor after thread name has been set
       this.metrics = new RegionServerMetrics();
       this.dynamicMetrics = RegionServerDynamicMetrics.newInstance(this);
-      startServiceThreads();
+      createDummyRegionForSecurity();
+      startServiceThreads();  
       LOG.info("Serving as " + this.serverNameFromMasterPOV +
         ", RPC listening on " + this.isa +
         ", sessionid=0x" +
@@ -1032,6 +1034,7 @@ public class HRegionServer implements HRegionInterface, HBaseRPCErrorHandler,
     } catch (Throwable e) {
       this.isOnline = false;
       stop("Failed initialization");
+      LOG.warn("Exception in region server : ", e);
       throw convertThrowableToIOE(cleanup(e, "Failed init"),
           "Region server startup failed");
     } finally {
@@ -1588,7 +1591,8 @@ public class HRegionServer implements HRegionInterface, HBaseRPCErrorHandler,
     this.splitLogWorker = new SplitLogWorker(this.zooKeeper,
         this.getConfiguration(), this.getServerName().toString());
     splitLogWorker.start();
-     
+    //Open the dummy region for security
+    this.dummyForSecurity.openHRegion(null);
   }
   
   /**
@@ -1656,10 +1660,17 @@ public class HRegionServer implements HRegionInterface, HBaseRPCErrorHandler,
 
   @Override
   public void stop(final String msg) {
-    this.stopped = true;
-    LOG.info("STOPPED: " + msg);
-    // Wakes run() if it is sleeping
-    sleeper.skipSleepCycle();
+    try {
+      if (this.dummyForSecurity.getCoprocessorHost() != null) {
+        this.dummyForSecurity.getCoprocessorHost().preStop(msg);
+      }
+      this.stopped = true;
+      LOG.info("STOPPED: " + msg);
+      // Wakes run() if it is sleeping
+      sleeper.skipSleepCycle();
+    } catch (IOException exp) {
+      LOG.warn("The region server did not stop", exp);
+    }
   }
 
   public void waitForServerOnline(){
@@ -1977,6 +1988,8 @@ public class HRegionServer implements HRegionInterface, HBaseRPCErrorHandler,
           closeRegion(r.getRegionInfo(), abort, false);
         }
       }
+      //Close the dummy region for security
+      closeRegion(this.dummyForSecurity.getRegionInfo(), abort, false);
     } finally {
       this.lock.writeLock().unlock();
     }
@@ -2619,6 +2632,9 @@ public class HRegionServer implements HRegionInterface, HBaseRPCErrorHandler,
     requestCount.incrementAndGet();
     try {
       HRegion region = getRegion(regionName);
+      if (region.getCoprocessorHost() != null) {
+        region.getCoprocessorHost().preLockRow(regionName, row);
+      }
       Integer r = region.obtainRowLock(row);
       long lockId = addRowLock(r, region);
       LOG.debug("Row lock " + lockId + " explicitly acquired by client");
@@ -2680,6 +2696,9 @@ public class HRegionServer implements HRegionInterface, HBaseRPCErrorHandler,
     requestCount.incrementAndGet();
     try {
       HRegion region = getRegion(regionName);
+      if (region.getCoprocessorHost() != null) {
+        region.getCoprocessorHost().preUnLockRow(regionName, lockId);
+      }
       String lockName = String.valueOf(lockId);
       Integer r = rowlocks.remove(lockName);
       if (r == null) {
@@ -3815,5 +3834,15 @@ public class HRegionServer implements HRegionInterface, HBaseRPCErrorHandler,
       return server.getResponseQueueSize();
     }
     return 0;
+  }
+  
+  private void createDummyRegionForSecurity() throws IOException {
+    HTableDescriptor desc = new HTableDescriptor("dummy");
+    HRegionInfo hri = new HRegionInfo(desc.getName(), Bytes.toBytes("AAA"), Bytes.toBytes("ZZZ"));
+    if (this.rootDir == null) {
+      this.rootDir = new Path(this.conf.get(HConstants.HBASE_DIR));
+    }
+    this.dummyForSecurity = new HRegion(new Path("/tmp/.dummyregion"), null, this.fs, this.conf,
+        hri, desc, this);
   }
 }
