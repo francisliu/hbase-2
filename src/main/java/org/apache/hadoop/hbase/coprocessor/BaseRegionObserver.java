@@ -340,11 +340,6 @@ public abstract class BaseRegionObserver implements RegionObserver {
   }
 
   @Override
-  public void postStopRegionServer(ObserverContext<RegionCoprocessorEnvironment> c)
-      throws IOException {
-  }
-
-  @Override
   public void postLockRow(ObserverContext<RegionCoprocessorEnvironment> ctx, byte[] regionName,
       byte[] row) throws IOException {
   }

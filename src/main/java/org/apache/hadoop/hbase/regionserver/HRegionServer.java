@@ -441,7 +441,6 @@ public class HRegionServer implements HRegionInterface, HBaseRPCErrorHandler,
       "hbase.regionserver.kerberos.principal", this.isa.getHostName());
     regionServerAccounting = new RegionServerAccounting();
     cacheConfig = new CacheConfig(conf);
-    createDummyRegionForSecurity();
   }
 
   /**
@@ -1017,6 +1016,7 @@ public class HRegionServer implements HRegionInterface, HBaseRPCErrorHandler,
       this.metrics = new RegionServerMetrics();
       this.dynamicMetrics = RegionServerDynamicMetrics.newInstance(this);
       startServiceThreads();
+      createDummyRegionForSecurity();
       LOG.info("Serving as " + this.serverNameFromMasterPOV +
         ", RPC listening on " + this.isa +
         ", sessionid=0x" +
@@ -3830,6 +3830,7 @@ public class HRegionServer implements HRegionInterface, HBaseRPCErrorHandler,
     if (this.rootDir == null) {
       this.rootDir = new Path(this.conf.get(HConstants.HBASE_DIR));
     }
-    this.dummyForSecurity = HRegion.createHRegion(hri, new Path("/tmp/.dummyregion"), conf, desc);
+    this.dummyForSecurity = new HRegion(new Path("/tmp/.dummyregion"), null, this.fs, this.conf,
+        hri, desc, this);
   }
 }
