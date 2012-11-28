@@ -1156,7 +1156,7 @@ public abstract class FSUtils {
    */
   public static void checkAccess(UserGroupInformation ugi, FileStatus file,
       FsAction action) throws AccessControlException {
-    if (ugi.getUserName().equals(file.getOwner())) {
+    if (ugi.getShortUserName().equals(file.getOwner())) {
       if (file.getPermission().getUserAction().implies(action)) {
         return;
       }

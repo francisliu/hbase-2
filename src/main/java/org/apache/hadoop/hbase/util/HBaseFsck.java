@@ -27,6 +27,7 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
@@ -41,6 +42,7 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import org.apache.commons.logging.Log;
@@ -150,6 +152,7 @@ public class HBaseFsck {
   public static final long DEFAULT_TIME_LAG = 60000; // default value of 1 minute
   public static final long DEFAULT_SLEEP_BEFORE_RERUN = 10000;
   private static final int MAX_NUM_THREADS = 50; // #threads to contact regions
+  private static final int THREAD_DELAY = 10;
   private static boolean rsSupportsOffline = true;
   private static final int DEFAULT_OVERLAPS_TO_SIDELINE = 2;
   private static final int DEFAULT_MAX_MERGE = 5;
@@ -244,7 +247,8 @@ public class HBaseFsck {
     this.conf = conf;
 
     int numThreads = conf.getInt("hbasefsck.numthreads", MAX_NUM_THREADS);
-    executor = new ScheduledThreadPoolExecutor(numThreads);
+    int delay = conf.getInt("hbasefsck.threadDelay", THREAD_DELAY);
+    executor = new DelayedScheduledThreadPoolExecutor(numThreads, delay);
   }
 
   /**
@@ -3325,7 +3329,8 @@ public class HBaseFsck {
     conf.set("fs.default.name", defaultFs.toString());  // for hadoop 0.20
 
     int numThreads = conf.getInt("hbasefsck.numthreads", MAX_NUM_THREADS);
-    ExecutorService exec = new ScheduledThreadPoolExecutor(numThreads);
+    int delay = conf.getInt("hbasefsck.threadDelay", THREAD_DELAY);
+    ExecutorService exec = new DelayedScheduledThreadPoolExecutor(numThreads, delay);
     HBaseFsck hbck = new HBaseFsck(conf, exec);
     hbck.exec(exec, args);
     int retcode = hbck.getRetCode();
@@ -3558,5 +3563,26 @@ public class HBaseFsck {
         debugLsr(conf, status.getPath());
       }
     }
+  }
+
+  private static class DelayedScheduledThreadPoolExecutor extends ScheduledThreadPoolExecutor {
+    private long delay = 10;
+
+    public DelayedScheduledThreadPoolExecutor(int numThreads, long delay) {
+      super(numThreads);
+      this.delay = delay;
+    }
+
+    @Override
+    public <T> List<Future<T>> invokeAll(Collection<? extends Callable<T>> callables) throws InterruptedException {
+      List<Future<T>> futures = new LinkedList<Future<T>>();
+      int i = 0;
+      for(Callable<T> callable: callables) {
+        long sched = delay*i++;
+        futures.add(schedule(callable, sched, TimeUnit.MILLISECONDS));
+      }
+      return futures;
+    }
+
   }
 }
