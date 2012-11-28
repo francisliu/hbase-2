@@ -654,7 +654,8 @@ public class HRegionServer implements HRegionInterface, HBaseRPCErrorHandler,
       this.threadWakeFrequency * multiplier, this);
     
     //Health checker thread.
-    int sleepTime =  this.conf.getInt(HConstants.RS_HEALTH_CHORE_WAKE_FREQ, 180000);
+    int sleepTime = this.conf.getInt(HConstants.RS_HEALTH_CHORE_WAKE_FREQ,
+      HConstants.DEFAULT_THREAD_WAKE_FREQUENCY);
     healthCheckChore = new RegionServerHealthCheckChore(sleepTime, this, getConfiguration());
 
     this.leases = new Leases((int) conf.getLong(
@@ -772,6 +773,9 @@ public class HRegionServer implements HRegionInterface, HBaseRPCErrorHandler,
     if (this.hlogRoller != null) this.hlogRoller.interruptIfNecessary();
     if (this.compactionChecker != null)
       this.compactionChecker.interrupt();
+    if (this.healthCheckChore != null)
+      this.healthCheckChore.interrupt();
+    
 
     if (this.killed) {
       // Just skip out w/o closing regions.  Used when testing.
@@ -1633,7 +1637,7 @@ public class HRegionServer implements HRegionInterface, HBaseRPCErrorHandler,
     // Verify that all threads are alive
     if (!(leases.isAlive()
         && cacheFlusher.isAlive() && hlogRoller.isAlive()
-        && this.compactionChecker.isAlive())) {
+        && this.compactionChecker.isAlive() && this.healthCheckChore.isAlive())) {
       stop("One or more threads are no longer alive -- stop");
       return false;
     }
