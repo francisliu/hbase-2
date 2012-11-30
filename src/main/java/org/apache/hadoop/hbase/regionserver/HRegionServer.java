@@ -2916,7 +2916,12 @@ public class HRegionServer implements HRegionInterface, HBaseRPCErrorHandler,
     
     HRegion actualRegion = this.getFromOnlineRegions(region.getEncodedName());
     if ((actualRegion != null) && (actualRegion.getCoprocessorHost() !=null)){
-      actualRegion.getCoprocessorHost().preClose(abort);
+      try {
+        actualRegion.getCoprocessorHost().preClose(abort);
+      } catch (IOException e) {
+        LOG.warn(e);
+        return false;
+      }
     }
     
     if (this.regionsInTransitionInRS.containsKey(region.getEncodedNameAsBytes())) {
