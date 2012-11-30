@@ -2768,10 +2768,10 @@ public class HRegionServer implements HRegionInterface, HBaseRPCErrorHandler,
   private RegionOpeningState openRegion(HRegionInfo region, int versionOfOfflineNode,
       Map<String, HTableDescriptor> htds) throws IOException {
     checkOpen();
-    checkIfRegionInTransition(region, OPEN);
     if (this.dummyForSecurity.getCoprocessorHost() !=null){
       this.dummyForSecurity.getCoprocessorHost().preOpen();
     }
+    checkIfRegionInTransition(region, OPEN);    
     HRegion onlineRegion = this.getFromOnlineRegions(region.getEncodedName());
     if (null != onlineRegion) {
       // See HBASE-5094. Cross check with META if still this RS is owning the
@@ -2813,6 +2813,7 @@ public class HRegionServer implements HRegionInterface, HBaseRPCErrorHandler,
       this.service.submit(new OpenRegionHandler(this, this, region, htd,
           versionOfOfflineNode));
     }
+    LOG.info("Open region hander submitted for :" + region.getEncodedName());
     return RegionOpeningState.OPENED;
   }
 
@@ -2866,6 +2867,11 @@ public class HRegionServer implements HRegionInterface, HBaseRPCErrorHandler,
     final int versionOfClosingNode)
   throws IOException {
     checkOpen();
+  //Check for permissions to close.
+    HRegion actualRegion = this.getFromOnlineRegions(region.getEncodedName());
+    if (actualRegion.getCoprocessorHost() !=null){
+        actualRegion.getCoprocessorHost().preClose(false);     
+    }
     LOG.info("Received close region: " + region.getRegionNameAsString() +
       ". Version of ZK closing node:" + versionOfClosingNode);
     boolean hasit = this.onlineRegions.containsKey(region.getEncodedName());
@@ -2874,7 +2880,7 @@ public class HRegionServer implements HRegionInterface, HBaseRPCErrorHandler,
         region.getEncodedName());
       throw new NotServingRegionException("Received close for "
         + region.getRegionNameAsString() + " but we are not serving it");
-    }
+    }   
     checkIfRegionInTransition(region, CLOSE);
     return closeRegion(region, false, zk, versionOfClosingNode);
   }
@@ -2941,6 +2947,7 @@ public class HRegionServer implements HRegionInterface, HBaseRPCErrorHandler,
       crh = new CloseRegionHandler(this, this, region, abort, zk,
         versionOfClosingNode);
     }
+    LOG.info("Close region hander submitted for :" + region.getEncodedName());
     this.service.submit(crh);
     return true;
   }
