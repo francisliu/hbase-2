@@ -1580,6 +1580,8 @@ public class HRegionServer implements HRegionInterface, HBaseRPCErrorHandler,
     this.splitLogWorker = new SplitLogWorker(this.zooKeeper,
         this.getConfiguration(), this.getServerName().toString());
     splitLogWorker.start();
+    
+    this.dummyForSecurity.openHRegion(null);
    
   }
 
@@ -1975,6 +1977,7 @@ public class HRegionServer implements HRegionInterface, HBaseRPCErrorHandler,
           closeRegion(r.getRegionInfo(), abort, false);
         }
       }
+      closeRegion(this.dummyForSecurity.getRegionInfo(), abort, false);
     } finally {
       this.lock.writeLock().unlock();
     }
@@ -2766,6 +2769,9 @@ public class HRegionServer implements HRegionInterface, HBaseRPCErrorHandler,
       Map<String, HTableDescriptor> htds) throws IOException {
     checkOpen();
     checkIfRegionInTransition(region, OPEN);
+    if (this.dummyForSecurity.getCoprocessorHost() !=null){
+      this.dummyForSecurity.getCoprocessorHost().preOpen();
+    }
     HRegion onlineRegion = this.getFromOnlineRegions(region.getEncodedName());
     if (null != onlineRegion) {
       // See HBASE-5094. Cross check with META if still this RS is owning the
@@ -2907,6 +2913,12 @@ public class HRegionServer implements HRegionInterface, HBaseRPCErrorHandler,
    */
   protected boolean closeRegion(HRegionInfo region, final boolean abort,
       final boolean zk, final int versionOfClosingNode) {
+    
+    HRegion actualRegion = this.getFromOnlineRegions(region.getEncodedName());
+    if ((actualRegion != null) && (actualRegion.getCoprocessorHost() !=null)){
+      actualRegion.getCoprocessorHost().preClose(abort);
+    }
+    
     if (this.regionsInTransitionInRS.containsKey(region.getEncodedNameAsBytes())) {
       LOG.warn("Received close for region we are already opening or closing; " +
           region.getEncodedName());
