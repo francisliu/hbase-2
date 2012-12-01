@@ -273,7 +273,7 @@ public class RegionCoprocessorHost
          try {
           ((RegionObserver)env.getInstance()).preOpen(ctx);
          } catch (Throwable e) {
-           handleCoprocessorThrowableNoRethrow(env, e);
+           handleCoprocessorThrowable(env, e);
          }
         if (ctx.shouldComplete()) {
           break;
@@ -314,7 +314,7 @@ public class RegionCoprocessorHost
         try {
           ((RegionObserver)env.getInstance()).preClose(ctx, abortRequested);
         } catch (Throwable e) {
-          handleCoprocessorThrowableNoRethrow(env, e);
+          handleCoprocessorThrowable(env, e);
         }
       }
     }
