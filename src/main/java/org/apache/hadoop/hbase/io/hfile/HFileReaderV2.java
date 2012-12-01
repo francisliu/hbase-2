@@ -103,7 +103,9 @@ public class HFileReaderV2 extends AbstractHFileReader {
       throws IOException {
     super(path, trailer, fsdis, fsdisNoFsChecksum, size, 
           closeIStream, cacheConf, hfs);
-    SchemaMetrics.configureGlobally(hfs.getConf());
+    if(hfs != null) {
+      SchemaMetrics.configureGlobally(hfs.getConf());
+    }
     trailer.expectMajorVersion(2);
     validateMinorVersion(path, trailer.getMinorVersion());
     HFileBlock.FSReaderV2 fsBlockReaderV2 = new HFileBlock.FSReaderV2(fsdis,
