@@ -113,11 +113,16 @@ if [ "$JAVA_HOME" = "" ]; then
   echo "Error: JAVA_HOME is not set."
   exit 1
 fi
+if [ "$HBASE_ROOT_LOGGER" = "" ]; then
+  export HBASE_ROOT_LOGGER="INFO,DRFA"
+fi
+if [ "$HBASE_SECURITY_LOGGER" = "" ]; then
+  export HBASE_SECURITY_LOGGER="INFO,DRFAS"
+fi
+
 JAVA=$JAVA_HOME/bin/java
 export HBASE_LOG_PREFIX=hbase-$HBASE_IDENT_STRING-$command-$HOSTNAME
 export HBASE_LOGFILE=$HBASE_LOG_PREFIX.log
-export HBASE_ROOT_LOGGER="INFO,DRFA"
-export HBASE_SECURITY_LOGGER="INFO,DRFAS"
 logout=$HBASE_LOG_DIR/$HBASE_LOG_PREFIX.out  
 loggc=$HBASE_LOG_DIR/$HBASE_LOG_PREFIX.gc
 loglog="${HBASE_LOG_DIR}/${HBASE_LOGFILE}"
