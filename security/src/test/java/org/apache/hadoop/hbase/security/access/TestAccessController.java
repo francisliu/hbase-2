@@ -26,14 +26,20 @@ import java.io.IOException;
 import java.security.PrivilegedExceptionAction;
 import java.util.List;
 import java.util.Map;
+import java.util.Random;
 
 import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.fs.FileStatus;
+import org.apache.hadoop.fs.FileSystem;
+import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.fs.permission.FsPermission;
 import org.apache.hadoop.hbase.Coprocessor;
 import org.apache.hadoop.hbase.HBaseTestingUtility;
 import org.apache.hadoop.hbase.HColumnDescriptor;
 import org.apache.hadoop.hbase.HRegionInfo;
 import org.apache.hadoop.hbase.HServerAddress;
 import org.apache.hadoop.hbase.HTableDescriptor;
+import org.apache.hadoop.hbase.KeyValue;
 import org.apache.hadoop.hbase.LargeTests;
 import org.apache.hadoop.hbase.ServerName;
 import org.apache.hadoop.hbase.client.Append;
@@ -46,11 +52,15 @@ import org.apache.hadoop.hbase.client.Put;
 import org.apache.hadoop.hbase.client.Result;
 import org.apache.hadoop.hbase.client.ResultScanner;
 import org.apache.hadoop.hbase.client.RetriesExhaustedWithDetailsException;
+import org.apache.hadoop.hbase.client.RowLock;
 import org.apache.hadoop.hbase.client.Scan;
 import org.apache.hadoop.hbase.coprocessor.CoprocessorException;
 import org.apache.hadoop.hbase.coprocessor.MasterCoprocessorEnvironment;
 import org.apache.hadoop.hbase.coprocessor.ObserverContext;
 import org.apache.hadoop.hbase.coprocessor.RegionCoprocessorEnvironment;
+import org.apache.hadoop.hbase.io.hfile.CacheConfig;
+import org.apache.hadoop.hbase.io.hfile.HFile;
+import org.apache.hadoop.hbase.mapreduce.LoadIncrementalHFiles;
 import org.apache.hadoop.hbase.master.MasterCoprocessorHost;
 import org.apache.hadoop.hbase.regionserver.HRegion;
 import org.apache.hadoop.hbase.regionserver.RegionCoprocessorHost;
@@ -79,6 +89,7 @@ public class TestAccessController {
   private static User USER_ADMIN;
   // user with rw permissions
   private static User USER_RW;
+  private static User USER_RW_1;
   // user with read-only permissions
   private static User USER_RO;
   // user is table owner. will have all permissions on table
@@ -115,6 +126,7 @@ public class TestAccessController {
     SUPERUSER = User.createUserForTesting(conf, "admin", new String[] { "supergroup" });
     USER_ADMIN = User.createUserForTesting(conf, "admin2", new String[0]);
     USER_RW = User.createUserForTesting(conf, "rwuser", new String[0]);
+    USER_RW_1 = User.createUserForTesting(conf, "rwuser_1", new String[0]);
     USER_RO = User.createUserForTesting(conf, "rouser", new String[0]);
     USER_OWNER = User.createUserForTesting(conf, "owner", new String[0]);
     USER_CREATE = User.createUserForTesting(conf, "tbl_create", new String[0]);
@@ -142,6 +154,9 @@ public class TestAccessController {
 
     protocol.grant(new UserPermission(Bytes.toBytes(USER_RW.getShortName()), TEST_TABLE,
         TEST_FAMILY, Permission.Action.READ, Permission.Action.WRITE));
+    
+    protocol.grant(new UserPermission(Bytes.toBytes(USER_RW_1.getShortName()), TEST_TABLE,
+      null, Permission.Action.READ, Permission.Action.WRITE));
 
     protocol.grant(new UserPermission(Bytes.toBytes(USER_RO.getShortName()), TEST_TABLE,
         TEST_FAMILY, Permission.Action.READ));
@@ -176,22 +191,35 @@ public class TestAccessController {
       try {
         user.runAs(action);
         fail("Expected AccessDeniedException for user '" + user.getShortName() + "'");
-      } catch (RetriesExhaustedWithDetailsException e) {
-        // in case of batch operations, and put, the client assembles a
-        // RetriesExhaustedWithDetailsException instead of throwing an
-        // AccessDeniedException
+      } catch (AccessDeniedException ade) {
+        // expected result
+      } catch (IOException e) {
         boolean isAccessDeniedException = false;
-        for (Throwable ex : e.getCauses()) {
-          if (ex instanceof AccessDeniedException) {
-            isAccessDeniedException = true;
-            break;
+        if(e instanceof RetriesExhaustedWithDetailsException) {
+          // in case of batch operations, and put, the client assembles a
+          // RetriesExhaustedWithDetailsException instead of throwing an
+          // AccessDeniedException
+          for(Throwable ex : ((RetriesExhaustedWithDetailsException) e).getCauses()) {
+            if (ex instanceof AccessDeniedException) {
+              isAccessDeniedException = true;
+              break;
+            }
           }
+        }
+        else {
+          // For doBulkLoad calls AccessDeniedException
+          // is buried in the stack trace
+          Throwable ex = e;
+          do {
+            if (ex instanceof AccessDeniedException) {
+              isAccessDeniedException = true;
+              break;
+            }
+          } while((ex = ex.getCause()) != null);
         }
         if (!isAccessDeniedException) {
           fail("Not receiving AccessDeniedException for user '" + user.getShortName() + "'");
         }
-      } catch (AccessDeniedException ade) {
-        // expected result
       }
     }
   }
@@ -440,6 +468,19 @@ public class TestAccessController {
     verifyAllowed(action, SUPERUSER, USER_ADMIN);
     verifyDenied(action, USER_CREATE, USER_OWNER, USER_RW, USER_RO, USER_NONE);
   }
+  
+  @Test
+  public void testStopRegionServer() throws Exception {
+    PrivilegedExceptionAction action = new PrivilegedExceptionAction() {
+      public Object run() throws Exception {
+        ACCESS_CONTROLLER.preStopRegionServer(ObserverContext.createAndPrepare(RCP_ENV, null));
+        return null;
+      }
+    };
+
+    verifyAllowed(action, SUPERUSER, USER_ADMIN);
+    verifyDenied(action, USER_CREATE, USER_OWNER, USER_RW, USER_RO, USER_NONE);
+  }
 
   private void verifyWrite(PrivilegedExceptionAction action) throws Exception {
     verifyAllowed(action, SUPERUSER, USER_ADMIN, USER_OWNER, USER_RW);
@@ -581,8 +622,46 @@ public class TestAccessController {
         return null;
       }
     };
-    verifyWrite(incrementAction);
+    verifyWrite(incrementAction);  
   }
+  
+  @Test
+  public void testLockAction() throws Exception {
+ 
+    // lock action
+    PrivilegedExceptionAction lockAction = new PrivilegedExceptionAction() {
+      public Object run() throws Exception {
+        byte[] rowKey = Bytes.toBytes("random_row");
+        //Put p = new Put(rowKey);
+       // p.add(TEST_FAMILY, Bytes.toBytes("Qualifier"), Bytes.toBytes(1));      
+        HTable t = new HTable(conf, TEST_TABLE);
+        //t.put(p);
+        RowLock rl = t.lockRow(rowKey);
+        t.unlockRow(rl);
+        return null;
+      }
+    };
+    verifyAllowed(lockAction, SUPERUSER, USER_ADMIN, USER_OWNER, USER_CREATE, USER_RW_1);
+    verifyDenied(lockAction, USER_NONE,USER_RO, USER_RW);
+  }
+  
+ /* @Test
+  public void testUnLockAction() throws Exception {
+    // Unlock action
+    PrivilegedExceptionAction unLockAction = new PrivilegedExceptionAction() {
+      Random rand = new Random();
+
+      public Object run() throws Exception {
+        byte[] rowKey = Bytes.toBytes("random_row");
+        RowLock rl = new RowLock(rowKey, rand.nextLong());
+        HTable t = new HTable(conf, TEST_TABLE);
+        t.unlockRow(rl);
+        return null;
+      }
+    };
+    verifyAllowed(unLockAction, SUPERUSER, USER_ADMIN, USER_OWNER, USER_CREATE, USER_RW_1);
+    verifyDenied(unLockAction, USER_NONE, USER_RO, USER_RW);
+  }*/
 
   @Test
   public void testReadWrite() throws Exception {
@@ -613,6 +692,104 @@ public class TestAccessController {
       }
     };
     verifyReadWrite(checkAndPut);
+  }
+
+  @Test
+  public void testBulkLoad() throws Exception {
+    FileSystem fs = TEST_UTIL.getTestFileSystem();
+    final Path dir = TEST_UTIL.getDataTestDir("testBulkLoad");
+    fs.mkdirs(dir);
+    //need to make it globally writable
+    //so users creating HFiles have write permissions
+    fs.setPermission(dir, FsPermission.valueOf("-rwxrwxrwx"));
+
+    PrivilegedExceptionAction bulkLoadAction = new PrivilegedExceptionAction() {
+      public Object run() throws Exception {
+        int numRows = 3;
+
+        //Making the assumption that the test table won't split between the range
+        byte[][][] hfileRanges = {{{(byte)0}, {(byte)9}}};
+
+        Path bulkLoadBasePath = new Path(dir, new Path(User.getCurrent().getName()));
+        new BulkLoadHelper(bulkLoadBasePath)
+            .bulkLoadHFile(TEST_TABLE, TEST_FAMILY, Bytes.toBytes("q"), hfileRanges, numRows);
+
+        return null;
+      }
+    };
+    verifyWrite(bulkLoadAction);
+  }
+
+  public class BulkLoadHelper {
+    private final FileSystem fs;
+    private final Path loadPath;
+    private final Configuration conf;
+
+    public BulkLoadHelper(Path loadPath) throws IOException {
+      fs = TEST_UTIL.getTestFileSystem();
+      conf = TEST_UTIL.getConfiguration();
+      loadPath = loadPath.makeQualified(fs);
+      this.loadPath = loadPath;
+    }
+
+    private void createHFile(Path path,
+        byte[] family, byte[] qualifier,
+        byte[] startKey, byte[] endKey, int numRows) throws IOException {
+
+      HFile.Writer writer = null;
+      long now = System.currentTimeMillis();
+      try {
+        writer = HFile.getWriterFactory(conf, new CacheConfig(conf))
+            .withPath(fs, path)
+            .withComparator(KeyValue.KEY_COMPARATOR)
+            .create();
+        // subtract 2 since numRows doesn't include boundary keys
+        for (byte[] key : Bytes.iterateOnSplits(startKey, endKey, true, numRows-2)) {
+          KeyValue kv = new KeyValue(key, family, qualifier, now, key);
+          writer.append(kv);
+        }
+      } finally {
+        if(writer != null)
+          writer.close();
+      }
+    }
+
+    private void bulkLoadHFile(
+        byte[] tableName,
+        byte[] family,
+        byte[] qualifier,
+        byte[][][] hfileRanges,
+        int numRowsPerRange) throws Exception {
+
+      Path familyDir = new Path(loadPath, Bytes.toString(family));
+      fs.mkdirs(familyDir);
+      int hfileIdx = 0;
+      for (byte[][] range : hfileRanges) {
+        byte[] from = range[0];
+        byte[] to = range[1];
+        createHFile(new Path(familyDir, "hfile_"+(hfileIdx++)),
+            family, qualifier, from, to, numRowsPerRange);
+      }
+      //set global read so RegionServer can move it
+      setPermission(loadPath, FsPermission.valueOf("-rwxrwxrwx"));
+
+      HTable table = new HTable(conf, tableName);
+      TEST_UTIL.waitTableAvailable(tableName, 30000);
+      LoadIncrementalHFiles loader = new LoadIncrementalHFiles(conf);
+      loader.doBulkLoad(loadPath, table);
+    }
+
+    public void setPermission(Path dir, FsPermission perm) throws IOException {
+      if(!fs.getFileStatus(dir).isDir()) {
+        fs.setPermission(dir,perm);
+      }
+      else {
+        for(FileStatus el : fs.listStatus(dir)) {
+          fs.setPermission(el.getPath(), perm);
+          setPermission(el.getPath() , perm);
+        }
+      }
+    }
   }
 
   @Test

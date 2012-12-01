@@ -43,7 +43,6 @@ import org.apache.hadoop.hbase.HDFSBlocksDistribution;
 import org.apache.hadoop.hbase.HRegionInfo;
 import org.apache.hadoop.hbase.HTableDescriptor;
 import org.apache.hadoop.hbase.ServerName;
-import org.apache.hadoop.hbase.TableExistsException;
 import org.apache.hadoop.hbase.regionserver.HRegion;
 import org.apache.hadoop.hbase.util.Bytes;
 
@@ -118,7 +117,7 @@ public class DefaultLoadBalancer implements LoadBalancer {
 
 
    RegionInfoComparator riComparator = new RegionInfoComparator();
-   
+
    private class RegionPlanComparator implements Comparator<RegionPlan> {
     @Override
     public int compare(RegionPlan l, RegionPlan r) {
@@ -141,21 +140,21 @@ public class DefaultLoadBalancer implements LoadBalancer {
    * have either floor(average) or ceiling(average) regions.
    *
    * HBASE-3609 Modeled regionsToMove using Guava's MinMaxPriorityQueue so that
-   *   we can fetch from both ends of the queue. 
-   * At the beginning, we check whether there was empty region server 
+   *   we can fetch from both ends of the queue.
+   * At the beginning, we check whether there was empty region server
    *   just discovered by Master. If so, we alternately choose new / old
    *   regions from head / tail of regionsToMove, respectively. This alternation
    *   avoids clustering young regions on the newly discovered region server.
    *   Otherwise, we choose new regions from head of regionsToMove.
-   *   
+   *
    * Another improvement from HBASE-3609 is that we assign regions from
    *   regionsToMove to underloaded servers in round-robin fashion.
    *   Previously one underloaded server would be filled before we move onto
    *   the next underloaded server, leading to clustering of young regions.
-   *   
+   *
    * Finally, we randomly shuffle underloaded servers so that they receive
    *   offloaded regions relatively evenly across calls to balanceCluster().
-   *         
+   *
    * The algorithm is currently implemented as such:
    *
    * <ol>
@@ -289,7 +288,7 @@ public class DefaultLoadBalancer implements LoadBalancer {
       List<HRegionInfo> regions = server.getValue();
       int numToOffload = Math.min(regionCount - max, regions.size());
       // account for the out-of-band regions which were assigned to this server
-      // after some other region server crashed 
+      // after some other region server crashed
       Collections.sort(regions, riComparator);
       int numTaken = 0;
       for (int i = 0; i <= numToOffload; ) {
@@ -587,7 +586,7 @@ public class DefaultLoadBalancer implements LoadBalancer {
     // Group all of the old assignments by their hostname.
     // We can't group directly by ServerName since the servers all have
     // new start-codes.
-    
+
     // Group the servers by their hostname. It's possible we have multiple
     // servers on the same host on different ports.
     ArrayListMultimap<String, ServerName> serversByHostname =
@@ -595,20 +594,20 @@ public class DefaultLoadBalancer implements LoadBalancer {
     for (ServerName server : servers) {
       serversByHostname.put(server.getHostname(), server);
     }
-    
+
     // Now come up with new assignments
     Map<ServerName, List<HRegionInfo>> assignments =
       new TreeMap<ServerName, List<HRegionInfo>>();
-    
+
     for (ServerName server : servers) {
       assignments.put(server, new ArrayList<HRegionInfo>());
     }
-    
+
     // Collection of the hostnames that used to have regions
     // assigned, but for which we no longer have any RS running
     // after the cluster restart.
     Set<String> oldHostsNoLongerPresent = Sets.newTreeSet();
-    
+
     int numRandomAssignments = 0;
     int numRetainedAssigments = 0;
     for (Map.Entry<HRegionInfo, ServerName> entry : regions.entrySet()) {
@@ -637,7 +636,7 @@ public class DefaultLoadBalancer implements LoadBalancer {
         numRetainedAssigments++;
       }
     }
-    
+
     String randomAssignMsg = "";
     if (numRandomAssignments > 0) {
       randomAssignMsg = numRandomAssignments + " regions were assigned " +
@@ -645,7 +644,7 @@ public class DefaultLoadBalancer implements LoadBalancer {
       		"longer present in the cluster. These hosts were:\n  " +
           Joiner.on("\n  ").join(oldHostsNoLongerPresent);
     }
-    
+
     LOG.info("Reassigned " + regions.size() + " regions. " +
         numRetainedAssigments + " retained the pre-restart assignment. " +
         randomAssignMsg);
@@ -680,7 +679,7 @@ public class DefaultLoadBalancer implements LoadBalancer {
       LOG.debug("IOException during HDFSBlocksDistribution computation. for " +
         "region = " + region.getEncodedName() , ioe);
     }
-    
+
     return topServerNames;
   }
 
@@ -712,7 +711,7 @@ public class DefaultLoadBalancer implements LoadBalancer {
    * order as input hosts.
    * @param hosts the list of hosts
    * @return ServerName list
-   */  
+   */
   private List<ServerName> mapHostNameToServerName(List<String> hosts) {
     if ( hosts == null || status == null) {
       return null;
@@ -768,12 +767,16 @@ public class DefaultLoadBalancer implements LoadBalancer {
     return assignments;
   }
 
-  public ServerName randomAssignment(List<ServerName> servers) {
+  public ServerName randomAssignment(HRegionInfo region, List<ServerName> servers) {
     if (servers == null || servers.isEmpty()) {
       LOG.warn("Wanted to do random assignment but no servers to assign to");
       return null;
     }
     return servers.get(RANDOM.nextInt(servers.size()));
+  }
+
+  @Override
+  public void configure() throws IOException {
   }
 
 }

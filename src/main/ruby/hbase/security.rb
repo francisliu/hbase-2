@@ -179,5 +179,11 @@ module Hbase
       end
     end
 
+    def refreshSuperUserGroups
+      admin = org.apache.hadoop.hbase.client.HBaseAdmin.new(@config)
+      access = admin.coprocessorProxy(org.apache.hadoop.hbase.security.access.AccessControllerProtocol.java_class)
+      access.refreshSuperUserGroupsConfiguration
+    end
+
   end
 end

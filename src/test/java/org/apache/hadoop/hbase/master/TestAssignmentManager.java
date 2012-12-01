@@ -157,7 +157,7 @@ public class TestAssignmentManager {
 
   /**
    * Test a balance going on at same time as a master failover
-   * 
+   *
    * @throws IOException
    * @throws KeeperException
    * @throws InterruptedException
@@ -402,7 +402,7 @@ public class TestAssignmentManager {
 
   /**
    * To test closed region handler to remove rit and delete corresponding znode if region in pending
-   * close or closing while processing shutdown of a region server.(HBASE-5927). 
+   * close or closing while processing shutdown of a region server.(HBASE-5927).
    * @throws KeeperException
    * @throws IOException
    */
@@ -412,7 +412,7 @@ public class TestAssignmentManager {
     testCaseWithPartiallyDisabledState(TableState.DISABLING);
     testCaseWithPartiallyDisabledState(TableState.DISABLED);
   }
-  
+
   /**
    * To test if the split region is removed from RIT if the region was in SPLITTING state
    * but the RS has actually completed the splitting in META but went down. See HBASE-6070
@@ -446,7 +446,7 @@ public class TestAssignmentManager {
     am.regionsInTransition.put(REGIONINFO.getEncodedName(), new RegionState(REGIONINFO,
         State.SPLITTING, System.currentTimeMillis(), SERVERNAME_A));
     am.getZKTable().setEnabledTable(REGIONINFO.getTableNameAsString());
-    
+
     RegionTransitionData data = new RegionTransitionData(EventType.RS_ZK_REGION_SPLITTING,
         REGIONINFO.getRegionName(), SERVERNAME_A);
     String node = ZKAssign.getNodeName(this.watcher, REGIONINFO.getEncodedName());
@@ -454,11 +454,11 @@ public class TestAssignmentManager {
     ZKUtil.createAndWatch(this.watcher, node, data.getBytes());
 
     try {
-      
+
       processServerShutdownHandler(ct, am, regionSplitDone);
       // check znode deleted or not.
       // In both cases the znode should be deleted.
-      
+
       if(regionSplitDone){
         assertTrue("Region state of region in SPLITTING should be removed from rit.",
             am.regionsInTransition.isEmpty());
@@ -501,7 +501,7 @@ public class TestAssignmentManager {
     } else {
       am.getZKTable().setDisabledTable(REGIONINFO.getTableNameAsString());
     }
-    
+
     RegionTransitionData data = new RegionTransitionData(EventType.M_ZK_REGION_CLOSING,
         REGIONINFO.getRegionName(), SERVERNAME_A);
     String node = ZKAssign.getNodeName(this.watcher, REGIONINFO.getEncodedName());
@@ -576,7 +576,7 @@ public class TestAssignmentManager {
    * @param hri Region to serialize into HRegionInfo
    * @return A mocked up Result that fakes a Get on a row in the
    * <code>.META.</code> table.
-   * @throws IOException 
+   * @throws IOException
    */
   private Result getMetaTableRowResult(final HRegionInfo hri,
       final ServerName sn)
@@ -595,13 +595,13 @@ public class TestAssignmentManager {
       Bytes.toBytes(sn.getStartcode())));
     return new Result(kvs);
   }
-  
+
   /**
    * @param sn ServerName to use making startcode and server in meta
    * @param hri Region to serialize into HRegionInfo
    * @return A mocked up Result that fakes a Get on a row in the
    * <code>.META.</code> table.
-   * @throws IOException 
+   * @throws IOException
    */
   private Result getMetaTableRowResultAsSplitRegion(final HRegionInfo hri, final ServerName sn)
       throws IOException {
@@ -663,12 +663,12 @@ public class TestAssignmentManager {
       am.shutdown();
     }
   }
-  
+
   /**
    * Tests the processDeadServersAndRegionsInTransition should not fail with NPE
    * when it failed to get the children. Let's abort the system in this
    * situation
-   * @throws ServiceException 
+   * @throws ServiceException
    */
   @Test(timeout = 5000)
   public void testProcessDeadServersAndRegionsInTransitionShouldNotFailWithNPE()
@@ -708,8 +708,8 @@ public class TestAssignmentManager {
    * @param region region to be created as offline
    * @param serverName server event originates from
    * @return Version of znode created.
-   * @throws KeeperException 
-   * @throws IOException 
+   * @throws KeeperException
+   * @throws IOException
    */
   // Copied from SplitTransaction rather than open the method over there in
   // the regionserver package.
@@ -789,9 +789,9 @@ public class TestAssignmentManager {
         server, manager, ct, balancer, executor);
     return am;
   }
-  
+
   /**
-   * TestCase verifies that the regionPlan is updated whenever a region fails to open 
+   * TestCase verifies that the regionPlan is updated whenever a region fails to open
    * and the master tries to process RS_ZK_FAILED_OPEN state.(HBASE-5546).
    */
   @Test
@@ -845,11 +845,11 @@ public class TestAssignmentManager {
       am.shutdown();
     }
   }
-  
+
   /**
    * Test verifies whether assignment is skipped for regions of tables in DISABLING state during
    * clean cluster startup. See HBASE-6281.
-   * 
+   *
    * @throws KeeperException
    * @throws IOException
    * @throws Exception
@@ -903,12 +903,12 @@ public class TestAssignmentManager {
     }
 
     @Override
-    public ServerName randomAssignment(List<ServerName> servers) {
-      ServerName randomServerName = super.randomAssignment(servers);
+    public ServerName randomAssignment(HRegionInfo region, List<ServerName> servers) {
+      ServerName randomServerName = super.randomAssignment(region, servers);
       this.gate.set(true);
       return randomServerName;
     }
-    
+
     @Override
     public Map<ServerName, List<HRegionInfo>> retainAssignment(
         Map<HRegionInfo, ServerName> regions, List<ServerName> servers) {
@@ -956,19 +956,19 @@ public class TestAssignmentManager {
       while (this.gate.get()) Threads.sleep(1);
       super.processRegionsInTransition(data, regionInfo, deadServers, expectedVersion);
     }
-    
+
     @Override
     public void assign(HRegionInfo region, boolean setOfflineInZK, boolean forceNewPlan,
         boolean hijack) {
       assignInvoked = true;
       super.assign(region, setOfflineInZK, forceNewPlan, hijack);
     }
-    
+
     @Override
     public ServerName getRegionServerOfRegion(HRegionInfo hri) {
       return SERVERNAME_A;
     }
-    
+
     /** reset the watcher */
     void setWatcher(ZooKeeperWatcher watcher) {
       this.watcher = watcher;

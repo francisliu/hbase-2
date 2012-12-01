@@ -18,7 +18,9 @@ import java.io.IOException;
 import java.net.InetAddress;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.HashMap;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -36,6 +38,7 @@ import org.apache.hadoop.hbase.ServerName;
 import org.apache.hadoop.hbase.client.Append;
 import org.apache.hadoop.hbase.client.Delete;
 import org.apache.hadoop.hbase.client.Get;
+import org.apache.hadoop.hbase.client.HTable;
 import org.apache.hadoop.hbase.client.Increment;
 import org.apache.hadoop.hbase.client.Put;
 import org.apache.hadoop.hbase.client.Result;
@@ -62,12 +65,14 @@ import org.apache.hadoop.hbase.security.AccessDeniedException;
 import org.apache.hadoop.hbase.security.User;
 import org.apache.hadoop.hbase.security.access.Permission.Action;
 import org.apache.hadoop.hbase.util.Bytes;
+import org.apache.hadoop.hbase.util.Pair;
 
 import com.google.common.collect.ListMultimap;
 import com.google.common.collect.Lists;
 import com.google.common.collect.MapMaker;
 import com.google.common.collect.Maps;
 import com.google.common.collect.Sets;
+import org.apache.hadoop.security.authorize.ProxyUsers;
 
 /**
  * Provides basic authorization checks for data access and administrative
@@ -183,6 +188,7 @@ public class AccessController extends BaseRegionObserver
   // defined only for Endpoint implementation, so it can have way to
   // access region services.
   private RegionCoprocessorEnvironment regionEnv;
+  private MasterCoprocessorEnvironment masterEnv;
 
   /** Mapping of scanner instances to the user who created them */
   private Map<InternalScanner,String> scannerOwners =
@@ -377,7 +383,7 @@ public class AccessController extends BaseRegionObserver
    * @throws IOException if obtaining the current user fails
    * @throws AccessDeniedException if user has no authorization
    */
-  private void requirePermission(byte[] tableName, byte[] family, byte[] qualifier,
+  public void requirePermission(byte[] tableName, byte[] family, byte[] qualifier,
       Action... permissions) throws IOException {
     User user = getActiveUser();
     AuthResult result = null;
@@ -442,7 +448,7 @@ public class AccessController extends BaseRegionObserver
    * @param families The map of column families-qualifiers.
    * @throws AccessDeniedException if the authorization check failed
    */
-  private void requirePermission(Permission.Action perm,
+  public void requirePermission(Permission.Action perm,
         RegionCoprocessorEnvironment env,
         Map<byte[], ? extends Collection<?>> families)
       throws IOException {
@@ -511,12 +517,18 @@ public class AccessController extends BaseRegionObserver
 
   /* ---- MasterObserver implementation ---- */
   public void start(CoprocessorEnvironment env) throws IOException {
+    //This a hacky fix to guarantee that regionservers
+    //which never had regions will have an up to date
+    //proxy user configuration, once it starts serving a region
+    //the same thing goes for the backup master
+    ProxyUsers.refreshSuperUserGroupsConfiguration();
+
     // if running on HMaster
     if (env instanceof MasterCoprocessorEnvironment) {
-      MasterCoprocessorEnvironment e = (MasterCoprocessorEnvironment)env;
+      masterEnv  = (MasterCoprocessorEnvironment)env;
       this.authManager = TableAuthManager.get(
-          e.getMasterServices().getZooKeeper(),
-          e.getConfiguration());
+          masterEnv.getMasterServices().getZooKeeper(),
+          masterEnv.getConfiguration());
     }
 
     // if running at region
@@ -705,29 +717,43 @@ public class AccessController extends BaseRegionObserver
 
 
   /* ---- RegionObserver implementation ---- */
-
+  
   @Override
-  public void postOpen(ObserverContext<RegionCoprocessorEnvironment> c) {
-    RegionCoprocessorEnvironment e = c.getEnvironment();
-    final HRegion region = e.getRegion();
+  public void preOpen(ObserverContext<RegionCoprocessorEnvironment> e) throws IOException {
+    RegionCoprocessorEnvironment env = e.getEnvironment();
+    final HRegion region = env.getRegion();
     if (region == null) {
-      LOG.error("NULL region from RegionCoprocessorEnvironment in postOpen()");
+      LOG.error("NULL region from RegionCoprocessorEnvironment in preOpen()");
       return;
+    }
+    
+    //Checks on who can open a region  
+    if(isSystemOrSuperUser(regionEnv.getConfiguration()) == false){
+      requirePermission(Action.ADMIN);
     }
 
     try {
       this.authManager = TableAuthManager.get(
-          e.getRegionServerServices().getZooKeeper(),
+        env.getRegionServerServices().getZooKeeper(),
           regionEnv.getConfiguration());
     } catch (IOException ioe) {
       // pass along as a RuntimeException, so that the coprocessor is unloaded
       throw new RuntimeException("Error obtaining TableAuthManager", ioe);
-    }
+    }   
+  }
 
+  @Override
+  public void postOpen(ObserverContext<RegionCoprocessorEnvironment> c) {
+    RegionCoprocessorEnvironment env = c.getEnvironment();
+    final HRegion region = env.getRegion();
+    if (region == null) {
+      LOG.error("NULL region from RegionCoprocessorEnvironment in postOpen()");
+      return;
+    }
     if (AccessControlLists.isAclRegion(region)) {
       aclRegion = true;
       try {
-        initialize(e);
+        initialize(env);
       } catch (IOException ex) {
         // if we can't obtain permissions, it's better to fail
         // than perform checks incorrectly
@@ -986,6 +1012,73 @@ public class AccessController extends BaseRegionObserver
     }
   }
 
+  /**
+   * Verifies user has WRITE privileges on
+   * the Column Families invovled in the bulkLoadHFile
+   * request. Specific Column Write privileges are presently
+   * ignored.
+   */
+  @Override
+  public void preBulkLoadHFile(ObserverContext<RegionCoprocessorEnvironment> ctx,
+      List<Pair<byte[], String>> familyPaths) throws IOException {
+    List<byte[]> cfs = new LinkedList<byte[]>();
+    for(Pair<byte[],String> el : familyPaths) {
+      cfs.add(el.getFirst());
+    }
+    requirePermission(Permission.Action.WRITE, ctx.getEnvironment(), cfs);
+  }
+
+  private AuthResult hasSomeAccess(RegionCoprocessorEnvironment e, Action action) throws IOException {
+    User requestUser = getActiveUser();
+    byte[] tableName = e.getRegion().getTableDesc().getName();
+    AuthResult authResult = permissionGranted(requestUser,
+        action, e, Collections.EMPTY_MAP);
+    if (!authResult.isAllowed()) {
+      for(UserPermission userPerm:
+          AccessControlLists.getUserPermissions(regionEnv.getConfiguration(), tableName)) {
+        for(Permission.Action userAction: userPerm.getActions()) {
+          if(userAction.equals(action)) {
+            return AuthResult.allow("Access allowed", requestUser,
+                action, tableName);
+          }
+        }
+      }
+    }
+    return authResult;
+  }
+
+  /**
+   * Authorization check for
+   * SecureBulkLoadProtocol.prepareBulkLoad()
+   * @param e
+   * @throws IOException
+   */
+  //TODO this should end up as a coprocessor hook
+  public void prePrepareBulkLoad(RegionCoprocessorEnvironment e) throws IOException {
+    AuthResult authResult = hasSomeAccess(e, Action.WRITE);
+    logResult(authResult);
+    if (!authResult.isAllowed()) {
+      throw new AccessDeniedException("Insufficient permissions (table=" +
+        e.getRegion().getTableDesc().getNameAsString() + ", action=WRITE)");
+    }
+  }
+
+  /**
+   * Authorization security check for
+   * SecureBulkLoadProtocol.cleanupBulkLoad()
+   * @param e
+   * @throws IOException
+   */
+  //TODO this should end up as a coprocessor hook
+  public void preCleanupBulkLoad(RegionCoprocessorEnvironment e) throws IOException {
+    AuthResult authResult = hasSomeAccess(e, Action.WRITE);
+    logResult(authResult);
+    if (!authResult.isAllowed()) {
+      throw new AccessDeniedException("Insufficient permissions (table=" +
+        e.getRegion().getTableDesc().getNameAsString() + ", action=WRITE)");
+    }
+  }
+
   /* ---- AccessControllerProtocol implementation ---- */
   /*
    * These methods are only allowed to be called against the _acl_ region(s).
@@ -1101,6 +1194,24 @@ public class AccessController extends BaseRegionObserver
   }
 
   @Override
+  public void refreshSuperUserGroupsConfiguration() throws IOException {
+    LOG.info("Refreshing super user/groups configuration");
+    ProxyUsers.refreshSuperUserGroupsConfiguration();
+    if(masterEnv != null) {
+      for(Map.Entry<ServerName,List<HRegionInfo>> el:
+          masterEnv.getMasterServices().getAssignmentManager().getAssignments().entrySet()) {
+        if(el.getValue().size() > 0) {
+          HRegionInfo first = el.getValue().get(0);
+          LOG.debug("Sending refreshSuperUserGroupsConfiguration to "+el.getKey().getHostAndPort());
+          new HTable(masterEnv.getConfiguration(), first.getTableName())
+              .coprocessorProxy(AccessControllerProtocol.class, first.getStartKey())
+              .refreshSuperUserGroupsConfiguration();
+        }
+      }
+    }
+  }
+
+  @Override
   public long getProtocolVersion(String protocol, long clientVersion) throws IOException {
     return PROTOCOL_VERSION;
   }
@@ -1126,5 +1237,46 @@ public class AccessController extends BaseRegionObserver
       }
     }
     return tableName;
+  }
+  
+
+  @Override
+  public void preClose(ObserverContext<RegionCoprocessorEnvironment> e, boolean abortRequested)
+      throws IOException {
+    requirePermission(Permission.Action.ADMIN);
+  }
+
+  @Override
+  public void preStopRegionServer(ObserverContext<RegionCoprocessorEnvironment> c)
+      throws IOException {
+    requirePermission(Permission.Action.ADMIN);
+  }
+
+  @Override
+  public void preLockRow(ObserverContext<RegionCoprocessorEnvironment> ctx, byte[] regionName,
+      byte[] row) throws IOException {
+    requirePermission(getTableName(ctx.getEnvironment()), null, null, TablePermission.Action.WRITE,
+      TablePermission.Action.CREATE);
+  }
+
+  @Override
+  public void preUnlockRow(ObserverContext<RegionCoprocessorEnvironment> ctx, byte[] regionName,
+      long lockId) throws IOException {
+    requirePermission(getTableName(ctx.getEnvironment()), null, null, Action.WRITE, Action.CREATE);
+  }
+  
+  private boolean isSystemOrSuperUser(Configuration conf) throws IOException{
+    User user = User.getCurrent();
+    if (user == null) {
+      throw new IOException("Unable to obtain the current user, " +
+          "authorization checks for internal operations will not work correctly!");
+    }
+    
+    String currentUser = user.getShortName();
+    List<String> superusers = Lists.asList(currentUser, conf.getStrings(
+      AccessControlLists.SUPERUSER_CONF_KEY, new String[0]));
+    
+    User activeUser = getActiveUser();
+    return superusers.contains(activeUser.getShortName());
   }
 }

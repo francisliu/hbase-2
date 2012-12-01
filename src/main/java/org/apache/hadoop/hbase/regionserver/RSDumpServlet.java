@@ -78,11 +78,12 @@ public class RSDumpServlet extends StateDumpServlet {
     out.flush();
     conf.writeXml(os);
     os.flush();
-    
-    out.println("\n\nLogs");
-    out.println(LINE);
-    long tailKb = getTailKbParam(request);
-    LogMonitoring.dumpTailOfLogs(out, tailKb);
+
+//  disable logs for security reasons
+//    out.println("\n\nLogs");
+//    out.println(LINE);
+//    long tailKb = getTailKbParam(request);
+//    LogMonitoring.dumpTailOfLogs(out, tailKb);
     
     out.println("\n\nRS Queue:");
     out.println(LINE);

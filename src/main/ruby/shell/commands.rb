@@ -45,6 +45,10 @@ module Shell
         shell.hbase_admin
       end
 
+      def group_admin
+        shell.group_admin
+      end
+
       def table(name)
         shell.hbase_table(name)
       end

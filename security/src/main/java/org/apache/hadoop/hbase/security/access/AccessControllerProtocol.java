@@ -107,4 +107,12 @@ public interface AccessControllerProtocol extends CoprocessorProtocol {
    */
   public void checkPermissions(Permission[] permissions)
       throws IOException;
+
+  /**
+   * Reloads the hadoop super user configuration
+   * @return true on success
+   * @throws IOException
+   */
+  public void refreshSuperUserGroupsConfiguration()
+      throws IOException;
 }

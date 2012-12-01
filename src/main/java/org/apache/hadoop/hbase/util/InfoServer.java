@@ -78,19 +78,7 @@ public class InfoServer extends HttpServer {
       }
     }
     if (oldLogsContext != null) {
-      this.defaultContexts.put(oldLogsContext, Boolean.FALSE);
-    }
-    // Now do my logs.
-    // Set up the context for "/logs/" if "hbase.log.dir" property is defined.
-    String logDir = System.getProperty("hbase.log.dir");
-    if (logDir != null) {
-      // This is a little presumptious but seems to work.
-      Context logContext =
-        new Context((ContextHandlerCollection)this.webServer.getHandler(),
-          logsContextPath);
-      logContext.setResourceBase(logDir);
-      logContext.addServlet(DefaultServlet.class, "/");
-      defaultContexts.put(logContext, true);
+      this.defaultContexts.remove(oldLogsContext);
     }
   }
 

@@ -423,7 +423,7 @@ public class LocalHBaseCluster {
   /**
    * Shut down the mini HBase cluster
    */
-  public void shutdown() {
+  public void shutdown() throws IOException {
     JVMClusterUtil.shutdown(this.masterThreads, this.regionThreads);
   }
 

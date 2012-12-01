@@ -36,6 +36,7 @@ import org.apache.hadoop.hbase.io.encoding.DataBlockEncoder;
 import org.apache.hadoop.hbase.io.encoding.DataBlockEncoding;
 import org.apache.hadoop.hbase.io.hfile.BlockType.BlockCategory;
 import org.apache.hadoop.hbase.io.hfile.HFile.FileInfo;
+import org.apache.hadoop.hbase.regionserver.metrics.SchemaMetrics;
 import org.apache.hadoop.hbase.util.Bytes;
 import org.apache.hadoop.hbase.util.IdLock;
 import org.apache.hadoop.io.WritableUtils;
@@ -102,6 +103,9 @@ public class HFileReaderV2 extends AbstractHFileReader {
       throws IOException {
     super(path, trailer, fsdis, fsdisNoFsChecksum, size, 
           closeIStream, cacheConf, hfs);
+    if(hfs != null) {
+      SchemaMetrics.configureGlobally(hfs.getConf());
+    }
     trailer.expectMajorVersion(2);
     validateMinorVersion(path, trailer.getMinorVersion());
     HFileBlock.FSReaderV2 fsBlockReaderV2 = new HFileBlock.FSReaderV2(fsdis,

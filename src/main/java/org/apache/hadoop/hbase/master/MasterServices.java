@@ -105,4 +105,9 @@ public interface MasterServices extends Server {
    */
   public <T extends CoprocessorProtocol> boolean registerProtocol(
       Class<T> protocol, T handler);
+
+  /**
+   * @return load balancer
+   */
+  public LoadBalancer getLoadBalancer();
 }

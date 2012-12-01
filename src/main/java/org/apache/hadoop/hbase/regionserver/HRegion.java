@@ -3248,8 +3248,22 @@ public class HRegion implements HeapSize { // , Writable{
    * @return true if successful, false if failed recoverably
    * @throws IOException if failed unrecoverably.
    */
-  public boolean bulkLoadHFiles(List<Pair<byte[], String>> familyPaths)
-  throws IOException {
+  public boolean bulkLoadHFiles(List<Pair<byte[], String>> familyPaths) throws IOException {
+    return bulkLoadHFiles(familyPaths, null);
+  }
+
+  /**
+   * Attempts to atomically load a group of hfiles.  This is critical for loading
+   * rows with multiple column families atomically.
+   *
+   * @param familyPaths List of Pair<byte[] column family, String hfilePath>
+   * @param bulkLoadListener Internal hooks enabling massaging/preparation of a
+   * file about to be bulk loaded
+   * @return true if successful, false if failed recoverably
+   * @throws IOException if failed unrecoverably.
+   */
+  public boolean bulkLoadHFiles(List<Pair<byte[], String>> familyPaths,
+      BulkLoadListener bulkLoadListener) throws IOException {
     Preconditions.checkNotNull(familyPaths);
     // we need writeLock for multi-family bulk load
     startBulkRegionOperation(hasMultipleColumnFamilies(familyPaths));
@@ -3309,7 +3323,14 @@ public class HRegion implements HeapSize { // , Writable{
         String path = p.getSecond();
         Store store = getStore(familyName);
         try {
-          store.bulkLoadHFile(path);
+          String finalPath = path;
+          if(bulkLoadListener != null) {
+            finalPath = bulkLoadListener.prepareBulkLoad(familyName, path);
+          }
+          store.bulkLoadHFile(finalPath);
+          if(bulkLoadListener != null) {
+            bulkLoadListener.doneBulkLoad(familyName, path);
+          }
         } catch (IOException ioe) {
           // a failure here causes an atomicity violation that we currently
           // cannot recover from since it is likely a failed hdfs operation.
@@ -3317,6 +3338,13 @@ public class HRegion implements HeapSize { // , Writable{
           // TODO Need a better story for reverting partial failures due to HDFS.
           LOG.error("There was a partial failure due to IO when attempting to" +
               " load " + Bytes.toString(p.getFirst()) + " : "+ p.getSecond());
+          if(bulkLoadListener != null) {
+            try {
+              bulkLoadListener.failedBulkLoad(familyName, path);
+            } catch (Exception ex) {
+              LOG.error("Error while calling failedBulkLoad", ex);
+            }
+          }
           throw ioe;
         }
       }
@@ -5271,5 +5299,15 @@ public class HRegion implements HeapSize { // , Writable{
        BlockCache bc = new CacheConfig(c).getBlockCache();
        if (bc != null) bc.shutdown();
      }
+  }
+
+  public static interface BulkLoadListener {
+
+    String prepareBulkLoad(byte[] family, String srcPath) throws IOException;
+
+    void doneBulkLoad(byte[] family, String srcPath) throws IOException;
+
+    void failedBulkLoad(byte[] family, String srcPath) throws IOException;
+
   }
 }
