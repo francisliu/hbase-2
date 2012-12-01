@@ -2969,10 +2969,11 @@ public class HRegionServer implements HRegionInterface, HBaseRPCErrorHandler,
     HRegion region = this.getFromOnlineRegions(encodedRegionNameStr);
     if (null != region) {
       return closeRegion(region.getRegionInfo(), abort, zk);
-    }
+    }else{
     LOG.error("The specified region name" + encodedRegionNameStr
         + " does not exist to close the region.");
     return false;
+    }
   }
 
   // Manual remote region administration RPCs
