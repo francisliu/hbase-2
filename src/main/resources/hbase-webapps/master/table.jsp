@@ -62,44 +62,6 @@
   "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd"> 
 -->
 <html xmlns="http://www.w3.org/1999/xhtml">
-
-<%
-  String action = request.getParameter("action");
-  String key = request.getParameter("key");
-  if ( !readOnly && action != null ) {
-%>
-<head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/>
-<link rel="stylesheet" type="text/css" href="/static/hbase.css" />
-<meta http-equiv="refresh" content="5,javascript:history.back()" />
-</head>
-<body>
-<a id="logo" href="http://wiki.apache.org/lucene-hadoop/Hbase"><img src="/static/hbase_logo.png" alt="HBase Logo" title="HBase Logo" /></a>
-<h1 id="page_title">Table action request accepted</h1>
-<p><hr><p>
-<%
-  if (action.equals("split")) {
-    if (key != null && key.length() > 0) {
-      hbadmin.split(key);
-    } else {
-      hbadmin.split(tableName);
-    }
-    
-    %> Split request accepted. <%
-  } else if (action.equals("compact")) {
-    if (key != null && key.length() > 0) {
-      hbadmin.compact(key);
-    } else {
-      hbadmin.compact(tableName);
-    }
-    %> Compact request accepted. <%
-  }
-%>
-<p>Go <a href="javascript:history.back()">Back</a>, or wait for the redirect.
-
-</body>
-<%
-} else {
-%>
 <head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/>
 <title>Table: <%= tableName %></title>
 <link rel="stylesheet" type="text/css" href="/static/hbase.css" />
@@ -237,49 +199,5 @@
 
 HConnectionManager.deleteConnection(hbadmin.getConfiguration(), false);
 %>
-
-
-<% if (!readOnly) { %>
-<p><hr><p>
-Actions:
-<p>
-<center>
-<table style="border-style: none" width="90%">
-<tr>
-  <form method="get">
-  <input type="hidden" name="action" value="compact">
-  <input type="hidden" name="name" value="<%= tableName %>">
-  <td style="border-style: none; text-align: center">
-      <input style="font-size: 12pt; width: 10em" type="submit" value="Compact"></td>
-  <td style="border-style: none" width="5%">&nbsp;</td>
-  <td style="border-style: none">Region Key (optional):<input type="text" name="key" size="40"></td>
-  <td style="border-style: none">This action will force a compaction of all
-  regions of the table, or, if a key is supplied, only the region containing the
-  given key.</td>
-  </form>
-</tr>
-<tr><td style="border-style: none" colspan="4">&nbsp;</td></tr>
-<tr>
-  <form method="get">
-  <input type="hidden" name="action" value="split">
-  <input type="hidden" name="name" value="<%= tableName %>">
-  <td style="border-style: none; text-align: center">
-      <input style="font-size: 12pt; width: 10em" type="submit" value="Split"></td>
-  <td style="border-style: none" width="5%">&nbsp;</td>
-  <td style="border-style: none">Region Key (optional):<input type="text" name="key" size="40"></td>
-  <td style="border-style: none">This action will force a split of all eligible
-  regions of the table, or, if a key is supplied, only the region containing the
-  given key. An eligible region is one that does not contain any references to
-  other regions. Split requests for noneligible regions will be ignored.</td>
-  </form>
-</tr>
-</table>
-</center>
-<p>
-<% } %>
-<%
-}
-%>
-
 </body>
 </html>
