@@ -668,7 +668,18 @@ public final class HConstants {
       Arrays.asList(new String[] { HREGION_LOGDIR_NAME, HREGION_OLDLOGDIR_NAME, CORRUPT_DIR_NAME,
           Bytes.toString(META_TABLE_NAME), Bytes.toString(ROOT_TABLE_NAME), SPLIT_LOGDIR_NAME,
           HBCK_SIDELINEDIR_NAME, HFILE_ARCHIVE_DIRECTORY }));
-
+  
+  /** Health script related settings */
+  public static final String RS_HEALTH_SCRIPT_LOC = "hbase.regionserver.health.script.location";
+  public static final String RS_HEALTH_SCRIPT_TIMEOUT = "hbase.regionserver.health.script.timeout";
+  public static final String RS_HEALTH_CHORE_WAKE_FREQ = "hbase.regionserver.health.script.frequency";
+  public static final long DEFAULT_RS_HEALTH_SCRIPT_TIMEOUT = 60000;
+  /**
+   * The maximum number of health check failures a server can encounter consecutively.
+   */
+  public static final String RS_HEALTH_FAILURE_THRESHOLD = "hbase.regionserver.health.failure.threshold";
+  public static final int DEFAULT_RS_HEALTH_FAILURE_THRESHOLD = 3;
+  
   private HConstants() {
     // Can't be instantiated with this ctor.
   }
