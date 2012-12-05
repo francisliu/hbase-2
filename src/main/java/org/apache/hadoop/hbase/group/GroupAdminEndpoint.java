@@ -96,7 +96,7 @@ public class GroupAdminEndpoint extends BaseEndpointCoprocessor
       Map<String,List<HRegionInfo>> assignments = getOnlineRegions();
       for(ServerName serverName: master.getServerManager().getOnlineServersList()) {
         String hostPort = serverName.getHostAndPort();
-        if(servers.contains(hostPort) && assignments.containsKey(hostPort)) {
+        if (servers.contains(hostPort) && assignments.containsKey(hostPort)) {
           regions.addAll(assignments.get(hostPort));
         }
 			}
@@ -142,7 +142,7 @@ public class GroupAdminEndpoint extends BaseEndpointCoprocessor
       LOG.info("GroupMoveServerHanndlerSubmitted: "+plan.getTargetGroup());
     } catch(Exception e) {
       LOG.error("Failed to submit GroupMoveServerWorker", e);
-      if(worker != null) {
+      if (worker != null) {
         worker.complete();
       }
       throw new DoNotRetryIOException("Failed to submit GroupMoveServerWorker",e);
@@ -163,7 +163,7 @@ public class GroupAdminEndpoint extends BaseEndpointCoprocessor
   public void removeGroup(String name) throws IOException {
     GroupInfoManager manager = getGroupInfoManager();
     synchronized (manager) {
-      if(listTablesOfGroup(name).size() > 0) {
+      if (listTablesOfGroup(name).size() > 0) {
         throw new DoNotRetryIOException("Group "+name+" must have no associated tables.");
       }
       manager.removeGroup(name);
@@ -194,7 +194,7 @@ public class GroupAdminEndpoint extends BaseEndpointCoprocessor
     Map<String,List<HRegionInfo>> result = new HashMap<String, List<HRegionInfo>>();
     for(Map.Entry<ServerName, java.util.List<HRegionInfo>> el:
         master.getAssignmentManager().getAssignments().entrySet()) {
-      if(!result.containsKey(el.getKey().getHostAndPort())) {
+      if (!result.containsKey(el.getKey().getHostAndPort())) {
         result.put(el.getKey().getHostAndPort(),new LinkedList<HRegionInfo>());
       }
       result.get(el.getKey().getHostAndPort()).addAll(el.getValue());

@@ -482,7 +482,7 @@ public class TestGroupBasedLoadBalancer {
             TreeSet<String> hostAndPort = new TreeSet<String>();
             hostAndPort.add(servers.get(index).getHostAndPort());
             GroupInfo groupInfo = new GroupInfo(grpName);
-            groupInfo.addAll(hostAndPort);
+            groupInfo.addAllServers(hostAndPort);
             groupMap.put(grpName, groupInfo);
             index++;
         }

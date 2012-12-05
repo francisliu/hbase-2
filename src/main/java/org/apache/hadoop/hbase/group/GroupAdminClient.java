@@ -119,7 +119,7 @@ public class GroupAdminClient implements GroupAdmin {
         LOG.debug("Sleep interrupted", e);
       }
     } while(found && System.currentTimeMillis() <= endTime);
-    if(found) {
+    if (found) {
       throw new DoNotRetryIOException("Operation timed out.");
     }
   }

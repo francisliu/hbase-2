@@ -22,6 +22,7 @@ package org.apache.hadoop.hbase.group;
 
 import java.io.Serializable;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.Set;
 
@@ -33,6 +34,7 @@ import com.google.common.collect.Sets;
 public class GroupInfo implements Serializable {
 
 	public static final String DEFAULT_GROUP = "default";
+  public static final String OFFLINE_DEFAULT_GROUP = "_offline_default";
   public static final String TRANSITION_GROUP_PREFIX = "_transition_";
 	public static final String GROUP_KEY = "rs_group";
 
@@ -75,7 +77,7 @@ public class GroupInfo implements Serializable {
 	 *
 	 * @param hostPort the servers
 	 */
-	public void addAll(Collection<String> hostPort){
+	public void addAllServers(Collection<String> hostPort){
 		this.servers.addAll(hostPort);
 	}
 
@@ -110,7 +112,7 @@ public class GroupInfo implements Serializable {
 	 * @return
 	 */
 	public Set<String> getServers() {
-		return this.servers;
+		return Collections.unmodifiableSet(this.servers);
 	}
 
 	/**
@@ -127,11 +129,15 @@ public class GroupInfo implements Serializable {
    * @return
    */
   public Set<String> getTables() {
-    return tables;
+    return Collections.unmodifiableSet(tables);
   }
 
   public void addTable(String table) {
     tables.add(table);
+  }
+
+  public void addAllTables(Collection<String> arg) {
+    tables.addAll(arg);
   }
 
   public boolean containsTable(String table) {

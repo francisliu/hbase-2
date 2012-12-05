@@ -203,7 +203,6 @@ public class TestGroups {
         ServerName.parseServerName(newGroup.getServers().iterator().next());
 		master.move(region.getEncodedNameAsBytes(),
         Bytes.toBytes(tobeAssigned.toString()));
-
     while (groupAdmin.listOnlineRegionsOfGroup(GroupInfo.DEFAULT_GROUP).size() != regions.size()) {
       Thread.sleep(100);
     }
@@ -214,6 +213,24 @@ public class TestGroups {
       tobeAssigned.getPort());
 		assertFalse(rs.getOnlineRegions().contains(region));
 	}
+
+  //TODO get this working
+//  @Test
+  public void testZKCache() throws IOException, InterruptedException {
+
+    GroupAdminClient groupAdmin = new GroupAdminClient(TEST_UTIL.getConfiguration());
+    String newGroup =  "my_group";
+    String newGroupHost = TEST_UTIL.getHBaseCluster().getRegionServer(1).getServerName().getHostname();
+    int newGroupPort = TEST_UTIL.getHBaseCluster().getRegionServer(1).getServerName().getPort();
+    groupAdmin.addGroup(newGroup);
+    groupAdmin.moveServers(Sets.newHashSet(newGroupHost+":"+newGroupPort), newGroup);
+    HRegionInterface rs = admin.getConnection().getHRegionConnection(newGroupHost, newGroupPort);
+    while (rs.getOnlineRegions().size() > 0) {
+      Thread.sleep(100);
+    }
+    TEST_UTIL.getHBaseCluster().stopRegionServer(2);
+    TEST_UTIL.getHBaseCluster().stopRegionServer(3);
+  }
 
 	static GroupInfo addGroup(GroupAdminClient gAdmin, String groupName,
 			int serverCount) throws IOException, InterruptedException {

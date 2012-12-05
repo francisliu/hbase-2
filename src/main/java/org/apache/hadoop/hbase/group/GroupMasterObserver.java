@@ -41,7 +41,7 @@ public class GroupMasterObserver extends BaseMasterObserver {
   public void postDeleteTable(ObserverContext<MasterCoprocessorEnvironment> ctx, byte[] tableName) throws IOException {
     String table = Bytes.toString(tableName);
     String groupName = getGroupInfoManager().getGroupOfTable(table);
-    if(!GroupInfo.DEFAULT_GROUP.equals(groupName)) {
+    if (!GroupInfo.DEFAULT_GROUP.equals(groupName)) {
       getGroupInfoManager().moveTables(Sets.newHashSet(table), GroupInfo.DEFAULT_GROUP);
     }
   }
