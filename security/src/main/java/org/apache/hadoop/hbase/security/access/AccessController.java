@@ -705,29 +705,43 @@ public class AccessController extends BaseRegionObserver
 
 
   /* ---- RegionObserver implementation ---- */
-
+  
   @Override
-  public void postOpen(ObserverContext<RegionCoprocessorEnvironment> c) {
-    RegionCoprocessorEnvironment e = c.getEnvironment();
-    final HRegion region = e.getRegion();
+  public void preOpen(ObserverContext<RegionCoprocessorEnvironment> e) throws IOException {
+    RegionCoprocessorEnvironment env = e.getEnvironment();
+    final HRegion region = env.getRegion();
     if (region == null) {
-      LOG.error("NULL region from RegionCoprocessorEnvironment in postOpen()");
+      LOG.error("NULL region from RegionCoprocessorEnvironment in preOpen()");
       return;
+    }
+    
+    //Checks on who can open a region  
+    if(isSystemOrSuperUser(env.getConfiguration()) == false){
+      requirePermission(Action.ADMIN);
     }
 
     try {
       this.authManager = TableAuthManager.get(
-          e.getRegionServerServices().getZooKeeper(),
-          regionEnv.getConfiguration());
+        env.getRegionServerServices().getZooKeeper(),
+        env.getConfiguration());
     } catch (IOException ioe) {
       // pass along as a RuntimeException, so that the coprocessor is unloaded
       throw new RuntimeException("Error obtaining TableAuthManager", ioe);
-    }
+    }   
+  }
 
+  @Override
+  public void postOpen(ObserverContext<RegionCoprocessorEnvironment> c) {
+    RegionCoprocessorEnvironment env = c.getEnvironment();
+    final HRegion region = env.getRegion();
+    if (region == null) {
+      LOG.error("NULL region from RegionCoprocessorEnvironment in postOpen()");
+      return;
+    }
     if (AccessControlLists.isAclRegion(region)) {
       aclRegion = true;
       try {
-        initialize(e);
+        initialize(env);
       } catch (IOException ex) {
         // if we can't obtain permissions, it's better to fail
         // than perform checks incorrectly
@@ -1126,5 +1140,46 @@ public class AccessController extends BaseRegionObserver
       }
     }
     return tableName;
+  }
+  
+
+  @Override
+  public void preClose(ObserverContext<RegionCoprocessorEnvironment> e, boolean abortRequested)
+      throws IOException {
+    requirePermission(Permission.Action.ADMIN);
+  }
+
+  @Override
+  public void preStopRegionServer(ObserverContext<RegionCoprocessorEnvironment> c)
+      throws IOException {
+    requirePermission(Permission.Action.ADMIN);
+  }
+
+  @Override
+  public void preLockRow(ObserverContext<RegionCoprocessorEnvironment> ctx, byte[] regionName,
+      byte[] row) throws IOException {
+    requirePermission(getTableName(ctx.getEnvironment()), null, null, TablePermission.Action.WRITE,
+      TablePermission.Action.CREATE);
+  }
+
+  @Override
+  public void preUnlockRow(ObserverContext<RegionCoprocessorEnvironment> ctx, byte[] regionName,
+      long lockId) throws IOException {
+    requirePermission(getTableName(ctx.getEnvironment()), null, null, Action.WRITE, Action.CREATE);
+  }
+  
+  private boolean isSystemOrSuperUser(Configuration conf) throws IOException{
+    User user = User.getCurrent();
+    if (user == null) {
+      throw new IOException("Unable to obtain the current user, " +
+          "authorization checks for internal operations will not work correctly!");
+    }
+    
+    String currentUser = user.getShortName();
+    List<String> superusers = Lists.asList(currentUser,conf.getStrings(
+      AccessControlLists.SUPERUSER_CONF_KEY, new String[0]));
+    
+    User activeUser = getActiveUser();
+    return superusers.contains(activeUser.getShortName());
   }
 }
