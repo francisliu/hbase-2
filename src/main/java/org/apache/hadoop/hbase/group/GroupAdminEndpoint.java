@@ -29,6 +29,7 @@ import org.apache.hadoop.hbase.ServerName;
 import org.apache.hadoop.hbase.coprocessor.BaseEndpointCoprocessor;
 import org.apache.hadoop.hbase.coprocessor.MasterCoprocessorEnvironment;
 import org.apache.hadoop.hbase.master.MasterServices;
+import org.apache.hadoop.hbase.util.Bytes;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -152,6 +153,10 @@ public class GroupAdminEndpoint extends BaseEndpointCoprocessor
   @Override
   public void moveTables(Set<String> tables, String targetGroup) throws IOException {
     getGroupInfoManager().moveTables(tables, targetGroup);
+    for(String table: tables) {
+      master.getAssignmentManager().unassign(
+          master.getAssignmentManager().getRegionsOfTable(Bytes.toBytes(table)));
+    }
   }
 
   @Override

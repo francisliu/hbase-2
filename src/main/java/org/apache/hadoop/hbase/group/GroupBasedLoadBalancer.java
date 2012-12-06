@@ -402,7 +402,7 @@ public class GroupBasedLoadBalancer implements LoadBalancer {
   }
 
   public boolean isOnline() {
-    return groupManager.isOnline();
+    return groupManager != null && groupManager.isOnline();
   }
 
   @InterfaceAudience.Private

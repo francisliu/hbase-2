@@ -154,6 +154,8 @@ public class GroupMoveServerWorker implements Runnable {
         if (transGroup != null) {
           groupManager.removeGroup(transGroup);
         }
+        LOG.debug("Move done "+plan.getServers().size()+
+            " servers from transition group: "+transGroup+" to final group: "+plan.getTargetGroup());
       }
     } finally {
       //remove servers in transition

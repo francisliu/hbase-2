@@ -27,6 +27,8 @@ import java.util.HashSet;
 import java.util.Set;
 
 import com.google.common.collect.Sets;
+import org.codehaus.jackson.annotate.JsonCreator;
+import org.codehaus.jackson.annotate.JsonProperty;
 
 /**
  * Stores the group information of region server groups.
@@ -46,6 +48,16 @@ public class GroupInfo implements Serializable {
 		this.name = name;
     this.servers = new HashSet<String>();
     this.tables = new HashSet<String>();
+	}
+
+  //constructor for jackson
+  @JsonCreator
+  private GroupInfo(@JsonProperty("name") String name,
+                    @JsonProperty("servers") Set<String> servers,
+                    @JsonProperty("tables") Set<String> tables) {
+		this.name = name;
+    this.servers = servers;
+    this.tables = tables;
 	}
 
   public GroupInfo(GroupInfo src) {

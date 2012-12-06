@@ -70,15 +70,14 @@ public class GroupInfoManagerImpl implements GroupInfoManager {
   private HTable table;
   private ZooKeeperWatcher watcher;
   private GroupStartupWorker groupStartupWorker;
-  private HBaseAdmin admin;
 
   public GroupInfoManagerImpl(MasterServices master) throws IOException {
 		this.groupMap = new ConcurrentHashMap<String, GroupInfo>();
 		this.tableMap = new ConcurrentHashMap<String, GroupInfo>();
     this.master = master;
     this.watcher = master.getZooKeeper();
-    this.admin = new HBaseAdmin(master.getConfiguration());
     groupStartupWorker = new GroupStartupWorker(this, master, GROUP_TABLE_NAME_BYTES);
+    refresh();
     groupStartupWorker.start();
   }
 
@@ -157,6 +156,11 @@ public class GroupInfoManagerImpl implements GroupInfoManager {
         defaultInfo.addServer(serverName.getHostAndPort());
       }
       for(String tableName: master.getTableDescriptors().getAll().keySet()) {
+        if (!tableMap.containsKey(tableName)) {
+          defaultInfo.addTable(tableName);
+        }
+      }
+      for(String tableName: GroupBasedLoadBalancer.SPECIAL_TABLES) {
         if (!tableMap.containsKey(tableName)) {
           defaultInfo.addTable(tableName);
         }
@@ -261,6 +265,7 @@ public class GroupInfoManagerImpl implements GroupInfoManager {
       if(ZKUtil.checkExists(watcher,groupPath) != -1) {
         byte[] data = ZKUtil.getData(watcher, groupPath);
         ObjectMapper mapper = new ObjectMapper();
+        LOG.debug("Reading ZK GroupInfo:"+Bytes.toString(data));
         groupList.addAll(
             (List<GroupInfo>) mapper.readValue(data, new TypeReference<List<GroupInfo>>() {
             }));
@@ -322,6 +327,7 @@ public class GroupInfoManagerImpl implements GroupInfoManager {
       ObjectMapper mapper = new ObjectMapper();
       ByteArrayOutputStream bos = new ByteArrayOutputStream();
       mapper.writeValue(bos, zGroup);
+      LOG.debug("Writing ZK GroupInfo:"+Bytes.toString(bos.toByteArray()));
       ZKUtil.createSetData(watcher, groupPath, bos.toByteArray());
     } catch (KeeperException e) {
       throw new IOException("Failed to write to groupZNode",e);
@@ -396,7 +402,6 @@ public class GroupInfoManagerImpl implements GroupInfoManager {
       waitForGroupTableOnline();
       isOnline = true;
       LOG.info("GroupBasedLoadBalancer is now online");
-      //balance cluster to correct the random assignments if needed
       while(masterServices.getAssignmentManager().getRegionsInTransition().size() > 0) {
         try {
           Thread.sleep(100);
@@ -404,7 +409,6 @@ public class GroupInfoManagerImpl implements GroupInfoManager {
           LOG.info("Sleep Interrupted", e);
         }
       }
-      //TODO correct assignment for special tables here?
     }
 
     public void waitForGroupTableOnline() {
