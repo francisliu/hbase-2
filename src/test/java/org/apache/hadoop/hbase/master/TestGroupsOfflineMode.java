@@ -37,6 +37,7 @@ import org.apache.hadoop.hbase.group.GroupInfo;
 import org.apache.hadoop.hbase.group.GroupInfoManager;
 import org.apache.hadoop.hbase.group.GroupMasterObserver;
 import org.apache.hadoop.hbase.ipc.HRegionInterface;
+import org.apache.hadoop.hbase.regionserver.HRegionServer;
 import org.apache.hadoop.hbase.util.Bytes;
 import org.junit.After;
 import org.junit.AfterClass;
@@ -97,42 +98,43 @@ public class TestGroupsOfflineMode {
   public void testOffline() throws IOException, InterruptedException {
     //table should be after group table name
     //so it gets assigned later
-    String testTable = GroupInfoManager.GROUP_TABLE_NAME+"1";
-    TEST_UTIL.createTable(Bytes.toBytes(testTable), Bytes.toBytes("f"));
+    String failoverTable = GroupInfoManager.GROUP_TABLE_NAME+"1";
+    TEST_UTIL.createTable(Bytes.toBytes(failoverTable), Bytes.toBytes("f"));
 
     //adding testTable to special group so it gets assigned during offline mode
-    GroupBasedLoadBalancer.SPECIAL_TABLES.add(testTable);
+    GroupBasedLoadBalancer.SPECIAL_TABLES.add(failoverTable);
 
     GroupAdminClient groupAdmin = new GroupAdminClient(TEST_UTIL.getConfiguration());
+
+    HRegionServer killRS = cluster.getRegionServer(0);
+    HRegionServer groupRS = cluster.getRegionServer(1);
+    HRegionServer failoverRS = cluster.getRegionServer(2);
 
     String newGroup =  "my_group";
     groupAdmin.addGroup(newGroup);
     for(HRegionInfo  regionInfo:
-        cluster.getMaster().getAssignmentManager().getAssignments().get(cluster.getRegionServer(2).getServerName())) {
+        cluster.getMaster().getAssignmentManager().getAssignments().get(failoverRS.getServerName())) {
       cluster.getMaster().move(regionInfo.getEncodedNameAsBytes(),
-          Bytes.toBytes(cluster.getRegionServer(0).getServerName().getServerName()));
+          Bytes.toBytes(killRS.getServerName().getServerName()));
     }
     LOG.info("Waiting for region unassignments on failover RS...");
-    while(cluster.getMaster().getAssignmentManager().getAssignments().get(cluster.getRegionServer(2).getServerName()).size() > 0) {
+    while(cluster.getMaster().getAssignmentManager().getAssignments().get(failoverRS.getServerName()).size() > 0) {
       Thread.sleep(100);
     }
 
-    String newGroupHost = cluster.getRegionServer(1).getServerName().getHostname();
-    int newGroupPort = TEST_UTIL.getHBaseCluster().getRegionServer(1).getServerName().getPort();
-    groupAdmin.moveServers(Sets.newHashSet(newGroupHost+":"+newGroupPort), newGroup);
-    HRegionInterface rs = admin.getConnection().getHRegionConnection(newGroupHost, newGroupPort);
+    groupAdmin.moveServers(Sets.newHashSet(groupRS.getServerName().getHostAndPort()), newGroup);
     //move server to group and make sure all tables are assigned
-    while (rs.getOnlineRegions().size() > 0 ||
+    while (groupRS.getOnlineRegions().size() > 0 ||
         groupAdmin.listOnlineRegionsOfGroup(GroupInfo.DEFAULT_GROUP).size() != TEST_UTIL.getMetaTableRows().size()+2) {
       Thread.sleep(100);
     }
     //move table to group and wait
     groupAdmin.moveTables(Sets.newHashSet(GroupInfoManager.GROUP_TABLE_NAME), newGroup);
     LOG.info("Waiting for move table...");
-    while (rs.getOnlineRegions().size() < 1) {
+    while (groupRS.getOnlineRegions().size() < 1) {
       Thread.sleep(100);
     }
-    TEST_UTIL.getHBaseCluster().getRegionServer(1).stop("die");
+    groupRS.stop("die");
     //race condition here
     TEST_UTIL.getHBaseCluster().getMaster().stopMaster();
     LOG.info("Waiting for offline mode...");
@@ -147,17 +149,17 @@ public class TestGroupsOfflineMode {
     assertFalse(((GroupBasedLoadBalancer)TEST_UTIL.getHBaseCluster().getMaster().getLoadBalancer()).isOnline());
     //verify the group affiliation that's loaded from ZK instead of tables
     assertEquals(newGroup, groupAdmin.getGroupInfoOfTable(GroupInfoManager.GROUP_TABLE_NAME).getName());
-    assertEquals(GroupInfo.OFFLINE_DEFAULT_GROUP, groupAdmin.getGroupInfoOfTable(testTable).getName());
+    assertEquals(GroupInfo.OFFLINE_DEFAULT_GROUP, groupAdmin.getGroupInfoOfTable(failoverTable).getName());
 
     //kill final regionserver to see the failover happens for all tables
     //except GROUP table since it's group does not have any online RS
-    TEST_UTIL.getHBaseCluster().getRegionServer(0).stop("die");
+    killRS.stop("die");
     master = TEST_UTIL.getHBaseCluster().getMaster();
     LOG.info("Waiting for new table assignment...");
-    while(TEST_UTIL.getHBaseCluster().getRegionServer(2).getOnlineRegions(Bytes.toBytes(testTable)).size() < 1) {
+    while(failoverRS.getOnlineRegions(Bytes.toBytes(failoverTable)).size() < 1) {
       Thread.sleep(100);
     }
-    assertEquals(0, TEST_UTIL.getHBaseCluster().getRegionServer(2).getOnlineRegions(GroupInfoManager.GROUP_TABLE_NAME_BYTES).size());
+    assertEquals(0, failoverRS.getOnlineRegions(GroupInfoManager.GROUP_TABLE_NAME_BYTES).size());
   }
 
 }
