@@ -716,14 +716,14 @@ public class AccessController extends BaseRegionObserver
     }
     
     //Checks on who can open a region  
-    if(isSystemOrSuperUser(regionEnv.getConfiguration()) == false){
+    if(isSystemOrSuperUser(env.getConfiguration()) == false){
       requirePermission(Action.ADMIN);
     }
 
     try {
       this.authManager = TableAuthManager.get(
         env.getRegionServerServices().getZooKeeper(),
-          regionEnv.getConfiguration());
+        env.getConfiguration());
     } catch (IOException ioe) {
       // pass along as a RuntimeException, so that the coprocessor is unloaded
       throw new RuntimeException("Error obtaining TableAuthManager", ioe);
@@ -1176,7 +1176,7 @@ public class AccessController extends BaseRegionObserver
     }
     
     String currentUser = user.getShortName();
-    List<String> superusers = Lists.asList(currentUser, conf.getStrings(
+    List<String> superusers = Lists.asList(currentUser,conf.getStrings(
       AccessControlLists.SUPERUSER_CONF_KEY, new String[0]));
     
     User activeUser = getActiveUser();
