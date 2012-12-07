@@ -22,6 +22,7 @@ package org.apache.hadoop.hbase.group;
 
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
+import com.google.common.collect.Sets;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
@@ -31,6 +32,7 @@ import org.apache.hadoop.hbase.HConstants;
 import org.apache.hadoop.hbase.HRegionInfo;
 import org.apache.hadoop.hbase.HTableDescriptor;
 import org.apache.hadoop.hbase.ServerName;
+import org.apache.hadoop.hbase.catalog.MetaReader;
 import org.apache.hadoop.hbase.client.Delete;
 import org.apache.hadoop.hbase.client.HBaseAdmin;
 import org.apache.hadoop.hbase.client.HTable;
@@ -51,10 +53,12 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeSet;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -70,6 +74,7 @@ public class GroupInfoManagerImpl implements GroupInfoManager {
   private HTable table;
   private ZooKeeperWatcher watcher;
   private GroupStartupWorker groupStartupWorker;
+  private Set<String> prevGroups;
 
   public GroupInfoManagerImpl(MasterServices master) throws IOException {
 		this.groupMap = new ConcurrentHashMap<String, GroupInfo>();
@@ -77,6 +82,7 @@ public class GroupInfoManagerImpl implements GroupInfoManager {
     this.master = master;
     this.watcher = master.getZooKeeper();
     groupStartupWorker = new GroupStartupWorker(this, master, GROUP_TABLE_NAME_BYTES);
+    prevGroups = new HashSet<String>();
     refresh();
     groupStartupWorker.start();
   }
@@ -85,7 +91,6 @@ public class GroupInfoManagerImpl implements GroupInfoManager {
 	 * Adds the group.
 	 *
 	 * @param groupInfo the group name
-	 * @throws java.io.IOException Signals that an I/O exception has occurred.
 	 */
   @Override
   public synchronized void addGroup(GroupInfo groupInfo) throws IOException {
@@ -98,6 +103,7 @@ public class GroupInfoManagerImpl implements GroupInfoManager {
       flushConfig();
     } catch (IOException e) {
       groupMap.remove(groupInfo.getName());
+      refresh();
       throw e;
     }
 	}
@@ -184,7 +190,13 @@ public class GroupInfoManagerImpl implements GroupInfoManager {
     for(String tableName: tableNames) {
       moveTable(tableName, groupName);
     }
-    flushConfig();
+    try {
+      flushConfig();
+    } catch(IOException e) {
+      LOG.error("Failed to update store", e);
+      refresh();
+      throw e;
+    }
   }
 
   private synchronized void moveTable(String tableName, String groupName) throws IOException {
@@ -199,7 +211,6 @@ public class GroupInfoManagerImpl implements GroupInfoManager {
       groupMap.get(groupName).addTable(tableName);
       tableMap.put(tableName, groupMap.get(groupName));
     }
-    flushConfig();
   }
 
 
@@ -211,15 +222,16 @@ public class GroupInfoManagerImpl implements GroupInfoManager {
 	 */
   @Override
   public synchronized void removeGroup(String groupName) throws IOException {
-    GroupInfo group = null;
     if (!groupMap.containsKey(groupName) || groupName.equals(GroupInfo.DEFAULT_GROUP)) {
       throw new IllegalArgumentException("Group "+groupName+" does not exist or is default group");
     }
+    GroupInfo groupInfo = null;
     try {
-      group = groupMap.remove(groupName);
-      table.delete(new Delete(Bytes.toBytes(groupName)));
-    } catch (IOException e) {
-      groupMap.put(groupName, group);
+      groupInfo = groupMap.remove(groupName);
+      flushConfig();
+    } catch(IOException e) {
+      groupMap.put(groupName, groupInfo);
+      refresh();
       throw e;
     }
 	}
@@ -241,15 +253,17 @@ public class GroupInfoManagerImpl implements GroupInfoManager {
     refresh(false);
   }
 
-  private synchronized void refresh(boolean skipCheck) throws IOException {
+  private synchronized void refresh(boolean forceOnline) throws IOException {
     List<GroupInfo> groupList = new LinkedList<GroupInfo>();
-    if (skipCheck || isOnline()) {
+    if (forceOnline || isOnline()) {
       if (table == null) {
         table = new HTable(master.getConfiguration(), GROUP_TABLE_NAME_BYTES);
       }
       for(Result result: table.getScanner(new Scan())) {
-        GroupInfo group =
-            new GroupInfo(Bytes.toString(result.getRow()));
+        GroupInfo group = new GroupInfo(Bytes.toString(result.getRow()),
+            new TreeSet<String>(),
+            new TreeSet<String>(),
+            Bytes.toLong(result.getColumnLatest(INFO_FAMILY_BYTES,Bytes.toBytes("created")).getValue()));
         for(byte[] server: result.getFamilyMap(SERVER_FAMILY_BYTES).keySet()) {
           group.addServer(Bytes.toString(server));
         }
@@ -265,7 +279,7 @@ public class GroupInfoManagerImpl implements GroupInfoManager {
       if(ZKUtil.checkExists(watcher,groupPath) != -1) {
         byte[] data = ZKUtil.getData(watcher, groupPath);
         ObjectMapper mapper = new ObjectMapper();
-        LOG.debug("Reading ZK GroupInfo:"+Bytes.toString(data));
+        LOG.debug("Reading ZK GroupInfo:" + Bytes.toString(data));
         groupList.addAll(
             (List<GroupInfo>) mapper.readValue(data, new TypeReference<List<GroupInfo>>() {
             }));
@@ -277,13 +291,15 @@ public class GroupInfoManagerImpl implements GroupInfoManager {
     this.groupMap.clear();
     this.tableMap.clear();
     for (GroupInfo group : groupList) {
-      if(!group.getName().equals(GroupInfo.OFFLINE_DEFAULT_GROUP) || !isOnline()) {
+      if(!(group.getName().equals(GroupInfo.OFFLINE_DEFAULT_GROUP) && (isOnline() || forceOnline))) {
         groupMap.put(group.getName(), group);
         for(String table: group.getTables()) {
           tableMap.put(table, group);
         }
       }
     }
+    prevGroups.clear();
+    prevGroups.addAll(tableMap.keySet());
 	}
 
 	/**
@@ -298,12 +314,30 @@ public class GroupInfoManagerImpl implements GroupInfoManager {
 	private synchronized void flushConfig(Map<String,GroupInfo> map) throws IOException {
     List<GroupInfo> zGroup = new LinkedList<GroupInfo>();
     List<Put> puts = new LinkedList<Put>();
+    List<Delete> deletes = new LinkedList<Delete>();
+
+    //populate deletes
+    for(String groupName : prevGroups) {
+      if(!map.containsKey(groupName)) {
+        deletes.add(new Delete(Bytes.toBytes(groupName)));
+      } else {
+        Delete del = new Delete(Bytes.toBytes(groupName));
+        del.deleteFamily(SERVER_FAMILY_BYTES);
+        del.deleteFamily(TABLE_FAMILY_BYTES);
+        deletes.add(del);
+      }
+    }
+
+    //populate puts
     for(GroupInfo groupInfo : map.values()) {
       Put put = new Put(Bytes.toBytes(groupInfo.getName()));
       put.add(INFO_FAMILY_BYTES, Bytes.toBytes("created"),
-          Bytes.toBytes(System.currentTimeMillis()));
+          Bytes.toBytes(groupInfo.getCreated()));
       for(String server: groupInfo.getServers()) {
         put.add(SERVER_FAMILY_BYTES, Bytes.toBytes(server), new byte[0]);
+      }
+      for(String server: groupInfo.getTables()) {
+        put.add(TABLE_FAMILY_BYTES, Bytes.toBytes(server), new byte[0]);
       }
       if (put.size() > 0) {
         puts.add(put);
@@ -315,6 +349,7 @@ public class GroupInfoManagerImpl implements GroupInfoManager {
         }
       }
     }
+
     //copy default group to offline group
     GroupInfo defaultGroup = getGroup(GroupInfo.DEFAULT_GROUP);
     GroupInfo offlineGroup = new GroupInfo(GroupInfo.OFFLINE_DEFAULT_GROUP);
@@ -327,14 +362,19 @@ public class GroupInfoManagerImpl implements GroupInfoManager {
       ObjectMapper mapper = new ObjectMapper();
       ByteArrayOutputStream bos = new ByteArrayOutputStream();
       mapper.writeValue(bos, zGroup);
-      LOG.debug("Writing ZK GroupInfo:"+Bytes.toString(bos.toByteArray()));
+      LOG.debug("Writing ZK GroupInfo:" + Bytes.toString(bos.toByteArray()));
       ZKUtil.createSetData(watcher, groupPath, bos.toByteArray());
     } catch (KeeperException e) {
       throw new IOException("Failed to write to groupZNode",e);
     }
+    if (deletes.size() > 0) {
+      table.delete(deletes);
+    }
     if (puts.size() > 0) {
       table.put(puts);
     }
+    prevGroups.clear();
+    prevGroups.addAll(map.keySet());
   }
 
   private List<ServerName> getOnlineRS() throws IOException{
@@ -442,17 +482,16 @@ public class GroupInfoManagerImpl implements GroupInfoManager {
           MetaScanner.metaScan(conf, visitor);
           assignCount =
               masterServices.getAssignmentManager().getRegionsOfTable(GROUP_TABLE_NAME_BYTES).size();
-          if (regionCount.get() < 1) {
-            HBaseAdmin admin = new HBaseAdmin(conf);
-            HTableDescriptor desc = new HTableDescriptor(tableName);
-            desc.addFamily(new HColumnDescriptor(SERVER_FAMILY_BYTES));
-            desc.addFamily(new HColumnDescriptor(INFO_FAMILY_BYTES));
-            admin.createTable(desc);
+          if (regionCount.get() < 1 &&
+              !MetaReader.tableExists(masterServices.getCatalogTracker(), GROUP_TABLE_NAME)) {
+            groupInfoManager.createGroupTable(masterServices);
           }
           LOG.info("isOnline: "+found.get()+", regionCount: "+regionCount.get()+", assignCount: "+assignCount);
           found.set(found.get() && assignCount == regionCount.get() && regionCount.get() > 0);
           if (found.get()) {
             groupInfoManager.refresh(true);
+            //flush any inconsistencies between ZK and HTable
+            groupInfoManager.flushConfig();
           }
         } catch(Exception e) {
           found.set(false);
@@ -469,6 +508,15 @@ public class GroupInfoManagerImpl implements GroupInfoManager {
     public boolean isOnline() {
       return isOnline;
     }
+  }
+
+  private void createGroupTable(MasterServices masterServices) throws IOException {
+    HTableDescriptor desc = new HTableDescriptor(GROUP_TABLE_NAME_BYTES);
+    desc.addFamily(new HColumnDescriptor(SERVER_FAMILY_BYTES));
+    desc.addFamily(new HColumnDescriptor(TABLE_FAMILY_BYTES));
+    desc.addFamily(new HColumnDescriptor(INFO_FAMILY_BYTES));
+    desc.setMaxFileSize(1l << 32);
+    masterServices.createTable(desc, null);
   }
 
 }

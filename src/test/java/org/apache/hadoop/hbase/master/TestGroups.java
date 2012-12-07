@@ -121,8 +121,7 @@ public class TestGroups {
 		GroupInfo appInfo = addGroup(groupAdmin, groupPrefix + rand.nextInt(), 1);
 		GroupInfo adminInfo = addGroup(groupAdmin, groupPrefix + rand.nextInt(), 1);
     GroupInfo dInfo = groupAdmin.getGroupInfo(GroupInfo.DEFAULT_GROUP);
-		// Force the group info manager to read group information from disk.
-		assertTrue(groupAdmin.listGroups().size() == 3);
+		assertEquals(3, groupAdmin.listGroups().size());
 		assertTrue(adminInfo.getServers().size() == 1);
 		assertTrue(appInfo.getServers().size() == 1);
 		assertTrue(dInfo.getServers().size() == 2);
@@ -189,29 +188,49 @@ public class TestGroups {
 		byte[] tableOneBytes = Bytes.toBytes(tableNameOne);
 		byte[] familyOneBytes = Bytes.toBytes(familyPrefix + rand.nextInt());
 		HTable ht = TEST_UTIL.createTable(tableOneBytes, familyOneBytes);
+
 		// All the regions created below will be assigned to the default group.
-    int curMetaCount = TEST_UTIL.getMetaTableRows().size();
-    assertTrue(TEST_UTIL.createMultiRegions(master.getConfiguration(), ht, familyOneBytes, 5) == 5);
-    while (groupAdmin.listOnlineRegionsOfGroup(GroupInfo.DEFAULT_GROUP).size() < (curMetaCount + 5)) {
+    assertEquals(5, TEST_UTIL.createMultiRegions(master.getConfiguration(), ht, familyOneBytes, 5));
+    while (master.getAssignmentManager().getRegionsOfTable(tableOneBytes).size() != 6) {
       Thread.sleep(100);
     }
-		List<HRegionInfo> regions = groupAdmin
-				.listOnlineRegionsOfGroup(GroupInfo.DEFAULT_GROUP);
-		HRegionInfo region = regions.get(regions.size()-1);
-		// Lets move this region to newGroupName group.
-		ServerName tobeAssigned =
-        ServerName.parseServerName(newGroup.getServers().iterator().next());
-		master.move(region.getEncodedNameAsBytes(),
-        Bytes.toBytes(tobeAssigned.toString()));
-    while (groupAdmin.listOnlineRegionsOfGroup(GroupInfo.DEFAULT_GROUP).size() != regions.size()) {
+
+    //get target region to move
+    Map<ServerName,List<HRegionInfo>> assignMap =
+        master.getAssignmentManager().getAssignmentsByTable().get(tableNameOne);
+    HRegionInfo targetRegion = null;
+    for(ServerName server : assignMap.keySet()) {
+      targetRegion = assignMap.get(server).size() > 0 ? assignMap.get(server).get(0) : null;
+      if(targetRegion != null) {
+        break;
+      }
+    }
+    //get server which is not a member of new group
+    ServerName targetServer = null;
+    for(ServerName server : master.getServerManager().getOnlineServersList()) {
+      if(!newGroup.containsServer(server.getHostAndPort())) {
+        targetServer = server;
+        break;
+      }
+    }
+    HRegionInterface targetRS =
+        admin.getConnection().getHRegionConnection(targetServer.getHostname(), targetServer.getPort());
+
+    //move target server to group
+    groupAdmin.moveServers(Sets.newHashSet(targetServer.getHostAndPort()), newGroup.getName());
+    while(targetRS.getOnlineRegions().size() > 0) {
       Thread.sleep(100);
     }
-    //verify that region was never assigned to the server
-		List<HRegionInfo> updatedRegions = groupAdmin.listOnlineRegionsOfGroup(GroupInfo.DEFAULT_GROUP);
-    assertTrue(regions.size() + "!=" + updatedRegions.size(),regions.size() == updatedRegions.size());
-    HRegionInterface rs = admin.getConnection().getHRegionConnection(tobeAssigned.getHostname(),
-      tobeAssigned.getPort());
-		assertFalse(rs.getOnlineRegions().contains(region));
+
+		// Lets move this region to the new group.
+		master.move(targetRegion.getEncodedNameAsBytes(), Bytes.toBytes(targetServer.getServerName()));
+    while (master.getAssignmentManager().getRegionsOfTable(tableOneBytes).size() != 6 ||
+           master.getAssignmentManager().getRegionsInTransition().size() > 0) {
+      Thread.sleep(100);
+    }
+
+    //verify that targetServer didn't open it
+		assertFalse(targetRS.getOnlineRegions().contains(targetRegion));
 	}
 
 	static GroupInfo addGroup(GroupAdminClient gAdmin, String groupName,

@@ -55,6 +55,12 @@ public class SecureGroupAdminEndpoint extends GroupAdminEndpoint implements Grou
     super.addGroup(groupName);
   }
 
+  @Override
+  public void moveTables(Set<String> tables, String targetGroup) throws IOException {
+    getAccessController().requirePermission(HConstants.ROOT_TABLE_NAME, null, null, Permission.Action.ADMIN);
+    super.moveTables(tables, targetGroup);
+  }
+
   private AccessController getAccessController() {
     return (AccessController)menv.getMasterServices()
         .getCoprocessorHost().findCoprocessor(AccessController.class.getName());

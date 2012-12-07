@@ -24,7 +24,10 @@ import java.io.Serializable;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashSet;
+import java.util.NavigableSet;
 import java.util.Set;
+import java.util.SortedSet;
+import java.util.TreeSet;
 
 import com.google.common.collect.Sets;
 import org.codehaus.jackson.annotate.JsonCreator;
@@ -38,32 +41,33 @@ public class GroupInfo implements Serializable {
 	public static final String DEFAULT_GROUP = "default";
   public static final String OFFLINE_DEFAULT_GROUP = "_offline_default";
   public static final String TRANSITION_GROUP_PREFIX = "_transition_";
-	public static final String GROUP_KEY = "rs_group";
 
   private String name;
-  private Set<String> servers;
-  private Set<String> tables;
+  private NavigableSet<String> servers;
+  private NavigableSet<String> tables;
+  private long created;
 
   public GroupInfo(String name) {
-		this.name = name;
-    this.servers = new HashSet<String>();
-    this.tables = new HashSet<String>();
+    this(name, Sets.<String>newTreeSet(), Sets.<String>newTreeSet(), System.currentTimeMillis());
 	}
 
   //constructor for jackson
   @JsonCreator
-  private GroupInfo(@JsonProperty("name") String name,
-                    @JsonProperty("servers") Set<String> servers,
-                    @JsonProperty("tables") Set<String> tables) {
+  GroupInfo(@JsonProperty("name") String name,
+            @JsonProperty("servers") NavigableSet<String> servers,
+            @JsonProperty("tables") NavigableSet<String> tables,
+            @JsonProperty("created") long created) {
 		this.name = name;
     this.servers = servers;
     this.tables = tables;
+    this.created = created;
 	}
 
   public GroupInfo(GroupInfo src) {
     name = src.getName();
-    servers = Sets.newHashSet(src.getServers());
-    tables = Sets.newHashSet(src.getTables());
+    created = src.getCreated();
+    servers = Sets.newTreeSet(src.getServers());
+    tables = Sets.newTreeSet(src.getTables());
   }
 
 	/**
@@ -123,8 +127,8 @@ public class GroupInfo implements Serializable {
 	 *
 	 * @return
 	 */
-	public Set<String> getServers() {
-		return Collections.unmodifiableSet(this.servers);
+	public NavigableSet<String> getServers() {
+		return servers;
 	}
 
 	/**
@@ -140,8 +144,8 @@ public class GroupInfo implements Serializable {
    * Set of tables that are members of this group
    * @return
    */
-  public Set<String> getTables() {
-    return Collections.unmodifiableSet(tables);
+  public NavigableSet<String> getTables() {
+    return tables;
   }
 
   public void addTable(String table) {
@@ -158,6 +162,10 @@ public class GroupInfo implements Serializable {
 
   public boolean removeTable(String table) {
     return tables.remove(table);
+  }
+
+  public long getCreated() {
+    return created;
   }
 
   @Override
