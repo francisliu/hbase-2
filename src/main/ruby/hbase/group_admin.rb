@@ -43,7 +43,24 @@ module Hbase
     def getGroup(group_name)
       group = @admin.getGroupInfo(group_name)
       res = {}
+      if block_given?
+        yield("Servers:")
+      else
+        res += v
+      end
       group.getServers.each do |v|
+        if block_given?
+          yield(v)
+        else
+          res += v
+        end
+      end
+      if block_given?
+        yield("Tables:")
+      else
+        res += v
+      end
+      group.getTables.each do |v|
         if block_given?
           yield(v)
         else
