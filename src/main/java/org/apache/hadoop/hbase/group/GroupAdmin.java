@@ -17,7 +17,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.apache.hadoop.hbase.master;
+package org.apache.hadoop.hbase.group;
 
 import org.apache.hadoop.hbase.HRegionInfo;
 
@@ -58,19 +58,24 @@ public interface GroupAdmin {
    * @param tableName the table name
    * @return An instance of GroupInfo.
    */
-  GroupInfo getGroupInfoOfTable(byte[] tableName) throws IOException;
+  GroupInfo getGroupInfoOfTable(String tableName) throws IOException;
 
   /**
    * Move a set of serves to another group
    *
    * @param server the server
    * @param targetGroup the target group
-   * @throws java.io.IOException Signals that an I/O exception has occurred.
-   * @throws InterruptedException the interrupted exception
+   * @throws IOException Signals that an I/O exception has occurred.
    */
-  void moveServers(Set<String> server, String targetGroup)
-      throws IOException, InterruptedException;
+  void moveServers(Set<String> server, String targetGroup) throws IOException;
 
+  /**
+   * Move tables to a new group
+   * @param tables list of tables to move
+   * @param targetGroup target group
+   * @throws IOException
+   */
+  void moveTables(Set<String> tables, String targetGroup) throws IOException;
 
   /**
    * Add a new group

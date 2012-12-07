@@ -17,7 +17,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.apache.hadoop.hbase.master;
+package org.apache.hadoop.hbase.group;
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
@@ -25,13 +25,13 @@ import org.apache.hadoop.hbase.DoNotRetryIOException;
 import org.apache.hadoop.hbase.HRegionInfo;
 import org.apache.hadoop.hbase.Server;
 import org.apache.hadoop.hbase.ServerName;
+import org.apache.hadoop.hbase.master.MasterServices;
 
 import java.io.IOException;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.TreeSet;
 
 public class GroupMoveServerWorker implements Runnable {
 	private static final Log LOG = LogFactory.getLog(GroupMoveServerWorker.class);
@@ -55,11 +55,11 @@ public class GroupMoveServerWorker implements Runnable {
       //check server list
       sourceGroup = groupManager.getGroupOfServer(plan.getServers().iterator().next()).getName();
       for(String server: plan.getServers()) {
-        if(serversInTransition.containsKey(server)) {
+        if (serversInTransition.containsKey(server)) {
           throw new DoNotRetryIOException("Server list contains a server that is already being moved: "+server);
         }
         String tmpGroup = groupManager.getGroupOfServer(server).getName();
-        if(sourceGroup != null && !tmpGroup.equals(sourceGroup)) {
+        if (sourceGroup != null && !tmpGroup.equals(sourceGroup)) {
           throw new DoNotRetryIOException("Move server request should only come from one source group");
         }
       }
@@ -67,10 +67,10 @@ public class GroupMoveServerWorker implements Runnable {
       for(String server: plan.getServers()) {
         serversInTransition.put(server, plan.getTargetGroup());
       }
-      if(!sourceGroup.startsWith(GroupInfo.TRANSITION_GROUP_PREFIX)) {
+      if (!sourceGroup.startsWith(GroupInfo.TRANSITION_GROUP_PREFIX)) {
         transGroup = GroupInfo.TRANSITION_GROUP_PREFIX+
             System.currentTimeMillis()+"_"+sourceGroup+"-"+plan.getTargetGroup();
-        groupManager.addGroup(new GroupInfo(transGroup, new TreeSet<String>()));
+        groupManager.addGroup(new GroupInfo(transGroup));
       }
     }
     groupManager.moveServers(plan.getServers(), sourceGroup, transGroup!=null?transGroup:plan.getTargetGroup());
@@ -102,7 +102,7 @@ public class GroupMoveServerWorker implements Runnable {
       success = false;
       LOG.error("Caught exception while running", e);
     }
-    if(success) {
+    if (success) {
       try {
         complete();
       } catch (IOException e) {
@@ -116,7 +116,7 @@ public class GroupMoveServerWorker implements Runnable {
     List<HRegionInfo> regions = new LinkedList<HRegionInfo>();
     for(Map.Entry<ServerName, List<HRegionInfo>> el:
         master.getAssignmentManager().getAssignments().entrySet()) {
-      if(el.getKey().getHostAndPort().equals(hostPort)) {
+      if (el.getKey().getHostAndPort().equals(hostPort)) {
         regions.addAll(el.getValue());
       }
     }
@@ -143,17 +143,19 @@ public class GroupMoveServerWorker implements Runnable {
 
   public void complete() throws IOException {
     String tmpSourceGroup = sourceGroup;
-    if(transGroup != null) {
+    if (transGroup != null) {
       tmpSourceGroup = transGroup;
       LOG.debug("Moving "+plan.getServers().size()+
           " servers from transition group: "+transGroup+" to final group: "+plan.getTargetGroup());
     }
     try {
-      if(success) {
+      if (success) {
         groupManager.moveServers(plan.getServers(), tmpSourceGroup, plan.getTargetGroup());
-        if(transGroup != null) {
+        if (transGroup != null) {
           groupManager.removeGroup(transGroup);
         }
+        LOG.debug("Move done "+plan.getServers().size()+
+            " servers from transition group: "+transGroup+" to final group: "+plan.getTargetGroup());
       }
     } finally {
       //remove servers in transition

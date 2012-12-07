@@ -22,14 +22,13 @@ package org.apache.hadoop.hbase.security.access;
 import org.apache.hadoop.hbase.CoprocessorEnvironment;
 import org.apache.hadoop.hbase.HConstants;
 import org.apache.hadoop.hbase.coprocessor.MasterCoprocessorEnvironment;
-import org.apache.hadoop.hbase.master.GroupAdminEndpoint;
-import org.apache.hadoop.hbase.master.GroupAdminProtocol;
-import org.apache.hadoop.hbase.master.GroupInfo;
+import org.apache.hadoop.hbase.group.GroupAdminEndpoint;
+import org.apache.hadoop.hbase.group.GroupAdminProtocol;
 
 import java.io.IOException;
 import java.util.Set;
 
-public class SecureGroupAdminEndpoint extends GroupAdminEndpoint implements GroupAdminProtocol{
+public class SecureGroupAdminEndpoint extends GroupAdminEndpoint implements GroupAdminProtocol {
   private MasterCoprocessorEnvironment menv;
 
   @Override

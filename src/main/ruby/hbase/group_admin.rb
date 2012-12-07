@@ -28,7 +28,7 @@ module Hbase
     include HBaseConstants
 
     def initialize(configuration, formatter)
-      @admin = org.apache.hadoop.hbase.client.GroupAdminClient.new(configuration)
+      @admin = org.apache.hadoop.hbase.group.GroupAdminClient.new(configuration)
       @conf = configuration
       @formatter = formatter
     end
@@ -64,11 +64,20 @@ module Hbase
     #----------------------------------------------------------------------------------------------
     # move server to a group
     def moveServers(dest, *args)
-      servers = java.util.TreeSet.new();
+      servers = java.util.HashSet.new()
       args[0].each do |s|
         servers.add(s)
       end
       @admin.moveServers(servers, dest)
+    end
+    #----------------------------------------------------------------------------------------------
+    # move server to a group
+    def moveTables(dest, *args)
+      tables = java.util.HashSet.new();
+      args[0].each do |s|
+        tables.add(s)
+      end
+      @admin.moveTables(tables,dest)
     end
     #----------------------------------------------------------------------------------------------
     # get group of server

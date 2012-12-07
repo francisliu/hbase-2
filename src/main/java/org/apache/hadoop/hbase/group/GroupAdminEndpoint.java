@@ -17,7 +17,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.apache.hadoop.hbase.master;
+package org.apache.hadoop.hbase.group;
 
 import org.apache.commons.lang.StringUtils;
 import org.apache.commons.logging.Log;
@@ -25,17 +25,17 @@ import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.hbase.CoprocessorEnvironment;
 import org.apache.hadoop.hbase.DoNotRetryIOException;
 import org.apache.hadoop.hbase.HRegionInfo;
-import org.apache.hadoop.hbase.HTableDescriptor;
 import org.apache.hadoop.hbase.ServerName;
 import org.apache.hadoop.hbase.coprocessor.BaseEndpointCoprocessor;
 import org.apache.hadoop.hbase.coprocessor.MasterCoprocessorEnvironment;
+import org.apache.hadoop.hbase.master.MasterServices;
+import org.apache.hadoop.hbase.util.Bytes;
 
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
@@ -97,7 +97,7 @@ public class GroupAdminEndpoint extends BaseEndpointCoprocessor
       Map<String,List<HRegionInfo>> assignments = getOnlineRegions();
       for(ServerName serverName: master.getServerManager().getOnlineServersList()) {
         String hostPort = serverName.getHostAndPort();
-        if(servers.contains(hostPort) && assignments.containsKey(hostPort)) {
+        if (servers.contains(hostPort) && assignments.containsKey(hostPort)) {
           regions.addAll(assignments.get(hostPort));
         }
 			}
@@ -107,23 +107,7 @@ public class GroupAdminEndpoint extends BaseEndpointCoprocessor
 
   @Override
   public Collection<String> listTablesOfGroup(String groupName) throws IOException {
-		Set<String> set = new HashSet<String>();
-		if (groupName == null) {
-      throw new NullPointerException("groupName can't be null");
-    }
-
-    GroupInfo groupInfo = getGroupInfoManager().getGroup(groupName);
-    if (groupInfo == null) {
-			return null;
-		} else {
-      HTableDescriptor[] tables =
-          master.getTableDescriptors().getAll().values().toArray(new HTableDescriptor[0]);
-      for (HTableDescriptor table : tables) {
-        if(GroupInfo.getGroupProperty(table).equals(groupName))
-          set.add(table.getNameAsString());
-      }
-    }
-		return set;
+    return getGroupInfoManager().getGroup(groupName).getTables();
 	}
 
 
@@ -134,13 +118,8 @@ public class GroupAdminEndpoint extends BaseEndpointCoprocessor
 
 
   @Override
-  public GroupInfo getGroupInfoOfTable(byte[] tableName) throws IOException {
-		HTableDescriptor des;
-		GroupInfo tableRSGroup;
-    des =  master.getTableDescriptors().get(tableName);
-		String group = GroupInfo.getGroupProperty(des);
-		tableRSGroup = getGroupInfoManager().getGroup(group);
-		return tableRSGroup;
+  public GroupInfo getGroupInfoOfTable(String tableName) throws IOException {
+    return getGroupInfoManager().getGroup(getGroupInfoManager().getGroupOfTable(tableName));
 	}
 
   @Override
@@ -164,7 +143,7 @@ public class GroupAdminEndpoint extends BaseEndpointCoprocessor
       LOG.info("GroupMoveServerHanndlerSubmitted: "+plan.getTargetGroup());
     } catch(Exception e) {
       LOG.error("Failed to submit GroupMoveServerWorker", e);
-      if(worker != null) {
+      if (worker != null) {
         worker.complete();
       }
       throw new DoNotRetryIOException("Failed to submit GroupMoveServerWorker",e);
@@ -172,15 +151,24 @@ public class GroupAdminEndpoint extends BaseEndpointCoprocessor
 	}
 
   @Override
+  public void moveTables(Set<String> tables, String targetGroup) throws IOException {
+    getGroupInfoManager().moveTables(tables, targetGroup);
+    for(String table: tables) {
+      master.getAssignmentManager().unassign(
+          master.getAssignmentManager().getRegionsOfTable(Bytes.toBytes(table)));
+    }
+  }
+
+  @Override
   public void addGroup(String name) throws IOException {
-    getGroupInfoManager().addGroup(new GroupInfo(name, new HashSet<String>()));
+    getGroupInfoManager().addGroup(new GroupInfo(name));
   }
 
   @Override
   public void removeGroup(String name) throws IOException {
     GroupInfoManager manager = getGroupInfoManager();
     synchronized (manager) {
-      if(listTablesOfGroup(name).size() > 0) {
+      if (listTablesOfGroup(name).size() > 0) {
         throw new DoNotRetryIOException("Group "+name+" must have no associated tables.");
       }
       manager.removeGroup(name);
@@ -211,7 +199,7 @@ public class GroupAdminEndpoint extends BaseEndpointCoprocessor
     Map<String,List<HRegionInfo>> result = new HashMap<String, List<HRegionInfo>>();
     for(Map.Entry<ServerName, java.util.List<HRegionInfo>> el:
         master.getAssignmentManager().getAssignments().entrySet()) {
-      if(!result.containsKey(el.getKey().getHostAndPort())) {
+      if (!result.containsKey(el.getKey().getHostAndPort())) {
         result.put(el.getKey().getHostAndPort(),new LinkedList<HRegionInfo>());
       }
       result.get(el.getKey().getHostAndPort()).addAll(el.getValue());

@@ -30,6 +30,7 @@ import java.util.Map;
 import java.util.Random;
 import java.util.Set;
 
+import com.google.common.collect.Sets;
 import org.apache.hadoop.hbase.HBaseTestingUtility;
 import org.apache.hadoop.hbase.HConstants;
 import org.apache.hadoop.hbase.HRegionInfo;
@@ -37,9 +38,14 @@ import org.apache.hadoop.hbase.HTableDescriptor;
 import org.apache.hadoop.hbase.MediumTests;
 import org.apache.hadoop.hbase.MiniHBaseCluster;
 import org.apache.hadoop.hbase.ServerName;
-import org.apache.hadoop.hbase.client.GroupAdminClient;
+import org.apache.hadoop.hbase.group.GroupAdminClient;
 import org.apache.hadoop.hbase.client.HBaseAdmin;
 import org.apache.hadoop.hbase.client.HTable;
+import org.apache.hadoop.hbase.group.GroupAdminEndpoint;
+import org.apache.hadoop.hbase.group.GroupBasedLoadBalancer;
+import org.apache.hadoop.hbase.group.GroupInfo;
+import org.apache.hadoop.hbase.group.GroupInfoManager;
+import org.apache.hadoop.hbase.group.GroupMasterObserver;
 import org.apache.hadoop.hbase.ipc.HRegionInterface;
 import org.apache.hadoop.hbase.util.Bytes;
 import org.junit.After;
@@ -103,9 +109,9 @@ public class TestGroups {
 	public void testBasicStartUp() throws IOException {
 		GroupAdminClient groupAdmin = new GroupAdminClient(master.getConfiguration());
 		GroupInfo defaultInfo = groupAdmin.getGroupInfo(GroupInfo.DEFAULT_GROUP);
-		assertEquals(defaultInfo.getServers().size(), 4);
+		assertEquals(4, defaultInfo.getServers().size());
 		// Assignment of root and meta regions.
-		assertEquals(groupAdmin.listOnlineRegionsOfGroup(GroupInfo.DEFAULT_GROUP).size(), 3);
+		assertEquals(3, groupAdmin.listOnlineRegionsOfGroup(GroupInfo.DEFAULT_GROUP).size());
 	}
 
 	@Test
@@ -146,20 +152,17 @@ public class TestGroups {
 		List<HRegionInfo> regionList = TEST_UTIL.getHBaseAdmin()
 				.getTableRegions(TABLENAME);
 		assertTrue(regionList.size() > 0);
-		GroupInfo tableGrp = groupAdmin.getGroupInfoOfTable(Bytes.toBytes(tableName));
+		GroupInfo tableGrp = groupAdmin.getGroupInfoOfTable(tableName);
 		assertTrue(tableGrp.getName().equals(GroupInfo.DEFAULT_GROUP));
 
     //change table's group
     admin.disableTable(TABLENAME);
-    HTableDescriptor desc = admin.getTableDescriptor(TABLENAME);
-    GroupInfo.setGroupProperty(newGroup.getName(), desc);
-    admin.modifyTable(TABLENAME, desc);
+    groupAdmin.moveTables(Sets.newHashSet(Bytes.toString(TABLENAME)), newGroup.getName());
     admin.enableTable(TABLENAME);
 
     //verify group change
-    desc = admin.getTableDescriptor(TABLENAME);
 		assertEquals(newGroup.getName(),
-        GroupInfo.getGroupProperty(desc));
+        groupAdmin.getGroupInfoOfTable(Bytes.toString(TABLENAME)).getName());
 
 		Map<String, Map<ServerName, List<HRegionInfo>>> tableRegionAssignMap = master
 				.getAssignmentManager().getAssignmentsByTable();
@@ -200,7 +203,6 @@ public class TestGroups {
         ServerName.parseServerName(newGroup.getServers().iterator().next());
 		master.move(region.getEncodedNameAsBytes(),
         Bytes.toBytes(tobeAssigned.toString()));
-
     while (groupAdmin.listOnlineRegionsOfGroup(GroupInfo.DEFAULT_GROUP).size() != regions.size()) {
       Thread.sleep(100);
     }
@@ -237,9 +239,7 @@ public class TestGroups {
     for(String table: groupAdmin.listTablesOfGroup(groupName)) {
       byte[] bTable = Bytes.toBytes(table);
       admin.disableTable(bTable);
-      HTableDescriptor desc = admin.getTableDescriptor(bTable);
-      desc.remove(GroupInfo.GROUP_KEY);
-      admin.modifyTable(bTable, desc);
+      groupAdmin.moveTables(Sets.newHashSet(table), GroupInfo.DEFAULT_GROUP);
       admin.enableTable(bTable);
     }
     groupAdmin.removeGroup(groupName);

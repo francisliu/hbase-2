@@ -17,7 +17,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.apache.hadoop.hbase.client;
+package org.apache.hadoop.hbase.group;
 
 import java.io.IOException;
 import java.util.Collection;
@@ -33,9 +33,7 @@ import org.apache.hadoop.hbase.HConstants;
 import org.apache.hadoop.hbase.HRegionInfo;
 import org.apache.hadoop.hbase.MasterNotRunningException;
 import org.apache.hadoop.hbase.ZooKeeperConnectionException;
-import org.apache.hadoop.hbase.master.GroupAdmin;
-import org.apache.hadoop.hbase.master.GroupAdminProtocol;
-import org.apache.hadoop.hbase.master.GroupInfo;
+import org.apache.hadoop.hbase.client.HBaseAdmin;
 
 /**
  * This class is responsible for managing region server group information.
@@ -67,14 +65,19 @@ public class GroupAdminClient implements GroupAdmin {
   }
 
   @Override
-  public GroupInfo getGroupInfoOfTable(byte[] tableName) throws IOException {
+  public GroupInfo getGroupInfoOfTable(String tableName) throws IOException {
     return proxy.getGroupInfoOfTable(tableName);
   }
 
   @Override
-  public void moveServers(Set<String> servers, String targetGroup) throws IOException, InterruptedException {
+  public void moveServers(Set<String> servers, String targetGroup) throws IOException {
     proxy.moveServers(servers, targetGroup);
     waitForTransitions(servers);
+  }
+
+  @Override
+  public void moveTables(Set<String> tables, String targetGroup) throws IOException {
+    proxy.moveTables(tables, targetGroup);
   }
 
   @Override
@@ -102,7 +105,7 @@ public class GroupAdminClient implements GroupAdmin {
     return proxy.listServersInTransition();
   }
 
-  private void waitForTransitions(Set<String> servers) throws IOException, InterruptedException {
+  private void waitForTransitions(Set<String> servers) throws IOException {
     long endTime = System.currentTimeMillis()+operationTimeout;
     boolean found;
     do {
@@ -110,9 +113,13 @@ public class GroupAdminClient implements GroupAdmin {
       for(String server: proxy.listServersInTransition().keySet()) {
         found = found || servers.contains(server);
       }
-      Thread.sleep(1000);
+      try {
+        Thread.sleep(1000);
+      } catch (InterruptedException e) {
+        LOG.debug("Sleep interrupted", e);
+      }
     } while(found && System.currentTimeMillis() <= endTime);
-    if(found) {
+    if (found) {
       throw new DoNotRetryIOException("Operation timed out.");
     }
   }
