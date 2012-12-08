@@ -449,55 +449,55 @@ public class GroupInfoManagerImpl implements GroupInfoManager {
 
     @Override
     public void run() {
-      waitForGroupTableOnline();
-      isOnline = true;
-      LOG.info("GroupBasedLoadBalancer is now online");
-      while(masterServices.getAssignmentManager().getRegionsInTransition().size() > 0) {
-        try {
-          Thread.sleep(100);
-        } catch (InterruptedException e) {
-          LOG.info("Sleep Interrupted", e);
-        }
+      if(waitForGroupTableOnline()) {
+        isOnline = true;
+        LOG.info("GroupBasedLoadBalancer is now online");
       }
     }
 
-    public void waitForGroupTableOnline() {
+    public boolean waitForGroupTableOnline() {
       final AtomicInteger regionCount = new AtomicInteger(0);
       final AtomicBoolean found = new AtomicBoolean(false);
       int assignCount = 0;
-      while(!found.get()) {
+      while(!found.get() && isMasterRunning()) {
         regionCount.set(0);
         found.set(true);
         try {
-          MetaScanner.MetaScannerVisitor visitor = new MetaScanner.MetaScannerVisitorBase() {
-            @Override
-            public boolean processRow(Result row) throws IOException {
-              byte[] value = row.getValue(HConstants.CATALOG_FAMILY,
-                  HConstants.REGIONINFO_QUALIFIER);
-              HRegionInfo info = Writables.getHRegionInfoOrNull(value);
-              if (info != null) {
-                if (Bytes.equals(tableName, info.getTableName())) {
-                  value = row.getValue(HConstants.CATALOG_FAMILY,
-                      HConstants.SERVER_QUALIFIER);
-                  if (value == null) {
-                    found.set(false);
-                    return false;
+          if(masterServices.getCatalogTracker().verifyRootRegionLocation(1) &&
+              masterServices.getCatalogTracker().verifyMetaRegionLocation(1)) {
+            MetaScanner.MetaScannerVisitor visitor = new MetaScanner.MetaScannerVisitorBase() {
+              @Override
+              public boolean processRow(Result row) throws IOException {
+                byte[] value = row.getValue(HConstants.CATALOG_FAMILY,
+                    HConstants.REGIONINFO_QUALIFIER);
+                HRegionInfo info = Writables.getHRegionInfoOrNull(value);
+                if (info != null) {
+                  if (Bytes.equals(tableName, info.getTableName())) {
+                    value = row.getValue(HConstants.CATALOG_FAMILY,
+                        HConstants.SERVER_QUALIFIER);
+                    if (value == null) {
+                      found.set(false);
+                      return false;
+                    }
+                    regionCount.incrementAndGet();
                   }
-                  regionCount.incrementAndGet();
                 }
+                return true;
               }
-              return true;
+            };
+            MetaScanner.metaScan(conf, visitor);
+            assignCount =
+                masterServices.getAssignmentManager().getRegionsOfTable(GROUP_TABLE_NAME_BYTES).size();
+            if (regionCount.get() < 1 &&
+                !MetaReader.tableExists(masterServices.getCatalogTracker(), GROUP_TABLE_NAME)) {
+              groupInfoManager.createGroupTable(masterServices);
             }
-          };
-          MetaScanner.metaScan(conf, visitor);
-          assignCount =
-              masterServices.getAssignmentManager().getRegionsOfTable(GROUP_TABLE_NAME_BYTES).size();
-          if (regionCount.get() < 1 &&
-              !MetaReader.tableExists(masterServices.getCatalogTracker(), GROUP_TABLE_NAME)) {
-            groupInfoManager.createGroupTable(masterServices);
+            LOG.info("isOnline: "+found.get()+", regionCount: "+regionCount.get()+", assignCount: "+assignCount);
+            found.set(found.get() && assignCount == regionCount.get() && regionCount.get() > 0);
+          } else {
+            LOG.info("Waiting for catalog tables to come online");
+            found.set(false);
           }
-          LOG.info("isOnline: "+found.get()+", regionCount: "+regionCount.get()+", assignCount: "+assignCount);
-          found.set(found.get() && assignCount == regionCount.get() && regionCount.get() > 0);
           if (found.get()) {
             groupInfoManager.refresh(true);
             //flush any inconsistencies between ZK and HTable
@@ -513,10 +513,15 @@ public class GroupInfoManagerImpl implements GroupInfoManager {
           LOG.info("Sleep interrupted", e);
         }
       }
+      return found.get();
     }
 
     public boolean isOnline() {
       return isOnline;
+    }
+
+    private boolean isMasterRunning() {
+      return !masterServices.isAborted() && !masterServices.isStopped();
     }
   }
 
