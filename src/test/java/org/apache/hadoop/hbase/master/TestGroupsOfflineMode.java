@@ -187,7 +187,7 @@ public class TestGroupsOfflineMode {
     while(action.run()) {
       Thread.sleep(sleepInterval);
       if(tries-- < 0) {
-        fail("Timeout ");
+        fail("Timeout");
       }
     }
   }

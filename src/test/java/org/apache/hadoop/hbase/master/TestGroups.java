@@ -22,8 +22,10 @@ package org.apache.hadoop.hbase.master;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
 
 import java.io.IOException;
+import java.security.PrivilegedExceptionAction;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -60,6 +62,7 @@ public class TestGroups {
 	private static HMaster master;
 	private static Random rand;
   private static HBaseAdmin admin;
+  private static MiniHBaseCluster cluster;
 	private static String groupPrefix = "Group-";
 	private static String tablePrefix = "TABLE-";
 	private static String familyPrefix = "FAMILY-";
@@ -74,14 +77,19 @@ public class TestGroups {
         GroupMasterObserver.class.getName()+","+
         GroupAdminEndpoint.class.getName());
 		TEST_UTIL.startMiniCluster(4);
-		MiniHBaseCluster cluster = TEST_UTIL.getHBaseCluster();
-		master = cluster.getMaster();
 		rand = new Random();
     admin = TEST_UTIL.getHBaseAdmin();
-    //wait till the balancer is in online mode
-    while(!((GroupBasedLoadBalancer)master.getLoadBalancer()).isOnline()) {
-      Thread.sleep(100);
-    }
+    cluster = TEST_UTIL.getHBaseCluster();
+		master = cluster.getMaster();
+
+    //wait for balancer to come online
+    waitForCondition(new PrivilegedExceptionAction<Boolean>() {
+      @Override
+      public Boolean run() throws Exception {
+        return !cluster.getMaster().isInitialized() ||
+          !((GroupBasedLoadBalancer)master.getLoadBalancer()).isOnline();
+      }
+    });
 	}
 
 	@AfterClass
@@ -91,16 +99,16 @@ public class TestGroups {
 
   @After
   public void afterMethod() throws Exception {
-		GroupAdminClient groupAdmin = new GroupAdminClient(master.getConfiguration());
-    for(GroupInfo group: groupAdmin.listGroups()) {
-      if(!group.getName().equals(GroupInfo.DEFAULT_GROUP)) {
-        removeGroup(groupAdmin, group.getName());
-      }
-    }
     for(HTableDescriptor table: TEST_UTIL.getHBaseAdmin().listTables()) {
       if(!table.isMetaRegion() && !table.isRootRegion() &&
           !Bytes.equals(table.getName(), GroupInfoManager.GROUP_TABLE_NAME_BYTES)) {
         TEST_UTIL.deleteTable(table.getName());
+      }
+    }
+		GroupAdminClient groupAdmin = new GroupAdminClient(master.getConfiguration());
+    for(GroupInfo group: groupAdmin.listGroups()) {
+      if(!group.getName().equals(GroupInfo.DEFAULT_GROUP)) {
+        removeGroup(groupAdmin, group.getName());
       }
     }
   }
@@ -185,19 +193,22 @@ public class TestGroups {
 	}
 
 	@Test
-	public void testRegionMove() throws IOException, InterruptedException {
+	public void testRegionMove() throws Exception, InterruptedException {
 		GroupAdminClient groupAdmin = new GroupAdminClient(master.getConfiguration());
 		GroupInfo newGroup = addGroup(groupAdmin, groupPrefix + rand.nextInt(), 1);
-		String tableNameOne = tablePrefix + rand.nextInt();
-		byte[] tableOneBytes = Bytes.toBytes(tableNameOne);
-		byte[] familyOneBytes = Bytes.toBytes(familyPrefix + rand.nextInt());
+		final String tableNameOne = tablePrefix + rand.nextInt();
+		final byte[] tableOneBytes = Bytes.toBytes(tableNameOne);
+		final byte[] familyOneBytes = Bytes.toBytes(familyPrefix + rand.nextInt());
 		HTable ht = TEST_UTIL.createTable(tableOneBytes, familyOneBytes);
 
 		// All the regions created below will be assigned to the default group.
     assertEquals(5, TEST_UTIL.createMultiRegions(master.getConfiguration(), ht, familyOneBytes, 5));
-    while (master.getAssignmentManager().getRegionsOfTable(tableOneBytes).size() != 6) {
-      Thread.sleep(100);
-    }
+    waitForCondition(new PrivilegedExceptionAction<Boolean>() {
+      @Override
+      public Boolean run() throws Exception {
+        return master.getAssignmentManager().getRegionsOfTable(tableOneBytes).size() != 6;
+      }
+    });
 
     //get target region to move
     Map<ServerName,List<HRegionInfo>> assignMap =
@@ -217,21 +228,27 @@ public class TestGroups {
         break;
       }
     }
-    HRegionInterface targetRS =
+    final HRegionInterface targetRS =
         admin.getConnection().getHRegionConnection(targetServer.getHostname(), targetServer.getPort());
 
     //move target server to group
     groupAdmin.moveServers(Sets.newHashSet(targetServer.getHostAndPort()), newGroup.getName());
-    while(targetRS.getOnlineRegions().size() > 0) {
-      Thread.sleep(100);
-    }
+    waitForCondition(new PrivilegedExceptionAction<Boolean>() {
+      @Override
+      public Boolean run() throws Exception {
+        return targetRS.getOnlineRegions().size() > 0;
+      }
+    });
 
 		// Lets move this region to the new group.
 		master.move(targetRegion.getEncodedNameAsBytes(), Bytes.toBytes(targetServer.getServerName()));
-    while (master.getAssignmentManager().getRegionsOfTable(tableOneBytes).size() != 6 ||
-           master.getAssignmentManager().getRegionsInTransition().size() > 0) {
-      Thread.sleep(100);
-    }
+    waitForCondition(new PrivilegedExceptionAction<Boolean>() {
+      @Override
+      public Boolean run() throws Exception {
+        return master.getAssignmentManager().getRegionsOfTable(tableOneBytes).size() != 6 ||
+           master.getAssignmentManager().getRegionsInTransition().size() > 0;
+      }
+    });
 
     //verify that targetServer didn't open it
 		assertFalse(targetRS.getOnlineRegions().contains(targetRegion));
@@ -268,4 +285,15 @@ public class TestGroups {
     groupAdmin.removeGroup(groupName);
   }
 
+  private static void waitForCondition(PrivilegedExceptionAction<Boolean> action) throws Exception {
+    long sleepInterval = 100;
+    long timeout = 2*60000;
+    long tries = timeout/sleepInterval;
+    while(action.run()) {
+      Thread.sleep(sleepInterval);
+      if(tries-- < 0) {
+        fail("Timeout");
+      }
+    }
+  }
 }
