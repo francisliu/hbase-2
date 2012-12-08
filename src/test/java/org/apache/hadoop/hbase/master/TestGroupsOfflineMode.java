@@ -83,7 +83,8 @@ public class TestGroupsOfflineMode {
     master.balanceSwitch(false);
     admin = TEST_UTIL.getHBaseAdmin();
     //wait till the balancer is in online mode
-    while(!((GroupBasedLoadBalancer)master.getLoadBalancer()).isOnline() ||
+    while(!cluster.getMaster().isInitialized() ||
+          !((GroupBasedLoadBalancer)master.getLoadBalancer()).isOnline() ||
           cluster.getMaster().getServerManager().getOnlineServers().size() < 2) {
       Thread.sleep(100);
     }
@@ -113,7 +114,7 @@ public class TestGroupsOfflineMode {
     String newGroup =  "my_group";
     groupAdmin.addGroup(newGroup);
     for(HRegionInfo  regionInfo:
-        cluster.getMaster().getAssignmentManager().getAssignments().get(failoverRS.getServerName())) {
+      cluster.getMaster().getAssignmentManager().getAssignments().get(failoverRS.getServerName())) {
       cluster.getMaster().move(regionInfo.getEncodedNameAsBytes(),
           Bytes.toBytes(killRS.getServerName().getServerName()));
     }
@@ -140,8 +141,8 @@ public class TestGroupsOfflineMode {
     LOG.info("Waiting for offline mode...");
     while(TEST_UTIL.getHBaseCluster().getMaster() == null ||
         !TEST_UTIL.getHBaseCluster().getMaster().isActiveMaster() ||
-        TEST_UTIL.getHBaseCluster().getMaster().getServerManager().getOnlineServers().size() > 2 ||
-        !TEST_UTIL.getHBaseCluster().getMaster().isInitialized()) {
+        !TEST_UTIL.getHBaseCluster().getMaster().isInitialized() ||
+        TEST_UTIL.getHBaseCluster().getMaster().getServerManager().getOnlineServers().size() > 2) {
       Thread.sleep(100);
     }
 
@@ -160,8 +161,6 @@ public class TestGroupsOfflineMode {
       Thread.sleep(100);
     }
     assertEquals(0, failoverRS.getOnlineRegions(GroupInfoManager.GROUP_TABLE_NAME_BYTES).size());
-    //shutdown won't finish without this
-    TEST_UTIL.getHBaseCluster().getMaster().abort("die",null);
   }
 
 }

@@ -34,14 +34,17 @@ import org.apache.hadoop.hbase.HTableDescriptor;
 import org.apache.hadoop.hbase.ServerName;
 import org.apache.hadoop.hbase.catalog.MetaReader;
 import org.apache.hadoop.hbase.client.Delete;
+import org.apache.hadoop.hbase.client.Get;
 import org.apache.hadoop.hbase.client.HBaseAdmin;
 import org.apache.hadoop.hbase.client.HTable;
 import org.apache.hadoop.hbase.client.MetaScanner;
 import org.apache.hadoop.hbase.client.Put;
 import org.apache.hadoop.hbase.client.Result;
+import org.apache.hadoop.hbase.client.RowMutations;
 import org.apache.hadoop.hbase.client.Scan;
 import org.apache.hadoop.hbase.master.MasterServices;
 import org.apache.hadoop.hbase.util.Bytes;
+import org.apache.hadoop.hbase.util.EnvironmentEdgeManager;
 import org.apache.hadoop.hbase.util.Writables;
 import org.apache.hadoop.hbase.zookeeper.ZKUtil;
 import org.apache.hadoop.hbase.zookeeper.ZooKeeperWatcher;
@@ -57,6 +60,8 @@ import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
+import java.util.NavigableMap;
+import java.util.NavigableSet;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.concurrent.ConcurrentHashMap;
@@ -66,6 +71,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 public class GroupInfoManagerImpl implements GroupInfoManager {
 	private static final Log LOG = LogFactory.getLog(GroupInfoManagerImpl.class);
   private static final String groupZNode = "groupInfo";
+  private static final byte[] ROW_KEY = {0};
 
 	//Access to this map should always be synchronized.
 	private Map<String, GroupInfo> groupMap;
@@ -75,6 +81,7 @@ public class GroupInfoManagerImpl implements GroupInfoManager {
   private ZooKeeperWatcher watcher;
   private GroupStartupWorker groupStartupWorker;
   private Set<String> prevGroups;
+
 
   public GroupInfoManagerImpl(MasterServices master) throws IOException {
 		this.groupMap = new ConcurrentHashMap<String, GroupInfo>();
@@ -254,23 +261,27 @@ public class GroupInfoManagerImpl implements GroupInfoManager {
   }
 
   private synchronized void refresh(boolean forceOnline) throws IOException {
+    ObjectMapper mapper = new ObjectMapper();
     List<GroupInfo> groupList = new LinkedList<GroupInfo>();
+
+    //if online read from GROUP table
     if (forceOnline || isOnline()) {
       if (table == null) {
         table = new HTable(master.getConfiguration(), GROUP_TABLE_NAME_BYTES);
       }
-      for(Result result: table.getScanner(new Scan())) {
-        GroupInfo group = new GroupInfo(Bytes.toString(result.getRow()),
-            new TreeSet<String>(),
-            new TreeSet<String>(),
-            Bytes.toLong(result.getColumnLatest(INFO_FAMILY_BYTES,Bytes.toBytes("created")).getValue()));
-        for(byte[] server: result.getFamilyMap(SERVER_FAMILY_BYTES).keySet()) {
-          group.addServer(Bytes.toString(server));
+      Result result = table.get(new Get(ROW_KEY));
+      if(!result.isEmpty()) {
+        NavigableMap<byte[],NavigableMap<byte[],byte[]>> dataMap = result.getNoVersionMap();
+        for(byte[] groupName: dataMap.keySet()) {
+          NavigableSet<String> servers =
+              mapper.readValue(Bytes.toString(dataMap.get(SERVER_FAMILY_BYTES).get(groupName)),
+                  new TypeReference<TreeSet<String>>() {});
+          NavigableSet<String> tables =
+              mapper.readValue(Bytes.toString(dataMap.get(TABLE_FAMILY_BYTES).get(groupName)),
+                  new TypeReference<TreeSet<String>>() {});
+          GroupInfo group = new GroupInfo(Bytes.toString(groupName), servers, tables);
+          groupList.add(group);
         }
-        for(byte[] table: result.getFamilyMap(TABLE_FAMILY_BYTES).keySet()) {
-          group.addTable(Bytes.toString(table));
-        }
-        groupList.add(group);
       }
     }
     //Overwrite and info stored by table, this takes precedence
@@ -278,11 +289,9 @@ public class GroupInfoManagerImpl implements GroupInfoManager {
     try {
       if(ZKUtil.checkExists(watcher,groupPath) != -1) {
         byte[] data = ZKUtil.getData(watcher, groupPath);
-        ObjectMapper mapper = new ObjectMapper();
         LOG.debug("Reading ZK GroupInfo:" + Bytes.toString(data));
         groupList.addAll(
-            (List<GroupInfo>) mapper.readValue(data, new TypeReference<List<GroupInfo>>() {
-            }));
+            (List<GroupInfo>) mapper.readValue(data,new TypeReference<List<GroupInfo>>(){}));
       }
     } catch (KeeperException e) {
       throw new IOException("Failed to write to groupZNode",e);
@@ -311,37 +320,32 @@ public class GroupInfoManagerImpl implements GroupInfoManager {
     flushConfig(groupMap);
 	}
 
-	private synchronized void flushConfig(Map<String,GroupInfo> map) throws IOException {
+	private synchronized void flushConfig(Map<String,GroupInfo> newGroupMap) throws IOException {
+    ObjectMapper mapper = new ObjectMapper();
     List<GroupInfo> zGroup = new LinkedList<GroupInfo>();
-    List<Put> puts = new LinkedList<Put>();
-    List<Delete> deletes = new LinkedList<Delete>();
+    Put put = new Put(ROW_KEY);
+    Delete delete = new Delete(ROW_KEY);
 
     //populate deletes
     for(String groupName : prevGroups) {
-      if(!map.containsKey(groupName)) {
-        deletes.add(new Delete(Bytes.toBytes(groupName)));
-      } else {
-        Delete del = new Delete(Bytes.toBytes(groupName));
-        del.deleteFamily(SERVER_FAMILY_BYTES);
-        del.deleteFamily(TABLE_FAMILY_BYTES);
-        deletes.add(del);
+      if(!newGroupMap.containsKey(groupName)) {
+        delete.deleteColumns(TABLE_FAMILY_BYTES, Bytes.toBytes(groupName));
+        delete.deleteColumns(SERVER_FAMILY_BYTES, Bytes.toBytes(groupName));
       }
     }
 
     //populate puts
-    for(GroupInfo groupInfo : map.values()) {
-      Put put = new Put(Bytes.toBytes(groupInfo.getName()));
-      put.add(INFO_FAMILY_BYTES, Bytes.toBytes("created"),
-          Bytes.toBytes(groupInfo.getCreated()));
-      for(String server: groupInfo.getServers()) {
-        put.add(SERVER_FAMILY_BYTES, Bytes.toBytes(server), new byte[0]);
-      }
-      for(String server: groupInfo.getTables()) {
-        put.add(TABLE_FAMILY_BYTES, Bytes.toBytes(server), new byte[0]);
-      }
-      if (put.size() > 0) {
-        puts.add(put);
-      }
+    for(GroupInfo groupInfo : newGroupMap.values()) {
+      ByteArrayOutputStream bos = new ByteArrayOutputStream();
+      mapper.writeValue(bos, groupInfo.getServers());
+      put.add(SERVER_FAMILY_BYTES,
+          Bytes.toBytes(groupInfo.getName()),
+          bos.toByteArray());
+      bos = new ByteArrayOutputStream();
+      mapper.writeValue(bos, groupInfo.getTables());
+      put.add(TABLE_FAMILY_BYTES,
+          Bytes.toBytes(groupInfo.getName()),
+          bos.toByteArray());
       for(String special: GroupBasedLoadBalancer.SPECIAL_TABLES) {
         if (groupInfo.getTables().contains(special)) {
           zGroup.add(groupInfo);
@@ -359,7 +363,6 @@ public class GroupInfoManagerImpl implements GroupInfoManager {
     //Write zk data first since that's what we'll read first
     String groupPath = ZKUtil.joinZNode(watcher.baseZNode,groupZNode);
     try {
-      ObjectMapper mapper = new ObjectMapper();
       ByteArrayOutputStream bos = new ByteArrayOutputStream();
       mapper.writeValue(bos, zGroup);
       LOG.debug("Writing ZK GroupInfo:" + Bytes.toString(bos.toByteArray()));
@@ -367,14 +370,20 @@ public class GroupInfoManagerImpl implements GroupInfoManager {
     } catch (KeeperException e) {
       throw new IOException("Failed to write to groupZNode",e);
     }
-    if (deletes.size() > 0) {
-      table.delete(deletes);
+
+    RowMutations rowMutations = new RowMutations(ROW_KEY);
+    if(put.size() > 0) {
+      rowMutations.add(put);
     }
-    if (puts.size() > 0) {
-      table.put(puts);
+    if(delete.size() > 0) {
+      rowMutations.add(delete);
     }
+    if(rowMutations.getMutations().size() > 0) {
+      table.mutateRow(rowMutations);
+    }
+
     prevGroups.clear();
-    prevGroups.addAll(map.keySet());
+    prevGroups.addAll(newGroupMap.keySet());
   }
 
   private List<ServerName> getOnlineRS() throws IOException{
@@ -435,6 +444,7 @@ public class GroupInfoManagerImpl implements GroupInfoManager {
       this.masterServices = masterServices;
       this.groupInfoManager = groupInfoManager;
       setName(GroupStartupWorker.class.getName()+"-"+masterServices.getServerName());
+      setDaemon(true);
     }
 
     @Override
