@@ -93,7 +93,7 @@ public class TestSecureGroupAdminEndpoint {
         TEST_UTIL.getMiniHBaseCluster().getMaster()
            .getCoprocessorHost().findCoprocessor(SecureGroupAdminEndpoint.class.getName());
     // Wait for the ACL table to become available
-    TEST_UTIL.waitTableAvailable(AccessControlLists.ACL_TABLE_NAME, 5000);
+    TEST_UTIL.waitTableAvailable(AccessControlLists.ACL_TABLE_NAME, 60000);
 
 
 

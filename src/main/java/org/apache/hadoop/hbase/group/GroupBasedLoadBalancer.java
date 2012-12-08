@@ -80,6 +80,8 @@ public class GroupBasedLoadBalancer implements LoadBalancer {
 
   public static final Set<String> SPECIAL_TABLES = new HashSet<String>();
   static {
+    //security table
+    SPECIAL_TABLES.add("_acl_");
     SPECIAL_TABLES.add(Bytes.toString(HConstants.ROOT_TABLE_NAME));
     SPECIAL_TABLES.add(Bytes.toString(HConstants.META_TABLE_NAME));
     SPECIAL_TABLES.add(GroupInfoManager.GROUP_TABLE_NAME);
