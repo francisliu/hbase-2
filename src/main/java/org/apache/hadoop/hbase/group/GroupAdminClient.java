@@ -20,13 +20,14 @@
 package org.apache.hadoop.hbase.group;
 
 import java.io.IOException;
-import java.util.Collection;
 import java.util.List;
 import java.util.Map;
+import java.util.NavigableSet;
 import java.util.Set;
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
+import org.apache.hadoop.classification.InterfaceAudience;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hbase.DoNotRetryIOException;
 import org.apache.hadoop.hbase.HConstants;
@@ -34,10 +35,12 @@ import org.apache.hadoop.hbase.HRegionInfo;
 import org.apache.hadoop.hbase.MasterNotRunningException;
 import org.apache.hadoop.hbase.ZooKeeperConnectionException;
 import org.apache.hadoop.hbase.client.HBaseAdmin;
+import org.apache.hadoop.hbase.util.EnvironmentEdgeManager;
 
 /**
- * This class is responsible for managing region server group information.
+ * Client used for managing region server group information.
  */
+@InterfaceAudience.Public
 public class GroupAdminClient implements GroupAdmin {
   private GroupAdmin proxy;
 	private static final Log LOG = LogFactory.getLog(GroupAdminClient.class);
@@ -50,12 +53,7 @@ public class GroupAdminClient implements GroupAdmin {
   }
 
   @Override
-  public List<HRegionInfo> listOnlineRegionsOfGroup(String groupName) throws IOException {
-    return proxy.listOnlineRegionsOfGroup(groupName);
-  }
-
-  @Override
-  public Collection<String> listTablesOfGroup(String groupName) throws IOException {
+  public NavigableSet<String> listTablesOfGroup(String groupName) throws IOException {
     return proxy.listTablesOfGroup(groupName);
   }
 
@@ -106,7 +104,7 @@ public class GroupAdminClient implements GroupAdmin {
   }
 
   private void waitForTransitions(Set<String> servers) throws IOException {
-    long endTime = System.currentTimeMillis()+operationTimeout;
+    long endTime = EnvironmentEdgeManager.getDelegate().currentTimeMillis()+operationTimeout;
     boolean found;
     do {
       found = false;
@@ -114,13 +112,14 @@ public class GroupAdminClient implements GroupAdmin {
         found = found || servers.contains(server);
       }
       try {
-        Thread.sleep(1000);
+        Thread.sleep(100);
       } catch (InterruptedException e) {
         LOG.debug("Sleep interrupted", e);
+
       }
-    } while(found && System.currentTimeMillis() <= endTime);
+    } while(found && EnvironmentEdgeManager.getDelegate().currentTimeMillis() <= endTime);
     if (found) {
-      throw new DoNotRetryIOException("Operation timed out.");
+      throw new DoNotRetryIOException("Timed out while Waiting for server transition to finish.");
     }
   }
 }

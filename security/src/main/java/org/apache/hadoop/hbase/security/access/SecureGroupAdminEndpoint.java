@@ -1,5 +1,5 @@
 /**
- * Copyright 2011 The Apache Software Foundation
+ * Copyright The Apache Software Foundation
  *
  * Licensed to the Apache Software Foundation (ASF) under one
  * or more contributor license agreements.  See the NOTICE file
@@ -19,6 +19,7 @@
  */
 package org.apache.hadoop.hbase.security.access;
 
+import org.apache.hadoop.classification.InterfaceAudience;
 import org.apache.hadoop.hbase.CoprocessorEnvironment;
 import org.apache.hadoop.hbase.HConstants;
 import org.apache.hadoop.hbase.coprocessor.MasterCoprocessorEnvironment;
@@ -28,7 +29,16 @@ import org.apache.hadoop.hbase.group.GroupAdminProtocol;
 import java.io.IOException;
 import java.util.Set;
 
+/**
+ *
+ * Secure Endpoint implementation of GroupAdminEndpoint.
+ * Methods which change state will now require ADMIN privileges.
+ * If this Endpoint is used, do not install GroupAdminEndpoint.
+ *
+ */
+@InterfaceAudience.Private
 public class SecureGroupAdminEndpoint extends GroupAdminEndpoint implements GroupAdminProtocol {
+  private static AccessController accessController;
   private MasterCoprocessorEnvironment menv;
 
   @Override
@@ -62,7 +72,10 @@ public class SecureGroupAdminEndpoint extends GroupAdminEndpoint implements Grou
   }
 
   private AccessController getAccessController() {
-    return (AccessController)menv.getMasterServices()
+    if(accessController == null) {
+      accessController = (AccessController)menv.getMasterServices()
         .getCoprocessorHost().findCoprocessor(AccessController.class.getName());
+    }
+    return accessController;
   }
 }

@@ -1,5 +1,5 @@
 /**
- * Copyright 2010 The Apache Software Foundation
+ * Copyright The Apache Software Foundation
  *
  * Licensed to the Apache Software Foundation (ASF) under one
  * or more contributor license agreements.  See the NOTICE file
@@ -125,7 +125,7 @@ public class TestGroupsOfflineMode {
     groupAdmin.moveServers(Sets.newHashSet(groupRS.getServerName().getHostAndPort()), newGroup);
     //move server to group and make sure all tables are assigned
     while (groupRS.getOnlineRegions().size() > 0 ||
-        groupAdmin.listOnlineRegionsOfGroup(GroupInfo.DEFAULT_GROUP).size() != TEST_UTIL.getMetaTableRows().size()+2) {
+           master.getAssignmentManager().getRegionsInTransition().size() > 0) {
       Thread.sleep(100);
     }
     //move table to group and wait
@@ -160,6 +160,8 @@ public class TestGroupsOfflineMode {
       Thread.sleep(100);
     }
     assertEquals(0, failoverRS.getOnlineRegions(GroupInfoManager.GROUP_TABLE_NAME_BYTES).size());
+    //shutdown won't finish without this
+    TEST_UTIL.getHBaseCluster().getMaster().abort("die",null);
   }
 
 }

@@ -1,5 +1,5 @@
 /**
- * Copyright 2010 The Apache Software Foundation
+ * Copyright The Apache Software Foundation
  *
  * Licensed to the Apache Software Foundation (ASF) under one
  * or more contributor license agreements.  See the NOTICE file
@@ -22,7 +22,11 @@ package org.apache.hadoop.hbase.master;
 import static org.junit.Assert.*;
 
 import java.io.IOException;
+import java.util.HashMap;
+import java.util.LinkedList;
 import java.util.List;
+import java.util.Map;
+import java.util.NavigableSet;
 import java.util.Random;
 import java.util.Set;
 import java.util.TreeSet;
@@ -107,7 +111,7 @@ public class TestGroupsWithDeadServers {
 		assertTrue(TEST_UTIL.createMultiRegions(master.getConfiguration(), ht,
 				familyTwoBytes, NUM_REGIONS) == NUM_REGIONS);
 		TEST_UTIL.waitUntilAllRegionsAssigned(baseNumRegions+NUM_REGIONS);
-		List<HRegionInfo> regions = groupAdmin.listOnlineRegionsOfGroup(GroupInfo.DEFAULT_GROUP);
+		Set<HRegionInfo> regions = listOnlineRegionsOfGroup(GroupInfo.DEFAULT_GROUP);
 		assertTrue(regions.size() >= NUM_REGIONS);
     //move table to new group
     admin.disableTable(tableNameTwo);
@@ -124,7 +128,7 @@ public class TestGroupsWithDeadServers {
 		while (master.getAssignmentManager().isRegionsInTransition()){
 			Thread.sleep(10);
 		}
-		List<HRegionInfo> newGrpRegions = groupAdmin.listOnlineRegionsOfGroup(newRSGroup);
+		Set<HRegionInfo> newGrpRegions = listOnlineRegionsOfGroup(newRSGroup);
 		assertTrue(newGrpRegions.size() == NUM_REGIONS);
 		MiniHBaseCluster hbaseCluster = TEST_UTIL.getHBaseCluster();
 		// Now we kill all the region servers in the new group.
@@ -137,20 +141,20 @@ public class TestGroupsWithDeadServers {
 		}
 		//wait till all the regions come transition state.
     int tries = 10;
-		while (groupAdmin.listOnlineRegionsOfGroup(newRSGroup).size() != 0 && tries-- > 0){
+		while (listOnlineRegionsOfGroup(newRSGroup).size() != 0 && tries-- > 0){
 			Thread.sleep(100);
 		}
-		newGrpRegions = groupAdmin.listOnlineRegionsOfGroup(newRSGroup);
+		newGrpRegions = listOnlineRegionsOfGroup(newRSGroup);
     assertTrue("Number of online regions in" + newRSGroup + " " + newGrpRegions.size(),
       newGrpRegions.size() == 0);
-		regions = groupAdmin.listOnlineRegionsOfGroup(GroupInfo.DEFAULT_GROUP);
+		regions = listOnlineRegionsOfGroup(GroupInfo.DEFAULT_GROUP);
 		assertEquals(3, regions.size());
 		startServersAndMove(groupAdmin, 1, newRSGroup);
 		while(master.getAssignmentManager().isRegionsInTransition()){
 			Thread.sleep(5);
 		}
 		scanTableForPositiveResults(ht);
-		newGrpRegions = groupAdmin.listOnlineRegionsOfGroup(newRSGroup);
+		newGrpRegions = listOnlineRegionsOfGroup(newRSGroup);
 		assertTrue(newGrpRegions.size() == NUM_REGIONS);
 	}
 
@@ -198,5 +202,39 @@ public class TestGroupsWithDeadServers {
           newServer.getHostAndPort()));
 		}
 	}
+
+  private Set<HRegionInfo> listOnlineRegionsOfGroup(String groupName) throws IOException {
+     if (groupName == null) {
+      throw new NullPointerException("groupName can't be null");
+    }
+
+    GroupInfo groupInfo = ((GroupBasedLoadBalancer)master.getLoadBalancer())
+        .getGroupInfoManager().getGroup(groupName);
+    if (groupInfo == null) {
+			return null;
+		}
+    NavigableSet<HRegionInfo> regions = new TreeSet<HRegionInfo>();
+    Set<String> servers = groupInfo.getServers();
+    Map<String,List<HRegionInfo>> assignments = getOnlineRegions();
+    for(ServerName serverName: master.getServerManager().getOnlineServersList()) {
+      String hostPort = serverName.getHostAndPort();
+      if (servers.contains(hostPort) && assignments.containsKey(hostPort)) {
+        regions.addAll(assignments.get(hostPort));
+      }
+    }
+		return regions;
+	}
+
+  private Map<String,List<HRegionInfo>> getOnlineRegions() throws IOException {
+    Map<String,List<HRegionInfo>> result = new HashMap<String, List<HRegionInfo>>();
+    for(Map.Entry<ServerName, java.util.List<HRegionInfo>> el:
+        master.getAssignmentManager().getAssignments().entrySet()) {
+      if (!result.containsKey(el.getKey().getHostAndPort())) {
+        result.put(el.getKey().getHostAndPort(),new LinkedList<HRegionInfo>());
+      }
+      result.get(el.getKey().getHostAndPort()).addAll(el.getValue());
+    }
+    return result;
+  }
 
 }

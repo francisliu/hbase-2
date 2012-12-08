@@ -1,5 +1,5 @@
 /**
- * Copyright 2011 The Apache Software Foundation
+ * Copyright The Apache Software Foundation
  *
  * Licensed to the Apache Software Foundation (ASF) under one
  * or more contributor license agreements.  See the NOTICE file
@@ -22,6 +22,7 @@ package org.apache.hadoop.hbase.group;
 import org.apache.commons.lang.StringUtils;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
+import org.apache.hadoop.classification.InterfaceAudience;
 import org.apache.hadoop.hbase.CoprocessorEnvironment;
 import org.apache.hadoop.hbase.DoNotRetryIOException;
 import org.apache.hadoop.hbase.HRegionInfo;
@@ -32,14 +33,14 @@ import org.apache.hadoop.hbase.master.MasterServices;
 import org.apache.hadoop.hbase.util.Bytes;
 
 import java.io.IOException;
-import java.util.ArrayList;
-import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
+import java.util.NavigableSet;
 import java.util.Set;
+import java.util.TreeSet;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
@@ -52,6 +53,7 @@ import java.util.concurrent.TimeUnit;
  * Service to support Region Server Grouping (HBase-6721)
  * This should be installed as a Master CoprocessorEndpoint
  */
+@InterfaceAudience.Private
 public class GroupAdminEndpoint extends BaseEndpointCoprocessor
     implements GroupAdminProtocol {
 	private static final Log LOG = LogFactory.getLog(GroupAdminEndpoint.class);
@@ -83,30 +85,7 @@ public class GroupAdminEndpoint extends BaseEndpointCoprocessor
   }
 
   @Override
-  public List<HRegionInfo> listOnlineRegionsOfGroup(String groupName) throws IOException {
-		if (groupName == null) {
-      throw new NullPointerException("groupName can't be null");
-    }
-
-		List<HRegionInfo> regions = new ArrayList<HRegionInfo>();
-    GroupInfo groupInfo = getGroupInfoManager().getGroup(groupName);
-    if (groupInfo == null) {
-			return null;
-		} else {
-			Set<String> servers = groupInfo.getServers();
-      Map<String,List<HRegionInfo>> assignments = getOnlineRegions();
-      for(ServerName serverName: master.getServerManager().getOnlineServersList()) {
-        String hostPort = serverName.getHostAndPort();
-        if (servers.contains(hostPort) && assignments.containsKey(hostPort)) {
-          regions.addAll(assignments.get(hostPort));
-        }
-			}
-		}
-		return regions;
-	}
-
-  @Override
-  public Collection<String> listTablesOfGroup(String groupName) throws IOException {
+  public NavigableSet<String> listTablesOfGroup(String groupName) throws IOException {
     return getGroupInfoManager().getGroup(groupName).getTables();
 	}
 
@@ -168,8 +147,9 @@ public class GroupAdminEndpoint extends BaseEndpointCoprocessor
   public void removeGroup(String name) throws IOException {
     GroupInfoManager manager = getGroupInfoManager();
     synchronized (manager) {
-      if (listTablesOfGroup(name).size() > 0) {
-        throw new DoNotRetryIOException("Group "+name+" must have no associated tables.");
+      int tableCount = listTablesOfGroup(name).size();
+      if (tableCount > 0) {
+        throw new DoNotRetryIOException("Group "+name+" must have no associated tables: "+tableCount);
       }
       manager.removeGroup(name);
     }
@@ -193,18 +173,6 @@ public class GroupAdminEndpoint extends BaseEndpointCoprocessor
 
   private GroupInfoManager getGroupInfoManager() throws IOException {
     return ((GroupBasedLoadBalancer)menv.getMasterServices().getLoadBalancer()).getGroupInfoManager();
-  }
-
-  private Map<String,List<HRegionInfo>> getOnlineRegions() throws IOException {
-    Map<String,List<HRegionInfo>> result = new HashMap<String, List<HRegionInfo>>();
-    for(Map.Entry<ServerName, java.util.List<HRegionInfo>> el:
-        master.getAssignmentManager().getAssignments().entrySet()) {
-      if (!result.containsKey(el.getKey().getHostAndPort())) {
-        result.put(el.getKey().getHostAndPort(),new LinkedList<HRegionInfo>());
-      }
-      result.get(el.getKey().getHostAndPort()).addAll(el.getValue());
-    }
-    return result;
   }
 
 }

@@ -1,5 +1,5 @@
 /**
- * Copyright 2009 The Apache Software Foundation
+ * Copyright The Apache Software Foundation
  *
  * Licensed to the Apache Software Foundation (ASF) under one
  * or more contributor license agreements.  See the NOTICE file
@@ -201,7 +201,7 @@ public class GroupInfoManagerImpl implements GroupInfoManager {
 
   private synchronized void moveTable(String tableName, String groupName) throws IOException {
     if (!GroupInfo.DEFAULT_GROUP.equals(groupName) && !groupMap.containsKey(groupName)) {
-      throw new DoNotRetryIOException("Group does not exist");
+      throw new DoNotRetryIOException("Group "+groupName+" does not exist or is default group");
     }
     if (tableMap.containsKey(tableName)) {
       tableMap.get(tableName).removeTable(tableName);
@@ -223,7 +223,7 @@ public class GroupInfoManagerImpl implements GroupInfoManager {
   @Override
   public synchronized void removeGroup(String groupName) throws IOException {
     if (!groupMap.containsKey(groupName) || groupName.equals(GroupInfo.DEFAULT_GROUP)) {
-      throw new IllegalArgumentException("Group "+groupName+" does not exist or is default group");
+      throw new DoNotRetryIOException("Group "+groupName+" does not exist or is default group");
     }
     GroupInfo groupInfo = null;
     try {

@@ -1,5 +1,5 @@
 /**
- * Copyright 2011 The Apache Software Foundation
+ * Copyright The Apache Software Foundation
  *
  * Licensed to the Apache Software Foundation (ASF) under one
  * or more contributor license agreements.  See the NOTICE file
@@ -19,30 +19,28 @@
  */
 package org.apache.hadoop.hbase.group;
 
+import org.apache.hadoop.classification.InterfaceAudience;
 import org.apache.hadoop.hbase.HRegionInfo;
 
 import java.io.IOException;
-import java.util.Collection;
 import java.util.List;
 import java.util.Map;
+import java.util.NavigableSet;
 import java.util.Set;
 
+/**
+ * Group user API interface used between client and server.
+ */
+@InterfaceAudience.Private
 public interface GroupAdmin {
   /**
-   * Get online regions of a region server group.
-   *
-   * @param groupName the name of the group
-   * @return list of online regions this group contains
-   */
-  List<HRegionInfo> listOnlineRegionsOfGroup(String groupName) throws IOException;
-
-  /**
    * Get member tables of a group.
+   *
    *
    * @param groupName the name of the group
    * @return list of table names
    */
-  Collection<String> listTablesOfGroup(String groupName) throws IOException;
+  NavigableSet<String> listTablesOfGroup(String groupName) throws IOException;
 
   /**
    * Gets the group information.
@@ -63,14 +61,16 @@ public interface GroupAdmin {
   /**
    * Move a set of serves to another group
    *
-   * @param server the server
+   *
+   * @param servers set of servers, must be in the form HOST:PORT
    * @param targetGroup the target group
    * @throws IOException Signals that an I/O exception has occurred.
    */
-  void moveServers(Set<String> server, String targetGroup) throws IOException;
+  void moveServers(Set<String> servers, String targetGroup) throws IOException;
 
   /**
-   * Move tables to a new group
+   * Move tables to a new group.
+   * This will unassign all of a table's region so it can be reassigned to the correct group.
    * @param tables list of tables to move
    * @param targetGroup target group
    * @throws IOException
@@ -85,14 +85,14 @@ public interface GroupAdmin {
   void addGroup(String name) throws IOException;
 
   /**
-   * Remove a new group
+   * Remove a group
    * @param name name of the group
    * @throws IOException
    */
   void removeGroup(String name) throws IOException;
 
   /**
-   * Gets the existing groups.
+   * Lists the existing groups.
    *
    * @return Collection of GroupInfo.
    */
@@ -108,7 +108,7 @@ public interface GroupAdmin {
 
   /**
    * List servers that are currently being moved to a new group
-   * @return
+   * @return a map containing server=>targetGroup KV pairs
    * @throws IOException
    */
   Map<String, String> listServersInTransition() throws IOException;

@@ -1,5 +1,5 @@
 /**
- * Copyright 2011 The Apache Software Foundation
+ * Copyright The Apache Software Foundation
  *
  * Licensed to the Apache Software Foundation (ASF) under one
  * or more contributor license agreements.  See the NOTICE file
@@ -60,10 +60,17 @@ import org.apache.hadoop.util.ReflectionUtils;
  * Most assignment methods contain two exclusive code paths: Online - when the group
  * table is online and Offline - when it is unavailable.
  *
- * During Offline assignments are done randomly irrespective of group memebership.
- * Though only the catalog tables and the group talbes are given non-empty/null assignments.
+ * During Offline, assignments are made randomly irrespective of group memebership.
+ * Though during this mode, only the tables contained in SPECIAL_TABLES
+ * are given assignments to actual online servers.
+ * Once the GROUP table has been assigned, the balancer switches to Online and will then
+ * start providing appropriate assignments for user tables.
+ *
+ * An optmization has been added to cache the group information for SPECIAL_TABLES in zookeeper,
+ * thus random assignments will only occur during first time a cluster is started.
  *
  */
+@InterfaceAudience.Public
 public class GroupBasedLoadBalancer implements LoadBalancer {
   /** Config for pluggable load balancers */
   public static final String HBASE_GROUP_LOADBALANCER_CLASS = "hbase.group.grouploadbalancer.class";
