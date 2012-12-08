@@ -1,5 +1,5 @@
 /**
- * Copyright 2010 The Apache Software Foundation
+ * Copyright The Apache Software Foundation
  *
  * Licensed to the Apache Software Foundation (ASF) under one
  * or more contributor license agreements.  See the NOTICE file
@@ -111,7 +111,11 @@ public class TestGroups {
 		GroupInfo defaultInfo = groupAdmin.getGroupInfo(GroupInfo.DEFAULT_GROUP);
 		assertEquals(4, defaultInfo.getServers().size());
 		// Assignment of root and meta regions.
-		assertEquals(3, groupAdmin.listOnlineRegionsOfGroup(GroupInfo.DEFAULT_GROUP).size());
+    int count = 0;
+    for(List<HRegionInfo> info: master.getAssignmentManager().getAssignments().values()) {
+      count += info.size();
+    }
+		assertEquals(3, count);
 	}
 
 	@Test
