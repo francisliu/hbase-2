@@ -45,27 +45,23 @@ public class GroupInfo implements Serializable {
   private String name;
   private NavigableSet<String> servers;
   private NavigableSet<String> tables;
-  private long created;
 
   public GroupInfo(String name) {
-    this(name, Sets.<String>newTreeSet(), Sets.<String>newTreeSet(), System.currentTimeMillis());
+    this(name, Sets.<String>newTreeSet(), Sets.<String>newTreeSet());
 	}
 
   //constructor for jackson
   @JsonCreator
   GroupInfo(@JsonProperty("name") String name,
             @JsonProperty("servers") NavigableSet<String> servers,
-            @JsonProperty("tables") NavigableSet<String> tables,
-            @JsonProperty("created") long created) {
+            @JsonProperty("tables") NavigableSet<String> tables) {
 		this.name = name;
     this.servers = servers;
     this.tables = tables;
-    this.created = created;
 	}
 
   public GroupInfo(GroupInfo src) {
     name = src.getName();
-    created = src.getCreated();
     servers = Sets.newTreeSet(src.getServers());
     tables = Sets.newTreeSet(src.getTables());
   }
@@ -162,10 +158,6 @@ public class GroupInfo implements Serializable {
 
   public boolean removeTable(String table) {
     return tables.remove(table);
-  }
-
-  public long getCreated() {
-    return created;
   }
 
   @Override
