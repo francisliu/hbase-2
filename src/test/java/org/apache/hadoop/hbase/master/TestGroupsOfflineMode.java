@@ -44,18 +44,13 @@ import org.junit.AfterClass;
 import org.junit.BeforeClass;
 import org.junit.Test;
 import org.junit.experimental.categories.Category;
-import org.mortbay.log.Log;
 
-import java.io.IOException;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Random;
-import java.util.Set;
+import java.security.PrivilegedExceptionAction;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
 
 @Category(MediumTests.class)
 public class TestGroupsOfflineMode {
@@ -83,11 +78,14 @@ public class TestGroupsOfflineMode {
     master.balanceSwitch(false);
     admin = TEST_UTIL.getHBaseAdmin();
     //wait till the balancer is in online mode
-    while(!cluster.getMaster().isInitialized() ||
+    waitForCondition(new PrivilegedExceptionAction<Boolean>() {
+      @Override
+      public Boolean run() throws Exception {
+        return !cluster.getMaster().isInitialized() ||
           !((GroupBasedLoadBalancer)master.getLoadBalancer()).isOnline() ||
-          cluster.getMaster().getServerManager().getOnlineServers().size() < 2) {
-      Thread.sleep(100);
-    }
+          cluster.getMaster().getServerManager().getOnlineServersList().size() < 3;
+      }
+    });
 	}
 
 	@AfterClass
@@ -96,10 +94,10 @@ public class TestGroupsOfflineMode {
 	}
 
   @Test
-  public void testOffline() throws IOException, InterruptedException {
+  public void testOffline() throws Exception, InterruptedException {
     //table should be after group table name
     //so it gets assigned later
-    String failoverTable = GroupInfoManager.GROUP_TABLE_NAME+"1";
+    final String failoverTable = GroupInfoManager.GROUP_TABLE_NAME+"1";
     TEST_UTIL.createTable(Bytes.toBytes(failoverTable), Bytes.toBytes("f"));
 
     //adding testTable to special group so it gets assigned during offline mode
@@ -107,44 +105,58 @@ public class TestGroupsOfflineMode {
 
     GroupAdminClient groupAdmin = new GroupAdminClient(TEST_UTIL.getConfiguration());
 
-    HRegionServer killRS = cluster.getRegionServer(0);
-    HRegionServer groupRS = cluster.getRegionServer(1);
-    HRegionServer failoverRS = cluster.getRegionServer(2);
+    final HRegionServer killRS = cluster.getRegionServer(0);
+    final HRegionServer groupRS = cluster.getRegionServer(1);
+    final HRegionServer failoverRS = cluster.getRegionServer(2);
 
     String newGroup =  "my_group";
     groupAdmin.addGroup(newGroup);
-    for(HRegionInfo  regionInfo:
-      cluster.getMaster().getAssignmentManager().getAssignments().get(failoverRS.getServerName())) {
-      cluster.getMaster().move(regionInfo.getEncodedNameAsBytes(),
-          Bytes.toBytes(killRS.getServerName().getServerName()));
-    }
-    LOG.info("Waiting for region unassignments on failover RS...");
-    while(cluster.getMaster().getAssignmentManager().getAssignments().get(failoverRS.getServerName()).size() > 0) {
-      Thread.sleep(100);
+    if(cluster.getMaster().getAssignmentManager().getAssignments().containsKey(failoverRS.getServerName())) {
+      for(HRegionInfo  regionInfo:
+        cluster.getMaster().getAssignmentManager().getAssignments().get(failoverRS.getServerName())) {
+        cluster.getMaster().move(regionInfo.getEncodedNameAsBytes(),
+            Bytes.toBytes(killRS.getServerName().getServerName()));
+      }
+      LOG.info("Waiting for region unassignments on failover RS...");
+      waitForCondition(new PrivilegedExceptionAction<Boolean>() {
+        @Override
+        public Boolean run() throws Exception {
+          return cluster.getMaster().getAssignmentManager().getAssignments().get(failoverRS.getServerName()).size() > 0;
+        }
+      });
     }
 
-    groupAdmin.moveServers(Sets.newHashSet(groupRS.getServerName().getHostAndPort()), newGroup);
     //move server to group and make sure all tables are assigned
-    while (groupRS.getOnlineRegions().size() > 0 ||
-           master.getAssignmentManager().getRegionsInTransition().size() > 0) {
-      Thread.sleep(100);
-    }
+    groupAdmin.moveServers(Sets.newHashSet(groupRS.getServerName().getHostAndPort()), newGroup);
+    waitForCondition(new PrivilegedExceptionAction<Boolean>() {
+      @Override
+      public Boolean run() throws Exception {
+        return groupRS.getOnlineRegions().size() > 0 ||
+           master.getAssignmentManager().getRegionsInTransition().size() > 0;
+      }
+    });
     //move table to group and wait
     groupAdmin.moveTables(Sets.newHashSet(GroupInfoManager.GROUP_TABLE_NAME), newGroup);
     LOG.info("Waiting for move table...");
-    while (groupRS.getOnlineRegions().size() < 1) {
-      Thread.sleep(100);
-    }
+    waitForCondition(new PrivilegedExceptionAction<Boolean>() {
+      @Override
+      public Boolean run() throws Exception {
+        return groupRS.getOnlineRegions().size() < 1;
+      }
+    });
     groupRS.stop("die");
     //race condition here
     TEST_UTIL.getHBaseCluster().getMaster().stopMaster();
     LOG.info("Waiting for offline mode...");
-    while(TEST_UTIL.getHBaseCluster().getMaster() == null ||
-        !TEST_UTIL.getHBaseCluster().getMaster().isActiveMaster() ||
-        !TEST_UTIL.getHBaseCluster().getMaster().isInitialized() ||
-        TEST_UTIL.getHBaseCluster().getMaster().getServerManager().getOnlineServers().size() > 2) {
-      Thread.sleep(100);
-    }
+    waitForCondition(new PrivilegedExceptionAction<Boolean>() {
+      @Override
+      public Boolean run() throws Exception {
+        return TEST_UTIL.getHBaseCluster().getMaster() == null ||
+            !TEST_UTIL.getHBaseCluster().getMaster().isActiveMaster() ||
+            !TEST_UTIL.getHBaseCluster().getMaster().isInitialized() ||
+            TEST_UTIL.getHBaseCluster().getMaster().getServerManager().getOnlineServers().size() > 2;
+      }
+    });
 
     //make sure balancer is in offline mode, since this is what we're testing
     assertFalse(((GroupBasedLoadBalancer)TEST_UTIL.getHBaseCluster().getMaster().getLoadBalancer()).isOnline());
@@ -157,10 +169,26 @@ public class TestGroupsOfflineMode {
     killRS.stop("die");
     master = TEST_UTIL.getHBaseCluster().getMaster();
     LOG.info("Waiting for new table assignment...");
-    while(failoverRS.getOnlineRegions(Bytes.toBytes(failoverTable)).size() < 1) {
-      Thread.sleep(100);
-    }
+    waitForCondition(new PrivilegedExceptionAction<Boolean>() {
+      @Override
+      public Boolean run() throws Exception {
+        return failoverRS.getOnlineRegions(Bytes.toBytes(failoverTable)).size() < 1;
+      }
+    });
     assertEquals(0, failoverRS.getOnlineRegions(GroupInfoManager.GROUP_TABLE_NAME_BYTES).size());
+    //need this for minicluster to shutdown cleanly
+    master.stopMaster();
   }
 
+  private static void waitForCondition(PrivilegedExceptionAction<Boolean> action) throws Exception {
+    long sleepInterval = 100;
+    long timeout = 2*60000;
+    long tries = timeout/sleepInterval;
+    while(action.run()) {
+      Thread.sleep(sleepInterval);
+      if(tries-- < 0) {
+        fail("Timeout ");
+      }
+    }
+  }
 }
