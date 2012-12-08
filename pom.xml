@@ -375,9 +375,13 @@
           </dependencies>
 
           <configuration>
-            <forkedProcessTimeoutInSeconds>900</forkedProcessTimeoutInSeconds>
+            <forkedProcessTimeoutInSeconds>120</forkedProcessTimeoutInSeconds>
             <argLine>-enableassertions -Xmx1900m -Djava.security.egd=file:/dev/./urandom</argLine>
             <redirectTestOutputToFile>${test.output.tofile}</redirectTestOutputToFile>
+            <excludes>
+                <exclude>**/TestSplitLogManager.java</exclude>
+                <exclude>**/*$*</exclude>
+            </excludes>
           </configuration>
         </plugin>
         <plugin>
