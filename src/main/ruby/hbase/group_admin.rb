@@ -102,6 +102,11 @@ module Hbase
       @admin.getGroupOfServer(server)
     end
     #----------------------------------------------------------------------------------------------
+    # get group of server
+    def getGroupOfTable(table)
+      @admin.getGroupInfoOfTable(table)
+    end
+    #----------------------------------------------------------------------------------------------
     # get list tables of groups
     def listTablesOfGroup(group_name)
       @admin.listTablesOfGroup(group_name).map { |g| g }
