@@ -317,6 +317,7 @@ Shell.load_command_group(
     group_move_servers
     group_move_tables
     group_of_server
+    group_of_table
     group_list_tables
     group_list_transitions
   ]
