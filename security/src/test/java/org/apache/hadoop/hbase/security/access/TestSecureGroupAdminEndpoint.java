@@ -18,15 +18,17 @@
 
 package org.apache.hadoop.hbase.security.access;
 
+import com.google.common.collect.Sets;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hbase.Coprocessor;
 import org.apache.hadoop.hbase.HBaseTestingUtility;
 import org.apache.hadoop.hbase.HConstants;
-import org.apache.hadoop.hbase.LargeTests;
+import org.apache.hadoop.hbase.MediumTests;
 import org.apache.hadoop.hbase.client.HTable;
 import org.apache.hadoop.hbase.client.RetriesExhaustedWithDetailsException;
 import org.apache.hadoop.hbase.group.GroupAdmin;
 import org.apache.hadoop.hbase.group.GroupBasedLoadBalancer;
+import org.apache.hadoop.hbase.master.HMaster;
 import org.apache.hadoop.hbase.master.MasterCoprocessorHost;
 import org.apache.hadoop.hbase.security.AccessDeniedException;
 import org.apache.hadoop.hbase.security.User;
@@ -50,7 +52,7 @@ import static org.junit.Assert.fail;
  * Performs authorization checks for common operations, according to different
  * levels of authorized users.
  */
-@Category(LargeTests.class)
+@Category(MediumTests.class)
 @SuppressWarnings("rawtypes")
 public class TestSecureGroupAdminEndpoint {
   private static HBaseTestingUtility TEST_UTIL = new HBaseTestingUtility();
@@ -94,6 +96,15 @@ public class TestSecureGroupAdminEndpoint {
            .getCoprocessorHost().findCoprocessor(SecureGroupAdminEndpoint.class.getName());
     // Wait for the ACL table to become available
     TEST_UTIL.waitTableAvailable(AccessControlLists.ACL_TABLE_NAME, 60000);
+    //wait for balancer to come online
+    final HMaster master = TEST_UTIL.getHBaseCluster().getMaster();
+    waitForCondition(new PrivilegedExceptionAction<Boolean>() {
+      @Override
+      public Boolean run() throws Exception {
+        return !master.isInitialized() ||
+          !((GroupBasedLoadBalancer)master.getLoadBalancer()).isOnline();
+      }
+    });
 
 
 
@@ -219,6 +230,22 @@ public class TestSecureGroupAdminEndpoint {
   }
 
   @Test
+  public void testMoveTable() throws Exception {
+    TEST_UTIL.createTable(Bytes.toBytes("testMoveTable"),Bytes.toBytes("f"));
+
+    PrivilegedExceptionAction action = new PrivilegedExceptionAction() {
+      public Object run() throws Exception {
+        GROUP_ENDPOINT.moveTables(Sets.newHashSet("testMoveTable"),
+            "default");
+        waitForTransitions(GROUP_ENDPOINT);
+        return null;
+      }
+    };
+    verifyAllowed(action, SUPERUSER, USER_ADMIN);
+    verifyDenied(action, USER_NONE);
+  }
+
+  @Test
   public void testListGroups() throws Exception {
     PrivilegedExceptionAction action = new PrivilegedExceptionAction() {
       public Object run() throws Exception {
@@ -232,6 +259,18 @@ public class TestSecureGroupAdminEndpoint {
   private static void waitForTransitions(GroupAdmin gAdmin) throws IOException, InterruptedException {
     while(gAdmin.listServersInTransition().size()>0) {
       Thread.sleep(1000);
+    }
+  }
+
+  private static void waitForCondition(PrivilegedExceptionAction<Boolean> action) throws Exception {
+    long sleepInterval = 100;
+    long timeout = 2*60000;
+    long tries = timeout/sleepInterval;
+    while(action.run()) {
+      Thread.sleep(sleepInterval);
+      if(tries-- < 0) {
+        fail("Timeout");
+      }
     }
   }
 }
