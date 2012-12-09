@@ -375,6 +375,10 @@
           </dependencies>
 
           <configuration>
+            <excludes>
+                <exclude>**/*$*</exclude>
+                <exclude>**/TestImportExport.java</exclude>
+            </excludes>
             <forkedProcessTimeoutInSeconds>900</forkedProcessTimeoutInSeconds>
             <argLine>-enableassertions -Xmx1900m -Djava.security.egd=file:/dev/./urandom</argLine>
             <redirectTestOutputToFile>${test.output.tofile}</redirectTestOutputToFile>
