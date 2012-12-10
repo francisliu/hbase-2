@@ -22,6 +22,7 @@ import java.io.IOException;
 import java.util.List;
 import java.util.Set;
 
+import clover.retrotranslator.edu.emory.mathcs.backport.java.util.Arrays;
 import org.apache.commons.cli.CommandLine;
 import org.apache.hadoop.hbase.util.AbstractHBaseTool;
 import org.apache.hadoop.util.ToolRunner;
@@ -68,7 +69,16 @@ public class IntegrationTestsDriver extends AbstractHBaseTool {
   protected int doWork() throws Exception {
     //this is called from the command line, so we should set to use the distributed cluster
     IntegrationTestingUtility.setUseDistributedCluster(conf);
-    Class<?>[] classes = findIntegrationTestClasses();
+    Class<?>[] classes;
+    if(System.getProperty("hbase.it.test") != null) {
+      classes = new Class<?>[]{Class.forName(conf.get("hbase.it.test"))};
+      LOG.info("-->1");
+    } else if(conf.get("hbase.it.test") != null) {
+      classes = new Class<?>[]{Class.forName(conf.get("hbase.it.test"))};
+      LOG.info("-->2");
+    } else {
+      classes = findIntegrationTestClasses();
+    }
     LOG.info("Found " + classes.length + " integration tests to run");
 
     JUnitCore junit = new JUnitCore();
