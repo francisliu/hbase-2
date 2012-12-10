@@ -119,7 +119,7 @@ public class GroupInfoManagerImpl implements GroupInfoManager {
     GroupInfo dst = new GroupInfo(getGroup(dstGroup));
     boolean foundOne = false;
     for(String el: hostPort) {
-      foundOne = foundOne || src.removeServer(el);
+      foundOne = src.removeServer(el) || foundOne;
       dst.addServer(el);
     }
 
@@ -270,7 +270,7 @@ public class GroupInfoManagerImpl implements GroupInfoManager {
       Result result = table.get(new Get(ROW_KEY));
       if(!result.isEmpty()) {
         NavigableMap<byte[],NavigableMap<byte[],byte[]>> dataMap = result.getNoVersionMap();
-        for(byte[] groupName: dataMap.keySet()) {
+        for(byte[] groupName: dataMap.get(SERVER_FAMILY_BYTES).keySet()) {
           NavigableSet<String> servers =
               mapper.readValue(Bytes.toString(dataMap.get(SERVER_FAMILY_BYTES).get(groupName)),
                   new TypeReference<TreeSet<String>>() {});

@@ -83,12 +83,15 @@ public class GroupMoveServerWorker implements Runnable {
     try {
       boolean found;
       do {
+        LOG.debug(name+" is awake");
         found = false;
         for(String rs: plan.getServers()) {
           List<HRegionInfo> regions = getOnlineRegions(rs);
           LOG.info("Unassigining "+regions.size()+" from server "+rs);
-          master.getAssignmentManager().unassign(regions);
-          found = found || regions.size() > 0;
+          if(regions.size() > 0) {
+            master.getAssignmentManager().unassign(regions);
+            found = true;
+          }
         }
         try {
           Thread.sleep(1000);

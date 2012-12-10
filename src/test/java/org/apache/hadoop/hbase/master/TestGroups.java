@@ -147,6 +147,24 @@ public class TestGroups {
 	}
 
 	@Test
+	public void testMoveServers() throws IOException, InterruptedException {
+		GroupAdminClient groupAdmin = new GroupAdminClient(master.getConfiguration());
+    addGroup(groupAdmin, "bar", 3);
+    groupAdmin.addGroup("foo");
+    GroupInfo barGroup = groupAdmin.getGroupInfo("bar");
+    GroupInfo fooGroup = groupAdmin.getGroupInfo("foo");
+    assertEquals(3, barGroup.getServers().size());
+    assertEquals(0, fooGroup.getServers().size());
+
+    groupAdmin.moveServers(barGroup.getServers(), fooGroup.getName());
+
+    barGroup = groupAdmin.getGroupInfo("bar");
+    fooGroup = groupAdmin.getGroupInfo("foo");
+		assertEquals(0,barGroup.getServers().size());
+    assertEquals(3,fooGroup.getServers().size());
+	}
+
+	@Test
 	public void testTableMove() throws IOException, InterruptedException {
 		String tableName = tablePrefix + rand.nextInt();
 		byte[] TABLENAME = Bytes.toBytes(tableName);
