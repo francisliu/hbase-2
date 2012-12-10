@@ -48,7 +48,6 @@ import org.apache.hadoop.hbase.group.GroupBasedLoadBalancer;
 import org.apache.hadoop.hbase.group.GroupInfo;
 import org.apache.hadoop.hbase.group.GroupInfoManager;
 import org.apache.hadoop.hbase.group.GroupMasterObserver;
-import org.apache.hadoop.hbase.group.VerifyingGroupAdminClient;
 import org.apache.hadoop.hbase.ipc.HRegionInterface;
 import org.apache.hadoop.hbase.util.Bytes;
 import org.junit.After;
