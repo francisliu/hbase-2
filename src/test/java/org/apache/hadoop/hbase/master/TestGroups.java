@@ -83,7 +83,7 @@ public class TestGroups {
     admin = TEST_UTIL.getHBaseAdmin();
     cluster = TEST_UTIL.getHBaseCluster();
 		master = cluster.getMaster();
-		groupAdmin = new VerifyingGroupAdminClient(master.getConfiguration());
+		groupAdmin = new GroupAdminClient(master.getConfiguration());
 
     //wait for balancer to come online
     waitForCondition(new PrivilegedExceptionAction<Boolean>() {
