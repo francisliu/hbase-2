@@ -48,6 +48,7 @@ import org.apache.hadoop.hbase.group.GroupBasedLoadBalancer;
 import org.apache.hadoop.hbase.group.GroupInfo;
 import org.apache.hadoop.hbase.group.GroupInfoManager;
 import org.apache.hadoop.hbase.group.GroupMasterObserver;
+import org.apache.hadoop.hbase.group.VerifyingGroupAdminClient;
 import org.apache.hadoop.hbase.ipc.HRegionInterface;
 import org.apache.hadoop.hbase.util.Bytes;
 import org.junit.After;
@@ -66,6 +67,7 @@ public class TestGroups {
 	private static String groupPrefix = "Group-";
 	private static String tablePrefix = "TABLE-";
 	private static String familyPrefix = "FAMILY-";
+  private static GroupAdminClient groupAdmin;
 
 	@BeforeClass
 	public static void setUp() throws Exception {
@@ -81,6 +83,7 @@ public class TestGroups {
     admin = TEST_UTIL.getHBaseAdmin();
     cluster = TEST_UTIL.getHBaseCluster();
 		master = cluster.getMaster();
+		groupAdmin = new VerifyingGroupAdminClient(master.getConfiguration());
 
     //wait for balancer to come online
     waitForCondition(new PrivilegedExceptionAction<Boolean>() {
@@ -115,7 +118,6 @@ public class TestGroups {
 
 	@Test
 	public void testBasicStartUp() throws IOException {
-		GroupAdminClient groupAdmin = new GroupAdminClient(master.getConfiguration());
 		GroupInfo defaultInfo = groupAdmin.getGroupInfo(GroupInfo.DEFAULT_GROUP);
 		assertEquals(4, defaultInfo.getServers().size());
 		// Assignment of root and meta regions.
@@ -129,7 +131,6 @@ public class TestGroups {
 	@Test
 	public void testSimpleRegionServerMove() throws IOException,
 			InterruptedException {
-		GroupAdminClient groupAdmin = new GroupAdminClient(master.getConfiguration());
 		GroupInfo appInfo = addGroup(groupAdmin, groupPrefix + rand.nextInt(), 1);
 		GroupInfo adminInfo = addGroup(groupAdmin, groupPrefix + rand.nextInt(), 1);
     GroupInfo dInfo = groupAdmin.getGroupInfo(GroupInfo.DEFAULT_GROUP);
@@ -148,7 +149,6 @@ public class TestGroups {
 
 	@Test
 	public void testMoveServers() throws IOException, InterruptedException {
-		GroupAdminClient groupAdmin = new GroupAdminClient(master.getConfiguration());
     addGroup(groupAdmin, "bar", 3);
     groupAdmin.addGroup("foo");
     GroupInfo barGroup = groupAdmin.getGroupInfo("bar");
@@ -169,7 +169,6 @@ public class TestGroups {
 		String tableName = tablePrefix + rand.nextInt();
 		byte[] TABLENAME = Bytes.toBytes(tableName);
 		byte[] FAMILYNAME = Bytes.toBytes(familyPrefix + rand.nextInt());
-		GroupAdminClient groupAdmin = new GroupAdminClient(master.getConfiguration());
 		GroupInfo newGroup = addGroup(groupAdmin, groupPrefix + rand.nextInt(), 2);
     int currMetaCount = TEST_UTIL.getMetaTableRows().size();
 		HTable ht = TEST_UTIL.createTable(TABLENAME, FAMILYNAME);
@@ -212,7 +211,6 @@ public class TestGroups {
 
 	@Test
 	public void testRegionMove() throws Exception, InterruptedException {
-		GroupAdminClient groupAdmin = new GroupAdminClient(master.getConfiguration());
 		GroupInfo newGroup = addGroup(groupAdmin, groupPrefix + rand.nextInt(), 1);
 		final String tableNameOne = tablePrefix + rand.nextInt();
 		final byte[] tableOneBytes = Bytes.toBytes(tableNameOne);
