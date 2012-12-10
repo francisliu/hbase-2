@@ -378,6 +378,7 @@
             <excludes>
                 <exclude>**/*$*</exclude>
                 <exclude>**/TestImportExport.java</exclude>
+                <exclude>**/TestSplitTransactionOnCluster.java</exclude>
             </excludes>
             <forkedProcessTimeoutInSeconds>900</forkedProcessTimeoutInSeconds>
             <argLine>-enableassertions -Xmx1900m -Djava.security.egd=file:/dev/./urandom</argLine>
