@@ -260,11 +260,15 @@ public class DistributedHBaseCluster extends HBaseCluster {
     }
 
     for (String hostname : Sets.difference(initialServers.keySet(), currentServers.keySet())) {
-      startRegionServer(hostname);
+      if(!clusterManager.isRunning(ServiceType.HBASE_REGIONSERVER, hostname)) {
+        startRegionServer(hostname);
+      }
     }
 
     for (String hostname : Sets.difference(currentServers.keySet(), initialServers.keySet())) {
-      stopRegionServer(currentServers.get(hostname));
+      if(clusterManager.isRunning(ServiceType.HBASE_REGIONSERVER, hostname)) {
+        stopRegionServer(currentServers.get(hostname));
+      }
     }
   }
 }
