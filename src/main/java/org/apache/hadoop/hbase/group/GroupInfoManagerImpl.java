@@ -68,8 +68,6 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 public class GroupInfoManagerImpl implements GroupInfoManager {
 	private static final Log LOG = LogFactory.getLog(GroupInfoManagerImpl.class);
-  private static final String groupZNode = "groupInfo";
-  private static final byte[] ROW_KEY = {0};
 
 	//Access to this map should always be synchronized.
 	private Map<String, GroupInfo> groupMap;
