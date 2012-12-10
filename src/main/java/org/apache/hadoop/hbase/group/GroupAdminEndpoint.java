@@ -105,12 +105,19 @@ public class GroupAdminEndpoint extends BaseEndpointCoprocessor
   public void moveServers(Set<String> servers, String targetGroup)
 			throws IOException {
 		if (servers == null) {
-			throw new IOException(
+			throw new DoNotRetryIOException(
 					"The list of servers cannot be null.");
 		}
     if (StringUtils.isEmpty(targetGroup)) {
-			throw new IOException(
+			throw new DoNotRetryIOException(
 					"The target group cannot be null.");
+    }
+    //check that it's a valid host and port
+    for(String server: servers) {
+      String splits[] = server.split(":",2);
+      if(splits.length < 2)
+        throw new DoNotRetryIOException("Server list contains not a valid <HOST>:<PORT> entry");
+      Integer.parseInt(splits[1]);
     }
 
     GroupMoveServerWorker.MoveServerPlan plan =

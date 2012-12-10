@@ -306,7 +306,7 @@ public class GroupInfoManagerImpl implements GroupInfoManager {
       }
     }
     prevGroups.clear();
-    prevGroups.addAll(tableMap.keySet());
+    prevGroups.addAll(groupMap.keySet());
 	}
 
 	/**
