@@ -54,7 +54,7 @@ public class IntegrationTestGroup {
     tablePrefix = IntegrationTestGroup.class.getSimpleName().replaceAll("\\.","-")+"-";
     util = new IntegrationTestingUtility();
     groupUtil = new GroupTestingUtility(util);
-    groupAdmin = new GroupAdminClient(util.getConfiguration());
+    groupAdmin = new VerifyingGroupAdminClient(util.getConfiguration());
     LOG.info("Initializing cluster with " + NUM_SLAVES_BASE + " servers");
     util.initializeCluster(NUM_SLAVES_BASE);
     LOG.info("Done initializing cluster");
@@ -157,9 +157,11 @@ public class IntegrationTestGroup {
             groupUtil.getTableServerRegionMap().get(tableName);
         boolean found = true;
         int count = 0;
-        for (ServerName rs : serverMap.keySet()) {
-          if (newGroup.containsServer(rs.getHostAndPort())) {
-            count += serverMap.get(rs).size();
+        if(serverMap != null) {
+          for (ServerName rs : serverMap.keySet()) {
+            if (newGroup.containsServer(rs.getHostAndPort())) {
+              count += serverMap.get(rs).size();
+            }
           }
         }
         return count != 5;
