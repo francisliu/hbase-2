@@ -35,16 +35,14 @@ import org.apache.hadoop.hbase.ServerName;
 import org.apache.hadoop.hbase.catalog.MetaReader;
 import org.apache.hadoop.hbase.client.Delete;
 import org.apache.hadoop.hbase.client.Get;
-import org.apache.hadoop.hbase.client.HBaseAdmin;
 import org.apache.hadoop.hbase.client.HTable;
 import org.apache.hadoop.hbase.client.MetaScanner;
 import org.apache.hadoop.hbase.client.Put;
 import org.apache.hadoop.hbase.client.Result;
 import org.apache.hadoop.hbase.client.RowMutations;
-import org.apache.hadoop.hbase.client.Scan;
 import org.apache.hadoop.hbase.master.MasterServices;
+import org.apache.hadoop.hbase.master.handler.CreateTableHandler;
 import org.apache.hadoop.hbase.util.Bytes;
-import org.apache.hadoop.hbase.util.EnvironmentEdgeManager;
 import org.apache.hadoop.hbase.util.Writables;
 import org.apache.hadoop.hbase.zookeeper.ZKUtil;
 import org.apache.hadoop.hbase.zookeeper.ZooKeeperWatcher;
@@ -456,11 +454,10 @@ public class GroupInfoManagerImpl implements GroupInfoManager {
     }
 
     public boolean waitForGroupTableOnline() {
-      final AtomicInteger regionCount = new AtomicInteger(0);
+      final List<HRegionInfo> foundRegions = new LinkedList<HRegionInfo>();
       final AtomicBoolean found = new AtomicBoolean(false);
-      int assignCount = 0;
       while(!found.get() && isMasterRunning()) {
-        regionCount.set(0);
+        foundRegions.clear();
         found.set(true);
         try {
           if(masterServices.getCatalogTracker().verifyRootRegionLocation(1) &&
@@ -477,23 +474,27 @@ public class GroupInfoManagerImpl implements GroupInfoManager {
                         HConstants.SERVER_QUALIFIER);
                     if (value == null) {
                       found.set(false);
-                      return false;
                     }
-                    regionCount.incrementAndGet();
+                    foundRegions.add(info);
                   }
                 }
                 return true;
               }
             };
             MetaScanner.metaScan(conf, visitor);
-            assignCount =
-                masterServices.getAssignmentManager().getRegionsOfTable(GROUP_TABLE_NAME_BYTES).size();
-            if (regionCount.get() < 1 &&
+            List<HRegionInfo> assignedRegions
+                = masterServices.getAssignmentManager().getRegionsOfTable(GROUP_TABLE_NAME_BYTES);
+            if(assignedRegions == null) {
+              assignedRegions = new LinkedList<HRegionInfo>();
+            }
+            //if no regions in meta then we have to create the table
+            if (foundRegions.size() < 1 &&
                 !MetaReader.tableExists(masterServices.getCatalogTracker(), GROUP_TABLE_NAME)) {
               groupInfoManager.createGroupTable(masterServices);
             }
-            LOG.info("isOnline: "+found.get()+", regionCount: "+regionCount.get()+", assignCount: "+assignCount);
-            found.set(found.get() && assignCount == regionCount.get() && regionCount.get() > 0);
+            LOG.info("isOnline: "+found.get()+", regionCount: "+foundRegions.size()+
+                ", assignCount: "+assignedRegions.size());
+            found.set(found.get() && assignedRegions.size() == foundRegions.size() && foundRegions.size() > 0);
           } else {
             LOG.info("Waiting for catalog tables to come online");
             found.set(false);
@@ -531,7 +532,21 @@ public class GroupInfoManagerImpl implements GroupInfoManager {
     desc.addFamily(new HColumnDescriptor(TABLE_FAMILY_BYTES));
     desc.addFamily(new HColumnDescriptor(INFO_FAMILY_BYTES));
     desc.setMaxFileSize(1l << 32);
-    masterServices.createTable(desc, null);
+    HRegionInfo newRegions[] = new HRegionInfo[]{
+          new HRegionInfo(desc.getName(), null, null)};
+    //we need to create the table this way to bypass
+    //checkInitialized
+    masterServices.getExecutorService()
+        .submit(new CreateTableHandler(masterServices,
+            masterServices.getMasterFileSystem(),
+            masterServices.getServerManager(),
+            desc,
+            masterServices.getConfiguration(),
+            newRegions,
+            masterServices.getCatalogTracker(),
+            masterServices.getAssignmentManager()));
+    //need this or else region won't be assigned
+    masterServices.getAssignmentManager().assign(newRegions[0], false);
   }
 
 }
