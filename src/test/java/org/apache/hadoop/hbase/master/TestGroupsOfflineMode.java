@@ -97,7 +97,7 @@ public class TestGroupsOfflineMode {
   public void testOffline() throws Exception, InterruptedException {
     //table should be after group table name
     //so it gets assigned later
-    final String failoverTable = GroupInfoManager.GROUP_TABLE_NAME+"1";
+    final String failoverTable = "z"+GroupInfoManager.GROUP_TABLE_NAME;
     TEST_UTIL.createTable(Bytes.toBytes(failoverTable), Bytes.toBytes("f"));
 
     //adding testTable to special group so it gets assigned during offline mode
