@@ -252,6 +252,7 @@ public class IntegrationTestGroup {
     for(GroupInfo group: groupAdmin.listGroups()) {
       if(!group.getName().equals(GroupInfo.DEFAULT_GROUP)) {
         groupAdmin.moveTables(group.getTables(),GroupInfo.DEFAULT_GROUP);
+        groupAdmin.moveServers(group.getServers(),GroupInfo.DEFAULT_GROUP);
         groupAdmin.removeGroup(group.getName());
       }
     }
