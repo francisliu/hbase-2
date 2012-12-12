@@ -72,8 +72,8 @@ public class GroupMoveServerWorker implements Runnable {
             System.currentTimeMillis()+"_"+sourceGroup+"-"+plan.getTargetGroup();
         groupManager.addGroup(new GroupInfo(transGroup));
       }
+      groupManager.moveServers(plan.getServers(), sourceGroup, transGroup!=null?transGroup:plan.getTargetGroup());
     }
-    groupManager.moveServers(plan.getServers(), sourceGroup, transGroup!=null?transGroup:plan.getTargetGroup());
   }
 
   @Override
@@ -105,13 +105,11 @@ public class GroupMoveServerWorker implements Runnable {
       success = false;
       LOG.error("Caught exception while running", e);
     }
-    if (success) {
-      try {
-        complete();
-      } catch (IOException e) {
-        success = false;
-        LOG.error("Failed to complete move", e);
-      }
+    try {
+      complete();
+    } catch (IOException e) {
+      success = false;
+      LOG.error("Failed to complete move", e);
     }
   }
 
@@ -145,13 +143,13 @@ public class GroupMoveServerWorker implements Runnable {
   }
 
   public void complete() throws IOException {
-    String tmpSourceGroup = sourceGroup;
-    if (transGroup != null) {
-      tmpSourceGroup = transGroup;
-      LOG.debug("Moving "+plan.getServers().size()+
-          " servers from transition group: "+transGroup+" to final group: "+plan.getTargetGroup());
-    }
     try {
+      String tmpSourceGroup = sourceGroup;
+      if (transGroup != null) {
+        tmpSourceGroup = transGroup;
+        LOG.debug("Moving "+plan.getServers().size()+
+            " servers from transition group: "+transGroup+" to final group: "+plan.getTargetGroup());
+      }
       if (success) {
         groupManager.moveServers(plan.getServers(), tmpSourceGroup, plan.getTargetGroup());
         if (transGroup != null) {
@@ -159,8 +157,16 @@ public class GroupMoveServerWorker implements Runnable {
           LOG.debug("Move done "+plan.getServers().size()+
               " servers from transition group: "+transGroup+" to final group: "+plan.getTargetGroup());
         }
-          LOG.debug("Move done "+plan.getServers().size()+
-              " servers from source group: "+sourceGroup+" to final group: "+plan.getTargetGroup());
+        LOG.debug("Move done "+plan.getServers().size()+
+            " servers from source group: "+sourceGroup+" to final group: "+plan.getTargetGroup());
+      } else {
+        //rollback
+        groupManager.moveServers(plan.getServers(), tmpSourceGroup, sourceGroup);
+        if (transGroup != null) {
+          groupManager.removeGroup(transGroup);
+          LOG.debug("Rollback done "+plan.getServers().size()+
+              " servers from transition group: "+transGroup+" to old group: "+sourceGroup);
+        }
       }
     } finally {
       //remove servers in transition

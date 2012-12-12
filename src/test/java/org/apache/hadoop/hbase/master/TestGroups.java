@@ -21,11 +21,13 @@ package org.apache.hadoop.hbase.master;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
 import java.io.IOException;
 import java.security.PrivilegedExceptionAction;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -48,6 +50,7 @@ import org.apache.hadoop.hbase.group.GroupBasedLoadBalancer;
 import org.apache.hadoop.hbase.group.GroupInfo;
 import org.apache.hadoop.hbase.group.GroupInfoManager;
 import org.apache.hadoop.hbase.group.GroupMasterObserver;
+import org.apache.hadoop.hbase.group.GroupMoveServerWorker;
 import org.apache.hadoop.hbase.ipc.HRegionInterface;
 import org.apache.hadoop.hbase.util.Bytes;
 import org.junit.After;
@@ -55,6 +58,10 @@ import org.junit.AfterClass;
 import org.junit.BeforeClass;
 import org.junit.Test;
 import org.junit.experimental.categories.Category;
+import org.mockito.Mockito;
+import org.mortbay.log.Log;
+
+import static org.mockito.Mockito.*;
 
 @Category(MediumTests.class)
 public class TestGroups {
@@ -67,6 +74,7 @@ public class TestGroups {
 	private static String tablePrefix = "TABLE-";
 	private static String familyPrefix = "FAMILY-";
   private static GroupAdminClient groupAdmin;
+  private static GroupAdminEndpoint groupEndpoint;
 
 	@BeforeClass
 	public static void setUp() throws Exception {
@@ -83,6 +91,8 @@ public class TestGroups {
     cluster = TEST_UTIL.getHBaseCluster();
 		master = cluster.getMaster();
 		groupAdmin = new GroupAdminClient(master.getConfiguration());
+    groupEndpoint =
+        (GroupAdminEndpoint)master.getCoprocessorHost().findCoprocessor(GroupAdminEndpoint.class.getName());
 
     //wait for balancer to come online
     waitForCondition(new PrivilegedExceptionAction<Boolean>() {
@@ -110,7 +120,9 @@ public class TestGroups {
 		GroupAdminClient groupAdmin = new GroupAdminClient(master.getConfiguration());
     for(GroupInfo group: groupAdmin.listGroups()) {
       if(!group.getName().equals(GroupInfo.DEFAULT_GROUP)) {
-        removeGroup(groupAdmin, group.getName());
+        groupAdmin.moveTables(group.getTables(),GroupInfo.DEFAULT_GROUP);
+        groupAdmin.moveServers(group.getServers(),GroupInfo.DEFAULT_GROUP);
+        groupAdmin.removeGroup(group.getName());
       }
     }
   }
@@ -155,6 +167,27 @@ public class TestGroups {
     assertEquals(3, barGroup.getServers().size());
     assertEquals(0, fooGroup.getServers().size());
 
+    MasterServices mockedMaster = Mockito.spy(master);
+    doThrow(new RuntimeException("testMoveServersFailed")).when(mockedMaster).getAssignmentManager();
+    Map<String,String> serversInTransition = new HashMap<String,String>();
+
+    //test failure case
+    Runnable failedRunnable =
+        new GroupMoveServerWorker(mockedMaster,
+            serversInTransition,
+            groupEndpoint.getGroupInfoManager(),
+            new GroupMoveServerWorker.MoveServerPlan(barGroup.getServers(), fooGroup.getName()));
+    Thread failedMoveServerThread = new Thread(failedRunnable);
+    failedMoveServerThread.start();
+    failedMoveServerThread.join();
+    verify(mockedMaster,atLeastOnce()).getAssignmentManager();
+    barGroup = groupAdmin.getGroupInfo("bar");
+    assertEquals(0, serversInTransition.size());
+    assertEquals(3, barGroup.getServers().size());
+    assertEquals(3, groupAdmin.listGroups().size());
+
+
+    //test success case
     groupAdmin.moveServers(barGroup.getServers(), fooGroup.getName());
 
     barGroup = groupAdmin.getGroupInfo("bar");
@@ -164,7 +197,7 @@ public class TestGroups {
 	}
 
 	@Test
-	public void testTableMove() throws IOException, InterruptedException {
+	public void testTableMoveAndDrop() throws IOException, InterruptedException {
 		String tableName = tablePrefix + rand.nextInt();
 		byte[] TABLENAME = Bytes.toBytes(tableName);
 		byte[] FAMILYNAME = Bytes.toBytes(familyPrefix + rand.nextInt());
@@ -183,9 +216,7 @@ public class TestGroups {
 		assertTrue(tableGrp.getName().equals(GroupInfo.DEFAULT_GROUP));
 
     //change table's group
-    admin.disableTable(TABLENAME);
     groupAdmin.moveTables(Sets.newHashSet(Bytes.toString(TABLENAME)), newGroup.getName());
-    admin.enableTable(TABLENAME);
 
     //verify group change
 		assertEquals(newGroup.getName(),
@@ -201,8 +232,8 @@ public class TestGroups {
 				assertTrue(newGroup.containsServer(rs.getHostAndPort()));
 			}
 		}
-    removeGroup(groupAdmin, newGroup.getName());
-		TEST_UTIL.deleteTable(TABLENAME);
+    TEST_UTIL.deleteTable(TABLENAME);
+    assertEquals(0, groupAdmin.getGroupInfo(newGroup.getName()).getTables().size());
 		tableRegionAssignMap = master.getAssignmentManager()
 				.getAssignmentsByTable();
 		assertEquals(1, tableRegionAssignMap.size());
@@ -269,6 +300,39 @@ public class TestGroups {
 		assertFalse(targetRS.getOnlineRegions().contains(targetRegion));
 	}
 
+  @Test
+  public void testFailRemoveGroup() throws IOException, InterruptedException {
+    addGroup(groupAdmin, "bar", 3);
+    String tableName = "my_table";
+    TEST_UTIL.createTable(Bytes.toBytes(tableName), Bytes.toBytes("f"));
+    groupAdmin.moveTables(Sets.newHashSet(tableName), "bar");
+    GroupInfo barGroup = groupAdmin.getGroupInfo("bar");
+    //group is not empty therefore it should fail
+    try {
+      groupAdmin.removeGroup(barGroup.getName());
+      fail("Expected remove group to fail");
+    } catch(IOException e) {
+    }
+    //group cannot lose all it's servers therefore it should fail
+    try {
+      groupAdmin.moveServers(barGroup.getServers(), GroupInfo.DEFAULT_GROUP);
+      fail("Expected move servers to fail");
+    } catch(IOException e) {
+    }
+
+    groupAdmin.moveTables(barGroup.getTables(), GroupInfo.DEFAULT_GROUP);
+    try {
+      groupAdmin.removeGroup(barGroup.getName());
+      fail("Expected move servers to fail");
+    } catch(IOException e) {
+    }
+
+    groupAdmin.moveServers(barGroup.getServers(), GroupInfo.DEFAULT_GROUP);
+    groupAdmin.removeGroup(barGroup.getName());
+
+    assertEquals(1, groupAdmin.listGroups().size());
+  }
+
 	static GroupInfo addGroup(GroupAdminClient gAdmin, String groupName,
 			int serverCount) throws IOException, InterruptedException {
 		GroupInfo defaultInfo = gAdmin
@@ -291,11 +355,11 @@ public class TestGroups {
 	}
 
   static void removeGroup(GroupAdminClient groupAdmin, String groupName) throws IOException {
-    for(String table: groupAdmin.listTablesOfGroup(groupName)) {
+    GroupInfo groupInfo = groupAdmin.getGroupInfo(groupName);
+    for(String table: groupInfo.getTables()) {
       byte[] bTable = Bytes.toBytes(table);
-      admin.disableTable(bTable);
-      groupAdmin.moveTables(Sets.newHashSet(table), GroupInfo.DEFAULT_GROUP);
-      admin.enableTable(bTable);
+      groupAdmin.moveTables(groupInfo.getTables(), GroupInfo.DEFAULT_GROUP);
+      groupAdmin.moveServers(groupInfo.getServers(), GroupInfo.DEFAULT_GROUP);
     }
     groupAdmin.removeGroup(groupName);
   }
