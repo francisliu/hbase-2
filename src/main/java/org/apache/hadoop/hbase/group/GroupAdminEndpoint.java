@@ -23,6 +23,7 @@ import org.apache.commons.lang.StringUtils;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.classification.InterfaceAudience;
+import org.apache.hadoop.classification.InterfaceStability;
 import org.apache.hadoop.hbase.CoprocessorEnvironment;
 import org.apache.hadoop.hbase.DoNotRetryIOException;
 import org.apache.hadoop.hbase.HRegionInfo;
@@ -54,6 +55,7 @@ import java.util.concurrent.TimeUnit;
  * This should be installed as a Master CoprocessorEndpoint
  */
 @InterfaceAudience.Private
+@InterfaceStability.Evolving
 public class GroupAdminEndpoint extends BaseEndpointCoprocessor
     implements GroupAdminProtocol {
 	private static final Log LOG = LogFactory.getLog(GroupAdminEndpoint.class);
@@ -66,7 +68,7 @@ public class GroupAdminEndpoint extends BaseEndpointCoprocessor
   private ExecutorService executorService;
   //List of servers that are being moved from one group to another
   //Key=host:port,Value=targetGroup
-  private ConcurrentMap<String,String> serversInTransition =
+  ConcurrentMap<String,String> serversInTransition =
       new ConcurrentHashMap<String,String>();
 
   @Override
@@ -109,8 +111,10 @@ public class GroupAdminEndpoint extends BaseEndpointCoprocessor
 					"The list of servers cannot be null.");
 		}
     if (StringUtils.isEmpty(targetGroup)) {
-			throw new DoNotRetryIOException(
-					"The target group cannot be null.");
+			throw new DoNotRetryIOException("The target group cannot be null.");
+    }
+    if(servers.size() < 1) {
+      return;
     }
     //check that it's a valid host and port
     for(String server: servers) {
@@ -120,25 +124,48 @@ public class GroupAdminEndpoint extends BaseEndpointCoprocessor
       Integer.parseInt(splits[1]);
     }
 
-    GroupMoveServerWorker.MoveServerPlan plan =
-        new GroupMoveServerWorker.MoveServerPlan(servers, targetGroup);
-    GroupMoveServerWorker worker = null;
-    try {
-      worker = new GroupMoveServerWorker(master, serversInTransition, getGroupInfoManager(), plan);
-      executorService.submit(worker);
-      LOG.info("GroupMoveServerHanndlerSubmitted: "+plan.getTargetGroup());
-    } catch(Exception e) {
-      LOG.error("Failed to submit GroupMoveServerWorker", e);
-      if (worker != null) {
-        worker.complete();
+    GroupInfoManager manager = getGroupInfoManager();
+    synchronized (manager) {
+      GroupInfo srcGrp = manager.getGroupOfServer(servers.iterator().next());
+      if(srcGrp.getServers().size() <= servers.size() &&
+         srcGrp.getTables().size() > 0) {
+        throw new DoNotRetryIOException("Cannot leave a group that contains tables without servers.");
       }
-      throw new DoNotRetryIOException("Failed to submit GroupMoveServerWorker",e);
+      GroupMoveServerWorker.MoveServerPlan plan =
+          new GroupMoveServerWorker.MoveServerPlan(servers, targetGroup);
+      GroupMoveServerWorker worker = null;
+      try {
+        worker = new GroupMoveServerWorker(master, serversInTransition, getGroupInfoManager(), plan);
+        executorService.submit(worker);
+        LOG.info("GroupMoveServerWorkerSubmitted: "+plan.getTargetGroup());
+      } catch(Exception e) {
+        LOG.error("Failed to submit GroupMoveServerWorker", e);
+        if (worker != null) {
+          worker.complete();
+        }
+        throw new DoNotRetryIOException("Failed to submit GroupMoveServerWorker",e);
+      }
     }
 	}
 
   @Override
   public void moveTables(Set<String> tables, String targetGroup) throws IOException {
-    getGroupInfoManager().moveTables(tables, targetGroup);
+		if (tables == null) {
+			throw new DoNotRetryIOException(
+					"The list of servers cannot be null.");
+		}
+    if(tables.size() < 1) {
+      LOG.debug("moveTables() passed an empty set. Ignoring.");
+      return;
+    }
+    GroupInfoManager manager = getGroupInfoManager();
+    synchronized (manager) {
+      GroupInfo destGroup = manager.getGroup(targetGroup);
+      if(destGroup.getServers().size() < 1) {
+        throw new DoNotRetryIOException("Target group must have at least one server.");
+      }
+      manager.moveTables(tables, targetGroup);
+    }
     for(String table: tables) {
       master.getAssignmentManager().unassign(
           master.getAssignmentManager().getRegionsOfTable(Bytes.toBytes(table)));
@@ -154,13 +181,20 @@ public class GroupAdminEndpoint extends BaseEndpointCoprocessor
   public void removeGroup(String name) throws IOException {
     GroupInfoManager manager = getGroupInfoManager();
     synchronized (manager) {
-      int tableCount = listTablesOfGroup(name).size();
+      GroupInfo groupInfo = getGroupInfoManager().getGroup(name);
+      if(groupInfo == null) {
+        throw new DoNotRetryIOException("Group "+name+" does not exist");
+      }
+      int tableCount = groupInfo.getTables().size();
       if (tableCount > 0) {
         throw new DoNotRetryIOException("Group "+name+" must have no associated tables: "+tableCount);
       }
+      int serverCount = groupInfo.getServers().size();
+      if(serverCount > 0) {
+        throw new DoNotRetryIOException("Group "+name+" must have no associated servers: "+serverCount);
+      }
       manager.removeGroup(name);
     }
-
   }
 
   @Override
@@ -178,7 +212,8 @@ public class GroupAdminEndpoint extends BaseEndpointCoprocessor
     return Collections.unmodifiableMap(serversInTransition);
   }
 
-  private GroupInfoManager getGroupInfoManager() throws IOException {
+  @InterfaceAudience.Private
+  public GroupInfoManager getGroupInfoManager() throws IOException {
     return ((GroupBasedLoadBalancer)menv.getMasterServices().getLoadBalancer()).getGroupInfoManager();
   }
 

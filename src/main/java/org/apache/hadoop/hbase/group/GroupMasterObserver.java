@@ -20,6 +20,7 @@
 package org.apache.hadoop.hbase.group;
 
 import com.google.common.collect.Sets;
+import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.hbase.CoprocessorEnvironment;
 import org.apache.hadoop.hbase.coprocessor.BaseMasterObserver;
 import org.apache.hadoop.hbase.coprocessor.MasterCoprocessorEnvironment;
@@ -29,8 +30,10 @@ import org.apache.hadoop.hbase.util.Bytes;
 import java.io.IOException;
 
 public class GroupMasterObserver extends BaseMasterObserver {
+	private static final org.apache.commons.logging.Log LOG = LogFactory.getLog(GroupMasterObserver.class);
 
-    private MasterCoprocessorEnvironment menv;
+  private MasterCoprocessorEnvironment menv;
+  private GroupAdmin groupAdmin;
 
   @Override
   public void start(CoprocessorEnvironment ctx) throws IOException {
@@ -39,18 +42,25 @@ public class GroupMasterObserver extends BaseMasterObserver {
 
   @Override
   public void postDeleteTable(ObserverContext<MasterCoprocessorEnvironment> ctx, byte[] tableName) throws IOException {
-    String table = Bytes.toString(tableName);
-    String groupName = getGroupInfoManager().getGroupOfTable(table);
-    if (!GroupInfo.DEFAULT_GROUP.equals(groupName)) {
-      getGroupInfoManager().moveTables(Sets.newHashSet(table), GroupInfo.DEFAULT_GROUP);
+    if(tableName.length > 0) {
+      String table = Bytes.toString(tableName);
+      GroupInfo group = getGroupAdmin().getGroupInfoOfTable(table);
+      LOG.debug("Removing deleted table from table group "+group.getName());
+      if (!GroupInfo.DEFAULT_GROUP.equals(group.getName())) {
+        getGroupAdmin().moveTables(Sets.newHashSet(table), GroupInfo.DEFAULT_GROUP);
+      }
     }
   }
 
-  private GroupBasedLoadBalancer getBalancer() {
-    return (GroupBasedLoadBalancer)menv.getMasterServices().getLoadBalancer();
-  }
-
-  private GroupInfoManager getGroupInfoManager() throws IOException {
-    return ((GroupBasedLoadBalancer)menv.getMasterServices().getLoadBalancer()).getGroupInfoManager();
+  private GroupAdmin getGroupAdmin() {
+    if(groupAdmin == null) {
+      groupAdmin = (GroupAdmin)
+          menv.getMasterServices().getCoprocessorHost().findCoprocessor(GroupAdminEndpoint.class.getName());
+      if(groupAdmin == null) {
+        groupAdmin = (GroupAdmin)
+            menv.getMasterServices().getCoprocessorHost().findCoprocessor("SecureGroupAdminEndpoint");
+      }
+    }
+    return groupAdmin;
   }
 }
