@@ -32,7 +32,6 @@ public interface GroupInfoManager {
   public static final byte[] GROUP_TABLE_NAME_BYTES = Bytes.toBytes(GROUP_TABLE_NAME);
   public static final byte[] SERVER_FAMILY_BYTES = Bytes.toBytes("servers");
   public static final byte[] TABLE_FAMILY_BYTES = Bytes.toBytes("tables");
-  public static final byte[] INFO_FAMILY_BYTES = Bytes.toBytes("info");
   public static final byte[] ROW_KEY = {0};
   public static final String groupZNode = "groupInfo";
 

@@ -528,7 +528,6 @@ public class GroupInfoManagerImpl implements GroupInfoManager {
     HTableDescriptor desc = new HTableDescriptor(GROUP_TABLE_NAME_BYTES);
     desc.addFamily(new HColumnDescriptor(SERVER_FAMILY_BYTES));
     desc.addFamily(new HColumnDescriptor(TABLE_FAMILY_BYTES));
-    desc.addFamily(new HColumnDescriptor(INFO_FAMILY_BYTES));
     desc.setMaxFileSize(1l << 32);
     HRegionInfo newRegions[] = new HRegionInfo[]{
           new HRegionInfo(desc.getName(), null, null)};
