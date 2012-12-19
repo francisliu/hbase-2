@@ -71,7 +71,7 @@ public class GroupInfoManagerImpl implements GroupInfoManager {
 
 	//Access to this map should always be synchronized.
 	private Map<String, GroupInfo> groupMap;
-  private Map<String, GroupInfo> tableMap;
+  private Map<String, String> tableMap;
   private MasterServices master;
   private HTable table;
   private ZooKeeperWatcher watcher;
@@ -81,7 +81,7 @@ public class GroupInfoManagerImpl implements GroupInfoManager {
 
   public GroupInfoManagerImpl(MasterServices master) throws IOException {
 		this.groupMap = new ConcurrentHashMap<String, GroupInfo>();
-		this.tableMap = new ConcurrentHashMap<String, GroupInfo>();
+		this.tableMap = new ConcurrentHashMap<String, String>();
     this.master = master;
     this.watcher = master.getZooKeeper();
     groupStartupWorker = new GroupStartupWorker(this, master, GROUP_TABLE_NAME_BYTES);
@@ -121,15 +121,26 @@ public class GroupInfoManagerImpl implements GroupInfoManager {
       dst.addServer(el);
     }
 
-    Map<String,GroupInfo> newMap = Maps.newHashMap(groupMap);
+    Map<String,GroupInfo> newGroupMap = Maps.newHashMap(groupMap);
     if (!src.getName().equals(GroupInfo.DEFAULT_GROUP)) {
-      newMap.put(src.getName(), src);
+      newGroupMap.put(src.getName(), src);
     }
     if (!dst.getName().equals(GroupInfo.DEFAULT_GROUP)) {
-      newMap.put(dst.getName(), dst);
+      newGroupMap.put(dst.getName(), dst);
     }
-    flushConfig(newMap);
-    groupMap = newMap;
+
+    Map<String,GroupInfo> prevGroupMap = groupMap;
+    try {
+      groupMap = newGroupMap;
+      flushConfig(newGroupMap);
+    } catch(Exception e) {
+      //in case refresh fails
+      //we restored previous consistent state
+      groupMap = prevGroupMap;
+      LOG.error("Failed to update store", e);
+      refresh();
+      throw new IOException("Error while updating store", e);
+    }
     return foundOne;
   }
 
@@ -183,36 +194,46 @@ public class GroupInfoManagerImpl implements GroupInfoManager {
   @Override
   public synchronized String getGroupOfTable(String tableName) throws IOException {
     if (tableMap.containsKey(tableName)) {
-      return tableMap.get(tableName).getName();
+      return tableMap.get(tableName);
     }
     return GroupInfo.DEFAULT_GROUP;
   }
 
   @Override
   public synchronized void moveTables(Set<String> tableNames, String groupName) throws IOException {
-    for(String tableName: tableNames) {
-      moveTable(tableName, groupName);
-    }
-    try {
-      flushConfig();
-    } catch(IOException e) {
-      LOG.error("Failed to update store", e);
-      refresh();
-      throw e;
-    }
-  }
-
-  private synchronized void moveTable(String tableName, String groupName) throws IOException {
     if (!GroupInfo.DEFAULT_GROUP.equals(groupName) && !groupMap.containsKey(groupName)) {
       throw new DoNotRetryIOException("Group "+groupName+" does not exist or is default group");
     }
-    if (tableMap.containsKey(tableName)) {
-      tableMap.get(tableName).removeTable(tableName);
-      tableMap.remove(tableName);
+    Map<String,GroupInfo> newGroupMap = Maps.newHashMap(groupMap);
+    Map<String,String> newTableMap = Maps.newHashMap(tableMap);
+    for(String tableName: tableNames) {
+      if (newTableMap.containsKey(tableName)) {
+        //TODO optimize this, makes too many new objects
+        GroupInfo src = new GroupInfo(newGroupMap.get(newTableMap.get(tableName)));
+        src.removeTable(tableName);
+        newGroupMap.put(src.getName(), src);
+        newTableMap.remove(tableName);
+      }
+      if (!GroupInfo.DEFAULT_GROUP.equals(groupName)) {
+        GroupInfo dst = new GroupInfo(newGroupMap.get(groupName));
+        dst.addTable(tableName);
+        newGroupMap.put(dst.getName(), dst);
+        newTableMap.put(tableName, dst.getName());
+      }
     }
-    if (!GroupInfo.DEFAULT_GROUP.equals(groupName)) {
-      groupMap.get(groupName).addTable(tableName);
-      tableMap.put(tableName, groupMap.get(groupName));
+
+    Map<String,GroupInfo> prevGroupMap = groupMap;
+    Map<String,String> prevTableMap = tableMap;
+    try {
+      groupMap = newGroupMap;
+      tableMap = newTableMap;
+      flushConfig(newGroupMap);
+    } catch(Exception e) {
+      groupMap = prevGroupMap;
+      tableMap = prevTableMap;
+      LOG.error("Failed to update store", e);
+      refresh();
+      throw new IOException("Error while updating store", e);
     }
   }
 
@@ -299,7 +320,7 @@ public class GroupInfoManagerImpl implements GroupInfoManager {
       if(!(group.getName().equals(GroupInfo.OFFLINE_DEFAULT_GROUP) && (isOnline() || forceOnline))) {
         groupMap.put(group.getName(), group);
         for(String table: group.getTables()) {
-          tableMap.put(table, group);
+          tableMap.put(table, group.getName());
         }
       }
     }
