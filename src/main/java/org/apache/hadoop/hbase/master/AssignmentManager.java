@@ -2406,12 +2406,18 @@ public class AssignmentManager extends ZooKeeperListener {
 
     @Override
     protected long getTimeoutOnRIT() {
-      // Guess timeout.  Multiply the number of regions on a random server
-      // by how long we thing one region takes opening.
       long perRegionOpenTimeGuesstimate =
         this.server.getConfiguration().getLong("hbase.bulk.assignment.perregion.open.time", 1000);
-      int regionsPerServer =
-        this.bulkPlan.entrySet().iterator().next().getValue().size();
+
+      int regionsPerServer = 0;
+      int serverCount = 0;
+      for(List<HRegionInfo> el: this.bulkPlan.values()) {
+        regionsPerServer += el.size();
+        if(el.size() > 0) {
+          serverCount++;
+        }
+      }
+      regionsPerServer = regionsPerServer/serverCount+1;
       long timeout = perRegionOpenTimeGuesstimate * regionsPerServer;
       LOG.debug("Timeout-on-RIT=" + timeout);
       return timeout;
