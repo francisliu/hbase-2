@@ -283,7 +283,7 @@ public class GroupBasedLoadBalancer implements LoadBalancer {
         String groupName = groupManager.getGroupOfTable(region.getTableNameAsString());
         regionMap.put(groupName, region);
       }
-      for (String groupKey : regionMap.keys()) {
+      for (String groupKey : regionMap.keySet()) {
         GroupInfo info = groupManager.getGroup(groupKey);
         serverMap.putAll(groupKey, filterOfflineServers(info, servers));
       }

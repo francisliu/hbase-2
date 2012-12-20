@@ -127,6 +127,15 @@ public class TestGroups {
     }
   }
 
+  @Test
+ 	public void testCreateMultiRegion() throws IOException {
+    byte[] tableName = Bytes.toBytes("multi_table");
+    byte[] end = {1,3,5,7,9};
+    byte[] start = {0,2,4,6,8};
+    byte[][] f = {Bytes.toBytes("f")};
+    TEST_UTIL.createTable(tableName, f,1,start,end,10);
+ 	}
+
 	@Test
 	public void testBasicStartUp() throws IOException {
 		GroupInfo defaultInfo = groupAdmin.getGroupInfo(GroupInfo.DEFAULT_GROUP);
