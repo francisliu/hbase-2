@@ -21,7 +21,6 @@ package org.apache.hadoop.hbase.master;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
@@ -195,6 +194,13 @@ public class TestGroups {
     assertEquals(3, barGroup.getServers().size());
     assertEquals(3, groupAdmin.listGroups().size());
 
+    //test fail bogus server move
+    try {
+      groupAdmin.moveServers(Sets.newHashSet("foo:9999"),"foo");
+      fail("Bogus servers shouldn't have been successfully moved.");
+    } catch(IOException ex) {
+      assertTrue(ex.getMessage().contains("Server foo:9999 is not a member of any group."));
+    }
 
     //test success case
     groupAdmin.moveServers(barGroup.getServers(), fooGroup.getName());
