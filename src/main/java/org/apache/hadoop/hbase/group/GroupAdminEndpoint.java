@@ -26,7 +26,6 @@ import org.apache.hadoop.classification.InterfaceAudience;
 import org.apache.hadoop.classification.InterfaceStability;
 import org.apache.hadoop.hbase.CoprocessorEnvironment;
 import org.apache.hadoop.hbase.DoNotRetryIOException;
-import org.apache.hadoop.hbase.HRegionInfo;
 import org.apache.hadoop.hbase.ServerName;
 import org.apache.hadoop.hbase.coprocessor.BaseEndpointCoprocessor;
 import org.apache.hadoop.hbase.coprocessor.MasterCoprocessorEnvironment;
@@ -35,13 +34,11 @@ import org.apache.hadoop.hbase.util.Bytes;
 
 import java.io.IOException;
 import java.util.Collections;
-import java.util.HashMap;
-import java.util.LinkedList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.NavigableSet;
 import java.util.Set;
-import java.util.TreeSet;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
@@ -126,7 +123,25 @@ public class GroupAdminEndpoint extends BaseEndpointCoprocessor
 
     GroupInfoManager manager = getGroupInfoManager();
     synchronized (manager) {
+      //we only allow a move from a single source group
+      //so this should be ok
       GroupInfo srcGrp = manager.getGroupOfServer(servers.iterator().next());
+      //only move online servers (from default)
+      //or servers from other groups
+      //this prevents bogus servers from entering groups
+      if(GroupInfo.DEFAULT_GROUP.equals(srcGrp.getName())) {
+        Set<String> onlineServers = new HashSet<String>();
+        for(ServerName server: master.getServerManager().getOnlineServersList()) {
+          onlineServers.add(server.getHostAndPort());
+        }
+        for(String el: servers) {
+          if(!onlineServers.contains(el)) {
+            throw new DoNotRetryIOException(
+         					"Server "+el+" is not a member of any group.");
+          }
+        }
+      }
+
       if(srcGrp.getServers().size() <= servers.size() &&
          srcGrp.getTables().size() > 0) {
         throw new DoNotRetryIOException("Cannot leave a group that contains tables without servers.");
