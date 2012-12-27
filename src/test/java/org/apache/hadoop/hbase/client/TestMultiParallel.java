@@ -39,6 +39,24 @@ import org.junit.experimental.categories.Category;
 
 import static org.junit.Assert.*;
 
+import org.apache.hadoop.hbase.util.junit.OrderedJUnit4Runner;
+import org.apache.hadoop.hbase.util.junit.OrderedJUnit4Runner.TestOrder;
+import org.junit.runner.RunWith;
+
+@RunWith(OrderedJUnit4Runner.class)
+@TestOrder({
+    "testBadFam",
+    "testActiveThreadsCount", // FAILS if any of the next 2 test run before this
+"testFlushCommitsWithAbort",
+"testBatchWithPut",
+"testFlushCommitsNoAbort",
+"testBatchWithGet",
+"testBatchWithDelete",
+"testHTableDeleteWithList",
+"testBatchWithManyColsInOneRowGetAndPut",
+"testBatchWithIncrementAndAppend",
+"testBatchWithMixedActions"
+})
 @Category(MediumTests.class)
 public class TestMultiParallel {
   private static final Log LOG = LogFactory.getLog(TestMultiParallel.class);
@@ -67,8 +85,12 @@ public class TestMultiParallel {
   @Before public void before() throws IOException {
     LOG.info("before");
     if (UTIL.ensureSomeRegionServersAvailable(slaves)) {
+        LOG.debug("Started new region server(s)!!");
       // Distribute regions
       UTIL.getMiniHBaseCluster().getMaster().balance();
+    }
+    else {
+    LOG.debug("DID NOT Start new region server(s)!!");
     }
     LOG.info("before done");
   }
@@ -146,14 +168,15 @@ public class TestMultiParallel {
       get.addColumn(BYTES_FAMILY, QUALIFIER);
       gets.add(get);
     }
-    Result[] multiRes = new Result[gets.size()];
-    table.batch(gets, multiRes);
-
-    // Same gets using individual call API
+    
     List<Result> singleRes = new ArrayList<Result>();
     for (Row get : gets) {
       singleRes.add(table.get((Get) get));
     }
+
+    // Same gets using batch call API
+    Result[] multiRes = new Result[gets.size()];
+    table.batch(gets, multiRes);
 
     // Compare results
     Assert.assertEquals(singleRes.size(), multiRes.length);
@@ -233,7 +256,7 @@ public class TestMultiParallel {
     LOG.info("puts");
     table.flushCommits();
     if (doAbort) {
-      LOG.info("Aborted=" + UTIL.getMiniHBaseCluster().abortRegionServer(0));
+      LOG.info("Aborted=" + UTIL.getMiniHBaseCluster().abortLiveRegionServer(0));
 
       // try putting more keys after the abort. same key/qual... just validating
       // no exceptions thrown
@@ -279,7 +302,7 @@ public class TestMultiParallel {
     validateSizeAndEmpty(results, KEYS.length);
 
     if (true) {
-      UTIL.getMiniHBaseCluster().abortRegionServer(0);
+      UTIL.getMiniHBaseCluster().abortLiveRegionServer(0);
 
       puts = constructPutRequests();
       results = table.batch(puts);
@@ -542,4 +565,3 @@ public class TestMultiParallel {
   public org.apache.hadoop.hbase.ResourceCheckerJUnitRule cu =
     new org.apache.hadoop.hbase.ResourceCheckerJUnitRule();
 }
-

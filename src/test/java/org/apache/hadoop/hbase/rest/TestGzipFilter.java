@@ -51,6 +51,8 @@ public class TestGzipFilter {
   private static final String COLUMN_2 = CFA + ":2";
   private static final String ROW_1 = "testrow1";
   private static final byte[] VALUE_1 = Bytes.toBytes("testvalue1");
+  private static final String ROW_2 = "testrow2";
+  private static final byte[] VALUE_2 = Bytes.toBytes("testvalue2");
 
   private static final HBaseTestingUtility TEST_UTIL = new HBaseTestingUtility();
   private static final HBaseRESTTestingUtility REST_TEST_UTIL =
@@ -135,11 +137,27 @@ public class TestGzipFilter {
 
   @Test
   public void testScannerResultCodes() throws Exception {
-    Header[] headers = new Header[3];
-    headers[0] = new Header("Content-Type", Constants.MIMETYPE_XML);
-    headers[1] = new Header("Accept", Constants.MIMETYPE_JSON);
-    headers[2] = new Header("Accept-Encoding", "gzip");
-    Response response = client.post("/" + TABLE + "/scanner", headers,
+    
+    // Create data for this test to be self-suffiecient
+    String path = "/" + TABLE + "/" + ROW_2 + "/" + COLUMN_2;
+
+    ByteArrayOutputStream bos = new ByteArrayOutputStream();
+    GZIPOutputStream os = new GZIPOutputStream(bos);
+    os.write(VALUE_2);
+    os.close();
+    byte[] value_2_gzip = bos.toByteArray();
+
+    Header[] headers = new Header[2];
+    headers[0] = new Header("Content-Type", Constants.MIMETYPE_BINARY);
+    headers[1] = new Header("Content-Encoding", "gzip");
+    Response response = client.put(path, headers, value_2_gzip);
+    assertEquals(response.getCode(), 200);
+    
+    Header[] scanHeaders = new Header[3];
+    scanHeaders[0] = new Header("Content-Type", Constants.MIMETYPE_XML);
+    scanHeaders[1] = new Header("Accept", Constants.MIMETYPE_JSON);
+    scanHeaders[2] = new Header("Accept-Encoding", "gzip");
+    response = client.post("/" + TABLE + "/scanner", scanHeaders,
         "<Scanner/>".getBytes());
     assertEquals(response.getCode(), 201);
     String scannerUrl = response.getLocation();

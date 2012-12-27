@@ -64,8 +64,7 @@ import org.junit.experimental.categories.Category;
 public class TestZooKeeper {
   private final Log LOG = LogFactory.getLog(this.getClass());
 
-  private final static HBaseTestingUtility
-      TEST_UTIL = new HBaseTestingUtility();
+  private final static HBaseTestingUtility TEST_UTIL = new HBaseTestingUtility();
   private static HConnection persistentConnection;
 
   /**
@@ -346,8 +345,47 @@ public class TestZooKeeper {
         }
       }
     }
-    zk.close();
+    zk.close(); // Close to test the persistence of the znode
     ZKUtil.createAndFailSilent(zk2, aclZnode);
+
+    // cleanup
+    zk = new ZooKeeper(quorumServers, sessionTimeout, EmptyWatcher.instance);
+    zk.addAuthInfo("digest", "hbase:rox".getBytes());
+    while (true) {
+      try {
+        zk.delete(aclZnode, -1);
+        break;
+      } catch (KeeperException e) {
+        switch (e.code()) {
+          case CONNECTIONLOSS:
+          case SESSIONEXPIRED:
+          case OPERATIONTIMEOUT:
+            LOG.warn("Possibly transient ZooKeeper exception: " + e);
+            Threads.sleep(100);
+            break;
+         default:
+            throw e;
+        }
+      }
+    }
+    while (true) {
+      try {
+        zk.setACL("/", ZooDefs.Ids.OPEN_ACL_UNSAFE, -1);
+        break;
+      } catch (KeeperException e) {
+        switch (e.code()) {
+          case CONNECTIONLOSS:
+          case SESSIONEXPIRED:
+          case OPERATIONTIMEOUT:
+            LOG.warn("Possibly transient ZooKeeper exception: " + e);
+            Threads.sleep(100);
+            break;
+         default:
+            throw e;
+        }
+      }
+    }
+    zk.close();
  }
   
   /**

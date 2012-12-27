@@ -703,6 +703,9 @@ public class TestMasterObserver {
     boolean balanceRun = master.balance();
     assertTrue("Coprocessor should be called on region rebalancing",
         cp.wasBalanceCalled());
+    // In Java7 order of tests isn't guaranteed... hence such cleanups before and after the test
+    table.close();
+    UTIL.deleteTable(TEST_TABLE);
   }
 
   private void waitForRITtoBeZero(HMaster master) throws IOException {

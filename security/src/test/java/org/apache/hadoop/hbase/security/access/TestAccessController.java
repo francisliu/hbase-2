@@ -674,6 +674,13 @@ public class TestAccessController {
 
     verifyAllowed(getPermissionsAction, SUPERUSER, USER_ADMIN, USER_OWNER);
     verifyDenied(getPermissionsAction, USER_CREATE, USER_RW, USER_RO, USER_NONE);
+    
+    // Restore permission for test case to work consistently in Java7
+    HTable acl = new HTable(conf, AccessControlLists.ACL_TABLE_NAME);
+    AccessControllerProtocol protocol = acl.coprocessorProxy(AccessControllerProtocol.class,
+        TEST_TABLE);
+    protocol.grant(new UserPermission(Bytes.toBytes(USER_RO.getShortName()), TEST_TABLE,
+        TEST_FAMILY, (byte[]) null, Action.READ));
   }
 
   @Test

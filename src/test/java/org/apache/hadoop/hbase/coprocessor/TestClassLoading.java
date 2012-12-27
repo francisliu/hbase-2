@@ -230,7 +230,9 @@ public class TestClassLoading {
       "|" + Coprocessor.PRIORITY_USER + "|k1=v1,k2=v2,k3=v3");
     HBaseAdmin admin = TEST_UTIL.getHBaseAdmin();
     if (admin.tableExists(tableName)) {
-      admin.disableTable(tableName);
+      if(admin.isTableEnabled(tableName)) {
+        admin.disableTable(tableName);
+      }
       admin.deleteTable(tableName);
     }
     admin.createTable(htd);
@@ -365,7 +367,9 @@ public class TestClassLoading {
 
     HBaseAdmin admin = TEST_UTIL.getHBaseAdmin();
     if (admin.tableExists(tableName)) {
-      admin.disableTable(tableName);
+      if(admin.isTableEnabled(tableName)) {
+        admin.disableTable(tableName);
+      }
       admin.deleteTable(tableName);
     }
     admin.createTable(htd);
@@ -468,7 +472,9 @@ public class TestClassLoading {
       "|" + Coprocessor.PRIORITY_USER + "|k1=v1,k2=v2,k3=v3");
     HBaseAdmin admin = TEST_UTIL.getHBaseAdmin();
     if (admin.tableExists(tableName)) {
-      admin.disableTable(tableName);
+      if(admin.isTableEnabled(tableName)) {
+        admin.disableTable(tableName);
+      }
       admin.deleteTable(tableName);
     }
     admin.createTable(htd);
@@ -517,16 +523,13 @@ public class TestClassLoading {
     HBaseAdmin admin = TEST_UTIL.getHBaseAdmin();
 
     // disable all user tables, if any are loaded.
-    for (HTableDescriptor htd: admin.listTables()) {
-      if (!htd.isMetaTable()) {
-        String tableName = htd.getNameAsString();
-        if (admin.isTableEnabled(tableName)) {
-          try {
-            admin.disableTable(htd.getNameAsString());
-          } catch (TableNotEnabledException e) {
-            // ignoring this exception for now : not sure why it's happening.
-          }
-        }
+    for (HTableDescriptor htd : admin.listTables()) {
+      if (htd.isMetaTable()) {
+          continue;
+      }
+      String tableName = htd.getNameAsString();
+      if (admin.isTableEnabled(tableName)) {
+        admin.disableTable(tableName);
       }
     }
 
@@ -670,4 +673,3 @@ public class TestClassLoading {
   public org.apache.hadoop.hbase.ResourceCheckerJUnitRule cu =
     new org.apache.hadoop.hbase.ResourceCheckerJUnitRule();
 }
-

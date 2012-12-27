@@ -103,6 +103,9 @@ public class TestSplitLogManager {
     assertTrue(ZKUtil.checkExists(zkw, zkw.splitLogZNode) != -1);
     LOG.debug(zkw.splitLogZNode + " created");
 
+    //slm = new SplitLogManager(zkw, conf, stopper, "dummy-master", null);
+    //slm.finishInitialization();
+    
     stopped = false;
     resetCounters();
   }
@@ -183,6 +186,7 @@ public class TestSplitLogManager {
     byte[] data = ZKUtil.getData(zkw, tasknode);
     LOG.info("Task node created " + new String(data));
     assertTrue(TaskState.TASK_UNASSIGNED.equals(data, "dummy-master"));
+    slm.stop();
   }
 
   @Test
@@ -214,6 +218,7 @@ public class TestSplitLogManager {
     waitForCounter(tot_mgr_resubmit, 0, 1, to + 100);
     assertTrue(task.isUnassigned());
     waitForCounter(tot_mgr_rescan, 0, 1, to + 100);
+    slm.stop();
   }
 
   @Test
@@ -244,6 +249,7 @@ public class TestSplitLogManager {
     assertTrue(task.isOrphan());
     assertTrue(task.isUnassigned());
     assertTrue(ZKUtil.checkExists(zkw, tasknode) > version);
+    slm.stop();
   }
 
   @Test
@@ -278,6 +284,8 @@ public class TestSplitLogManager {
     waitForCounter(tot_mgr_resubmit_threshold_reached, 0, 1, to + 100);
     Thread.sleep(to + 100);
     assertEquals(2L, tot_mgr_resubmit.get());
+    conf.setInt("hbase.splitlog.max.resubmit", ZKSplitLog.DEFAULT_MAX_RESUBMIT);
+    slm.stop();
   }
 
   @Test
@@ -312,7 +320,7 @@ public class TestSplitLogManager {
     } else {
       LOG.warn("Could not run test. Lost ZK connection?");
     }
-
+    slm.stop();
     return;
   }
 
@@ -332,6 +340,7 @@ public class TestSplitLogManager {
     }
     waitForCounter(tot_mgr_task_deleted, 0, 1, 1000);
     assertTrue(ZKUtil.checkExists(zkw, tasknode) == -1);
+    slm.stop();
   }
 
   @Test
@@ -353,6 +362,7 @@ public class TestSplitLogManager {
     waitForCounter(tot_mgr_task_deleted, 0, 1, 1000);
     assertTrue(ZKUtil.checkExists(zkw, tasknode) == -1);
     conf.setInt("hbase.splitlog.max.resubmit", ZKSplitLog.DEFAULT_MAX_RESUBMIT);
+    slm.stop();
   }
 
   @Test
@@ -373,6 +383,7 @@ public class TestSplitLogManager {
     byte[] taskstate = ZKUtil.getData(zkw, tasknode);
     assertTrue(Arrays.equals(taskstate,
         TaskState.TASK_UNASSIGNED.get("dummy-master")));
+    slm.stop();
   }
 
   @Test
@@ -415,6 +426,7 @@ public class TestSplitLogManager {
 
     // now all the nodes are unassigned. manager should post another rescan
     waitForCounter(tot_mgr_resubmit_unassigned, 0, 1, 2 * to + to/2);
+    slm.stop();
   }
 
   @Test
@@ -440,6 +452,9 @@ public class TestSplitLogManager {
     byte[] taskstate = ZKUtil.getData(zkw, tasknode);
     assertTrue(Arrays.equals(TaskState.TASK_UNASSIGNED.get("dummy-master"),
         taskstate));
+    // Restore resubmit limit so that tests work in Java7
+    conf.setInt("hbase.splitlog.max.resubmit", ZKSplitLog.DEFAULT_MAX_RESUBMIT);
+    slm.stop();
     return;
   }
 
@@ -454,11 +469,13 @@ public class TestSplitLogManager {
     fs.mkdirs(emptyLogDirPath);
     slm.splitLogDistributed(emptyLogDirPath);
     assertFalse(fs.exists(emptyLogDirPath));
+    slm.stop();
   }
 
   @Test(timeout=45000)
   public void testVanishingTaskZNode() throws Exception {
     LOG.info("testVanishingTaskZNode");
+    int timeout = conf.getInt("hbase.splitlog.manager.unassigned.timeout", 2200);
     conf.setInt("hbase.splitlog.manager.unassigned.timeout", 0);
     slm = new SplitLogManager(zkw, conf, stopper, "dummy-master", null);
     slm.finishInitialization();
@@ -497,6 +514,9 @@ public class TestSplitLogManager {
         thread.interrupt();
       }
       fs.delete(logDir, true);
+      // Restore
+      conf.setInt("hbase.splitlog.manager.unassigned.timeout", timeout);
+      slm.stop();
     }
   }
 

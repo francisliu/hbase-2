@@ -237,6 +237,17 @@ public class MiniHBaseCluster {
     server.abort("Aborting for tests", new Exception("Trace info"));
     return server.toString();
   }
+  
+  /**
+   * Cause a *live* region server to exit doing basic clean up only on its way out.
+   * @param serverNumber  Used as index into a list.
+   */
+  public String abortLiveRegionServer(int serverNumber) {
+    HRegionServer server = getLiveRegionServer(serverNumber);
+    LOG.info("Aborting " + server.toString());
+    server.abort("Aborting for tests", new Exception("Trace info"));
+    return server.toString();
+  }
 
   /**
    * Shut down the specified region server cleanly
@@ -495,6 +506,15 @@ public class MiniHBaseCluster {
    */
   public HRegionServer getRegionServer(int serverNumber) {
     return hbaseCluster.getRegionServer(serverNumber);
+  }
+
+  /**
+   * Grab a numbered *live* region server of your choice.
+   * @param serverNumber
+   * @return region server
+   */
+  public HRegionServer getLiveRegionServer(int serverNumber) {
+    return hbaseCluster.getLiveRegionServers().get(serverNumber).getRegionServer();
   }
 
   public List<HRegion> getRegions(byte[] tableName) {

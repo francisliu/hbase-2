@@ -467,6 +467,9 @@ public class TestAdmin {
       expectedException = true;
     }
     assertTrue("Online schema update should not happen.", expectedException);
+    // Restore the setting for test case to work in Java7
+    TEST_UTIL.getMiniHBaseCluster().getMaster().getConfiguration().setBoolean(
+        "hbase.online.schema.update.enable", true);
   }
 
   /**
