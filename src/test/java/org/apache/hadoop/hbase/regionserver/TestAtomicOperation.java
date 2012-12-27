@@ -43,12 +43,11 @@ import org.apache.hadoop.hbase.util.Bytes;
 import org.apache.hadoop.hbase.util.EnvironmentEdgeManagerTestHelper;
 import org.junit.experimental.categories.Category;
 
-
 /**
  * Testing of HRegion.incrementColumnValue, HRegion.increment,
  * and HRegion.append
  */
-@Category(MediumTests.class) // Starts 100 threads
+//@Category(MediumTests.class) // Starts 100 threads
 public class TestAtomicOperation extends HBaseTestCase {
   static final Log LOG = LogFactory.getLog(TestAtomicOperation.class);
 
@@ -64,8 +63,8 @@ public class TestAtomicOperation extends HBaseTestCase {
   static final byte[] qual3 = Bytes.toBytes("qual3");
   static final byte[] value1 = Bytes.toBytes("value1");
   static final byte[] value2 = Bytes.toBytes("value2");
-  static final byte [] row = Bytes.toBytes("rowA");
-  static final byte [] row2 = Bytes.toBytes("rowB");
+  static final byte[] row = Bytes.toBytes("rowA");
+  static final byte[] row2 = Bytes.toBytes("rowB");
 
   /**
    * @see org.apache.hadoop.hbase.HBaseTestCase#setUp()
@@ -444,4 +443,3 @@ public class TestAtomicOperation extends HBaseTestCase {
   public org.apache.hadoop.hbase.ResourceCheckerJUnitRule cu =
     new org.apache.hadoop.hbase.ResourceCheckerJUnitRule();
 }
-
