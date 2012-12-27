@@ -21,6 +21,7 @@ package org.apache.hadoop.hbase.master;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
@@ -35,6 +36,7 @@ import java.util.Set;
 
 import com.google.common.collect.Sets;
 import org.apache.hadoop.hbase.HBaseTestingUtility;
+import org.apache.hadoop.hbase.HColumnDescriptor;
 import org.apache.hadoop.hbase.HConstants;
 import org.apache.hadoop.hbase.HRegionInfo;
 import org.apache.hadoop.hbase.HTableDescriptor;
@@ -133,6 +135,30 @@ public class TestGroups {
     byte[] start = {0,2,4,6,8};
     byte[][] f = {Bytes.toBytes("f")};
     TEST_UTIL.createTable(tableName, f,1,start,end,10);
+ 	}
+
+  @Test
+ 	public void testCreateAndAssign() throws Exception {
+    final byte[] tableName = Bytes.toBytes("pre_table");
+    GroupInfo appInfo = addGroup(groupAdmin, "appInfo", 1);
+    final HTableDescriptor desc = new HTableDescriptor(tableName);
+    desc.addFamily(new HColumnDescriptor("f"));
+    desc.setValue(GroupInfo.TABLEDESC_PROP_GROUP, appInfo.getName());
+    admin.createTable(desc);
+		//wait for created table to be assigned
+    waitForCondition(new PrivilegedExceptionAction<Boolean>() {
+      @Override
+      public Boolean run() throws Exception {
+        return master.getAssignmentManager().getAssignmentsByTable().get(desc.getNameAsString()) == null;
+      }
+    });
+    ServerName targetServer = ServerName.parseServerName(appInfo.getServers().iterator().next());
+    HRegionInterface targetRS = admin.getConnection().getHRegionConnection(targetServer.getHostname(),
+        targetServer.getPort());
+    //verify it was assigned to the right group
+    assertEquals(1, targetRS.getOnlineRegions().size());
+    //verify prop was not stored as part of the schema
+    assertNull(admin.getTableDescriptor(tableName).getValue(GroupInfo.TABLEDESC_PROP_GROUP));
  	}
 
 	@Test

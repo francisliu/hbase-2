@@ -39,6 +39,7 @@ import org.codehaus.jackson.annotate.JsonProperty;
 public class GroupInfo implements Serializable {
 
 	public static final String DEFAULT_GROUP = "default";
+  public static final String TABLEDESC_PROP_GROUP = "group";
   public static final String OFFLINE_DEFAULT_GROUP = "_offline_default";
   public static final String TRANSITION_GROUP_PREFIX = "_transition_";
 
