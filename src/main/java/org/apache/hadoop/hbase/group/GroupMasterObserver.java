@@ -22,6 +22,9 @@ package org.apache.hadoop.hbase.group;
 import com.google.common.collect.Sets;
 import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.hbase.CoprocessorEnvironment;
+import org.apache.hadoop.hbase.HRegionInfo;
+import org.apache.hadoop.hbase.HTableDescriptor;
+import org.apache.hadoop.hbase.constraint.ConstraintException;
 import org.apache.hadoop.hbase.coprocessor.BaseMasterObserver;
 import org.apache.hadoop.hbase.coprocessor.MasterCoprocessorEnvironment;
 import org.apache.hadoop.hbase.coprocessor.ObserverContext;
@@ -38,6 +41,22 @@ public class GroupMasterObserver extends BaseMasterObserver {
   @Override
   public void start(CoprocessorEnvironment ctx) throws IOException {
     menv = (MasterCoprocessorEnvironment)ctx;
+  }
+
+  @Override
+  public void preCreateTable(ObserverContext<MasterCoprocessorEnvironment> ctx, HTableDescriptor desc, HRegionInfo[] regions) throws IOException {
+    String groupName = desc.getValue(GroupInfo.TABLEDESC_PROP_GROUP);
+    if(groupName == null) {
+      return;
+    }
+
+    GroupInfo groupInfo = getGroupAdmin().getGroupInfo(groupName);
+    if(groupInfo == null) {
+      throw new ConstraintException("Group "+groupName+" does not exist.");
+    }
+    //we remove the property since it is ephemeral
+    desc.remove(GroupInfo.TABLEDESC_PROP_GROUP);
+    getGroupAdmin().moveTables(Sets.newHashSet(desc.getNameAsString()), groupName);
   }
 
   @Override
