@@ -26,9 +26,12 @@ import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
 import java.io.IOException;
+import java.lang.management.ManagementFactory;
+import java.net.URISyntaxException;
 import java.security.PrivilegedExceptionAction;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
@@ -60,7 +63,10 @@ import org.junit.BeforeClass;
 import org.junit.Test;
 import org.junit.experimental.categories.Category;
 import org.mockito.Mockito;
-import org.mortbay.log.Log;
+
+import javax.management.MBeanServer;
+import javax.management.MalformedObjectNameException;
+import javax.management.ObjectName;
 
 import static org.mockito.Mockito.*;
 
@@ -126,6 +132,20 @@ public class TestGroups {
         groupAdmin.removeGroup(group.getName());
       }
     }
+  }
+
+  @Test
+  public void testJmx() throws MalformedObjectNameException, URISyntaxException, IOException {
+    MBeanServer mBeanServer = ManagementFactory.getPlatformMBeanServer();
+    Iterator<ObjectName> it = mBeanServer.queryNames(new ObjectName("*:*"), null).iterator();
+    boolean found = false;
+    while(it.hasNext()) {
+      ObjectName name = it.next();
+      if("hadoop:name=Group,service=Group".equals(name.getCanonicalName())) {
+        found = true;
+      }
+    }
+    assertTrue(found);
   }
 
   @Test

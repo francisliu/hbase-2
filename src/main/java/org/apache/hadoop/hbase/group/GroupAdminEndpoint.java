@@ -31,6 +31,7 @@ import org.apache.hadoop.hbase.coprocessor.BaseEndpointCoprocessor;
 import org.apache.hadoop.hbase.coprocessor.MasterCoprocessorEnvironment;
 import org.apache.hadoop.hbase.master.MasterServices;
 import org.apache.hadoop.hbase.util.Bytes;
+import org.apache.hadoop.metrics.util.MBeanUtil;
 
 import java.io.IOException;
 import java.util.Collections;
@@ -76,6 +77,7 @@ public class GroupAdminEndpoint extends BaseEndpointCoprocessor
     threadMax = menv.getConfiguration().getInt("hbase.group.executor.threads", 1);
     executorService = new ThreadPoolExecutor(threadMax, threadMax,
         threadKeepAliveTimeInMillis, TimeUnit.MILLISECONDS, threadQ);
+    registerMBean();
   }
 
   @Override
@@ -232,4 +234,10 @@ public class GroupAdminEndpoint extends BaseEndpointCoprocessor
     return ((GroupBasedLoadBalancer)menv.getMasterServices().getLoadBalancer()).getGroupInfoManager();
   }
 
+  void registerMBean() {
+    org.apache.hadoop.hbase.group.MXBeanImpl mxBeanInfo =
+        org.apache.hadoop.hbase.group.MXBeanImpl.init(this, master);
+    MBeanUtil.registerMBean("Group", "Group", mxBeanInfo);
+    LOG.info("Registered Group MXBean");
+  }
 }
