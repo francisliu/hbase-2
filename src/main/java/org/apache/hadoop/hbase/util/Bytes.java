@@ -934,16 +934,6 @@ public class Bytes {
    * @return 0 if equal, < 0 if left is less than right, etc.
    */
   public static int compareTo(final byte [] left, final byte [] right) {
-      // Can't get away in Java 7 without this!
-      if(left == null && right == null) {
-          return 0;
-      }
-      if(left == null && right != null) {
-          return -right.length;
-      }
-      if(left != null && right == null) {
-          return left.length;
-      }
       return LexicographicalComparerHolder.BEST_COMPARER.
               compareTo(left, 0, left.length, right, 0, right.length);
     
