@@ -330,15 +330,16 @@ public class TestTablePermissions {
     Configuration conf = UTIL.getConfiguration();
 
     // add some permissions
-    AccessControlLists.addUserPermission(conf,
-        new UserPermission(Bytes.toBytes("user1"),
-            Permission.Action.READ, Permission.Action.WRITE));
-    AccessControlLists.addUserPermission(conf,
-        new UserPermission(Bytes.toBytes("user2"),
-            Permission.Action.CREATE));
-    AccessControlLists.addUserPermission(conf,
-        new UserPermission(Bytes.toBytes("user3"),
-            Permission.Action.ADMIN, Permission.Action.READ, Permission.Action.CREATE));
+    UserPermission up1 = new UserPermission(Bytes.toBytes("user1"),
+            Permission.Action.READ, Permission.Action.WRITE);
+    AccessControlLists.addUserPermission(conf, up1);
+    
+    UserPermission up2 = new UserPermission(Bytes.toBytes("user2"), Permission.Action.CREATE);
+    AccessControlLists.addUserPermission(conf, up2);
+    
+    UserPermission up3 = new UserPermission(Bytes.toBytes("user3"),
+            Permission.Action.ADMIN, Permission.Action.READ, Permission.Action.CREATE);
+    AccessControlLists.addUserPermission(conf, up3);
 
     ListMultimap<String,TablePermission> perms = AccessControlLists.getTablePermissions(conf, null);
     List<TablePermission> user1Perms = perms.get("user1");
@@ -360,6 +361,11 @@ public class TestTablePermissions {
                     Permission.Action.ADMIN, Permission.Action.READ, Permission.Action.CREATE
                  },
                  user3Perms.get(0).getActions());
+    
+    // Remove permissions added here so the test case works consistently in Java7
+    AccessControlLists.removeUserPermission(conf, up1);
+    AccessControlLists.removeUserPermission(conf, up2);
+    AccessControlLists.removeUserPermission(conf, up3);
   }
 
   @Test
@@ -372,12 +378,21 @@ public class TestTablePermissions {
     // currently running user is the system user and should have global admin perms
     User currentUser = User.getCurrent();
     assertTrue(authManager.authorize(currentUser, Permission.Action.ADMIN));
-    for (int i=1; i<=50; i++) {
-      AccessControlLists.addUserPermission(conf, new UserPermission(Bytes.toBytes("testauth"+i),
+    int i = 0;
+    try {
+        for (i=1; i<=50; i++) {
+        AccessControlLists.addUserPermission(conf, new UserPermission(Bytes.toBytes("testauth"+i),
+            Permission.Action.ADMIN, Permission.Action.READ, Permission.Action.WRITE));
+        // make sure the system user still shows as authorized
+        assertTrue("Failed current user auth check on iter "+i,
+            authManager.authorize(currentUser, Permission.Action.ADMIN));
+        }
+    } finally {
+        while(--i > 0) {
+            // Remove permissions added here so the test case works consistently in Java7
+            AccessControlLists.removeUserPermission(conf, new UserPermission(Bytes.toBytes("testauth"+i),
           Permission.Action.ADMIN, Permission.Action.READ, Permission.Action.WRITE));
-      // make sure the system user still shows as authorized
-      assertTrue("Failed current user auth check on iter "+i,
-          authManager.authorize(currentUser, Permission.Action.ADMIN));
+        }
     }
   }
 }

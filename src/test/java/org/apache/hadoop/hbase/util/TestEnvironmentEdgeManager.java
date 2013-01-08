@@ -62,6 +62,7 @@ public class TestEnvironmentEdgeManager {
     long result = EnvironmentEdgeManager.currentTimeMillis();
     verify(mock).currentTimeMillis();
     assertEquals(expectation, result);
+    EnvironmentEdgeManager.reset();
   }
 
   @org.junit.Rule

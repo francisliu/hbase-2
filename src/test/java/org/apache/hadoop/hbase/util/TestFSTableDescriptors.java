@@ -55,8 +55,11 @@ public class TestFSTableDescriptors {
   @Test
   public void testCreateAndUpdate() throws IOException {
     Path testdir = UTIL.getDataTestDir("testCreate");
-    HTableDescriptor htd = new HTableDescriptor("testCreate");
     FileSystem fs = FileSystem.get(UTIL.getConfiguration());
+   // Delete before creating anything for the assert below to work
+   // In Java7 order of tests isn't guaranteed... hence such cleanups before and after the test
+    fs.delete(testdir, true);
+    HTableDescriptor htd = new HTableDescriptor("testCreate");
     assertTrue(FSTableDescriptors.createTableDescriptor(fs, testdir, htd));
     assertFalse(FSTableDescriptors.createTableDescriptor(fs, testdir, htd));
     FileStatus [] statuses = fs.listStatus(testdir);
