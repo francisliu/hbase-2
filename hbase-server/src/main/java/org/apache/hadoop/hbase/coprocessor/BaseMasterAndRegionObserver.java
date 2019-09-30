@@ -39,6 +39,8 @@ import org.apache.hadoop.hbase.protobuf.generated.QuotaProtos.Quotas;
 
 import java.io.IOException;
 import java.util.List;
+import org.apache.hadoop.hbase.protobuf.generated.RegionServerStatusProtos.RegionStateTransition
+    .TransitionCode;
 
 @InterfaceAudience.LimitedPrivate(HBaseInterfaceAudience.COPROC)
 @InterfaceStability.Evolving
@@ -580,5 +582,10 @@ public class BaseMasterAndRegionObserver extends BaseRegionObserver
   @Override
   public void postSetNamespaceQuota(final ObserverContext<MasterCoprocessorEnvironment> ctx,
       final String namespace, final Quotas quotas) throws IOException {
+  }
+
+  @Override
+  public void preOnRegionTransition(ObserverContext<MasterCoprocessorEnvironment> ctx,
+                                    HRegionInfo hri, TransitionCode code) throws IOException {
   }
 }

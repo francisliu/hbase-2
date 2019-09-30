@@ -100,7 +100,7 @@ class SplitRequest implements Runnable {
             LOG.info("Successful rollback of failed split of " +
               parent.getRegionInfo().getRegionNameAsString());
           } else {
-            this.server.abort("Abort; we got an error after point-of-no-return");
+            this.server.abort("Abort; we got an error after point-of-no-return", e);
           }
         } catch (RuntimeException ee) {
           String msg = "Failed rollback of failed split of " +

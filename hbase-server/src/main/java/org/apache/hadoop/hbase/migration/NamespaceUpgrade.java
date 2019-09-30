@@ -40,7 +40,7 @@ import org.apache.hadoop.hbase.HTableDescriptor;
 import org.apache.hadoop.hbase.NamespaceDescriptor;
 import org.apache.hadoop.hbase.ServerName;
 import org.apache.hadoop.hbase.TableName;
-import org.apache.hadoop.hbase.MetaTableAccessor;
+import org.apache.hadoop.hbase.CatalogAccessor;
 import org.apache.hadoop.hbase.client.Delete;
 import org.apache.hadoop.hbase.client.Get;
 import org.apache.hadoop.hbase.client.Put;
@@ -170,14 +170,14 @@ public class NamespaceUpgrade implements Tool {
     // Dot dirs to rename.  Leave the tmp dir named '.tmp' and snapshots as .hbase-snapshot.
     final Path archiveDir = new Path(rootDir, HConstants.HFILE_ARCHIVE_DIRECTORY);
     Path [][] dirs = new Path[][] {
-      new Path [] {new Path(rootDir, DOT_CORRUPT), new Path(rootDir, HConstants.CORRUPT_DIR_NAME)},
-      new Path [] {new Path(rootDir, DOT_LOGS), new Path(rootDir, HConstants.HREGION_LOGDIR_NAME)},
-      new Path [] {new Path(rootDir, DOT_OLD_LOGS),
-        new Path(rootDir, HConstants.HREGION_OLDLOGDIR_NAME)},
-      new Path [] {new Path(rootDir, TMP_DATA_DIR),
-        new Path(rootDir, HConstants.BASE_NAMESPACE_DIR)},
-      new Path[] { new Path(rootDir, DOT_LIB_DIR),
-        new Path(rootDir, HConstants.LIB_DIR)}};
+        new Path [] {new Path(rootDir, DOT_CORRUPT), new Path(rootDir, HConstants.CORRUPT_DIR_NAME)},
+        new Path [] {new Path(rootDir, DOT_LOGS), new Path(rootDir, HConstants.HREGION_LOGDIR_NAME)},
+        new Path [] {new Path(rootDir, DOT_OLD_LOGS),
+            new Path(rootDir, HConstants.HREGION_OLDLOGDIR_NAME)},
+        new Path [] {new Path(rootDir, TMP_DATA_DIR),
+            new Path(rootDir, HConstants.BASE_NAMESPACE_DIR)},
+        new Path[] { new Path(rootDir, DOT_LIB_DIR),
+            new Path(rootDir, HConstants.LIB_DIR)}};
     for (Path [] dir: dirs) {
       Path src = dir[0];
       Path tgt = dir[1];
@@ -196,7 +196,7 @@ public class NamespaceUpgrade implements Tool {
       Path archiveDataDir = new Path(archiveDir, HConstants.BASE_NAMESPACE_DIR);
       mkdirs(archiveDataDir);
       rename(oldArchiveDir, new Path(archiveDataDir,
-        NamespaceDescriptor.DEFAULT_NAMESPACE_NAME_STR));
+          NamespaceDescriptor.DEFAULT_NAMESPACE_NAME_STR));
     }
     // Update the system and user namespace dirs removing the dot in front of .data.
     Path dataDir = new Path(rootDir, HConstants.BASE_NAMESPACE_DIR);
@@ -249,7 +249,7 @@ public class NamespaceUpgrade implements Tool {
         if (sysTables.contains(oldTableDir.getName())) continue;
         // Make the new directory under the ns to which we will move the table.
         Path nsDir = new Path(this.defNsDir,
-          TableName.valueOf(oldTableDir.getName()).getQualifierAsString());
+            TableName.valueOf(oldTableDir.getName()).getQualifierAsString());
         LOG.info("Moving " + oldTableDir + " to " + nsDir);
         if (!fs.exists(nsDir.getParent())) {
           if (!fs.mkdirs(nsDir.getParent())) {
@@ -275,7 +275,7 @@ public class NamespaceUpgrade implements Tool {
       // Logic to verify old snapshot dir culled from SnapshotManager
       // ignore all the snapshots in progress
       FileStatus[] snapshots = fs.listStatus(oldSnapshotDir,
-        new SnapshotDescriptionUtils.CompletedSnaphotDirectoriesFilter(fs));
+          new SnapshotDescriptionUtils.CompletedSnaphotDirectoriesFilter(fs));
       // loop through all the completed snapshots
       for (FileStatus snapshot : snapshots) {
         Path info = new Path(snapshot.getPath(), SnapshotDescriptionUtils.SNAPSHOTINFO_FILE);
@@ -298,7 +298,7 @@ public class NamespaceUpgrade implements Tool {
   public void migrateMeta() throws IOException {
     Path newMetaDir = new Path(this.sysNsDir, TableName.META_TABLE_NAME.getQualifierAsString());
     Path newMetaRegionDir =
-      new Path(newMetaDir, HRegionInfo.FIRST_META_REGIONINFO.getEncodedName());
+        new Path(newMetaDir, HRegionInfo.FIRST_META_REGIONINFO.getEncodedName());
     Path oldMetaDir = new Path(rootDir, ".META.");
     if (fs.exists(oldMetaDir)) {
       LOG.info("Migrating meta table " + oldMetaDir.getName() + " to " + newMetaDir);
@@ -373,7 +373,7 @@ public class NamespaceUpgrade implements Tool {
       HTableDescriptor newDesc = new HTableDescriptor(oldDesc);
       newDesc.setName(newTableName);
       new FSTableDescriptors(this.conf).createTableDescriptorForTableDirectory(
-        newTablePath, newDesc, true);
+          newTablePath, newDesc, true);
     }
 
 
@@ -429,8 +429,8 @@ public class NamespaceUpgrade implements Tool {
                 newRegionDir);
           }
         }
-        meta.put(MetaTableAccessor.makePutFromRegionInfo(newRegionInfo));
-        meta.delete(MetaTableAccessor.makeDeleteFromRegionInfo(oldRegionInfo));
+        meta.put(CatalogAccessor.makePutFromRegionInfo(newRegionInfo));
+        meta.delete(CatalogAccessor.makeDeleteFromRegionInfo(oldRegionInfo));
       }
     } finally {
       meta.flush(true);
@@ -519,15 +519,15 @@ public class NamespaceUpgrade implements Tool {
   };
 
   static final Comparator<FileStatus> TABLEINFO_FILESTATUS_COMPARATOR =
-  new Comparator<FileStatus>() {
-    @Override
-    public int compare(FileStatus left, FileStatus right) {
-      return right.compareTo(left);
-    }};
+      new Comparator<FileStatus>() {
+        @Override
+        public int compare(FileStatus left, FileStatus right) {
+          return right.compareTo(left);
+        }};
 
   // logic culled from FSTableDescriptors
   static FileStatus getCurrentTableInfoStatus(FileSystem fs, Path dir)
-  throws IOException {
+      throws IOException {
     FileStatus [] status = FSUtils.listStatus(fs, dir, TABLEINFO_PATHFILTER);
     if (status == null || status.length < 1) return null;
     FileStatus mostCurrent = null;

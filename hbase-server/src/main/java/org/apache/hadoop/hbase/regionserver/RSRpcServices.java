@@ -63,7 +63,7 @@ import org.apache.hadoop.hbase.HBaseIOException;
 import org.apache.hadoop.hbase.HConstants;
 import org.apache.hadoop.hbase.HRegionInfo;
 import org.apache.hadoop.hbase.HTableDescriptor;
-import org.apache.hadoop.hbase.MetaTableAccessor;
+import org.apache.hadoop.hbase.CatalogAccessor;
 import org.apache.hadoop.hbase.MultiActionResultTooLarge;
 import org.apache.hadoop.hbase.NotServingRegionException;
 import org.apache.hadoop.hbase.ServerName;
@@ -455,7 +455,7 @@ public class RSRpcServices implements HBaseRPCErrorHandler,
       final CellScanner cellScanner, RegionActionResult.Builder builder) throws IOException {
     int countOfCompleteMutation = 0;
     try {
-      if (!region.getRegionInfo().isMetaTable()) {
+      if (!(region.getRegionInfo().isRootRegion() || region.getRegionInfo().isMetaRegion())) {
         regionServer.cacheFlusher.reclaimMemStoreMemory();
       }
       RowMutations rm = null;
@@ -521,7 +521,7 @@ public class RSRpcServices implements HBaseRPCErrorHandler,
     int countOfCompleteMutation = 0;
     try {
       RowMutations rm = null;
-      if (!region.getRegionInfo().isMetaTable()) {
+      if (!(region.getRegionInfo().isRootRegion() || region.getRegionInfo().isMetaRegion())) {
         regionServer.cacheFlusher.reclaimMemStoreMemory();
       }
       int i = 0;
@@ -872,7 +872,7 @@ public class RSRpcServices implements HBaseRPCErrorHandler,
         quota.addMutation(mutation);
       }
 
-      if (!region.getRegionInfo().isMetaTable()) {
+      if (!(region.getRegionInfo().isRootRegion() || region.getRegionInfo().isMetaRegion())) {
         regionServer.cacheFlusher.reclaimMemStoreMemory();
       }
       // HBASE-17924
@@ -988,7 +988,7 @@ public class RSRpcServices implements HBaseRPCErrorHandler,
         }
       }
       requestCount.add(mutations.size());
-      if (!region.getRegionInfo().isMetaTable()) {
+      if (!(region.getRegionInfo().isRootRegion() || region.getRegionInfo().isMetaRegion())) {
         regionServer.cacheFlusher.reclaimMemStoreMemory();
       }
       return region.batchReplay(mutations.toArray(
@@ -1676,7 +1676,8 @@ public class RSRpcServices implements HBaseRPCErrorHandler,
           tableName = ProtobufUtil.toTableName(ri.getTableName());
         }
       }
-      if (!TableName.META_TABLE_NAME.equals(tableName)) {
+      if (!TableName.ROOT_TABLE_NAME.equals(tableName)
+          && !TableName.META_TABLE_NAME.equals(tableName)) {
         throw new ServiceException(ie);
       }
       // We are assigning meta, wait a little for regionserver to finish initialization.
@@ -1718,7 +1719,7 @@ public class RSRpcServices implements HBaseRPCErrorHandler,
           }
           // See HBASE-5094. Cross check with hbase:meta if still this RS is owning
           // the region.
-          Pair<HRegionInfo, ServerName> p = MetaTableAccessor.getRegion(
+          Pair<HRegionInfo, ServerName> p = CatalogAccessor.getRegion(
             regionServer.getConnection(), region.getRegionName());
           if (regionServer.serverName.equals(p.getSecond())) {
             Boolean closing = regionServer.regionsInTransitionInRS.get(region.getEncodedNameAsBytes());
@@ -2441,7 +2442,7 @@ public class RSRpcServices implements HBaseRPCErrorHandler,
       Region region = getRegion(request.getRegion());
       MutateResponse.Builder builder = MutateResponse.newBuilder();
       MutationProto mutation = request.getMutation();
-      if (!region.getRegionInfo().isMetaTable()) {
+      if (!(region.getRegionInfo().isRootRegion() || region.getRegionInfo().isMetaRegion())) {
         regionServer.cacheFlusher.reclaimMemStoreMemory();
       }
       long nonceGroup = request.hasNonceGroup() ? request.getNonceGroup() : HConstants.NO_NONCE;

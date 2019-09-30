@@ -295,6 +295,7 @@ public class MetricsConnection implements StatisticTrackable {
     this.scope = conn.toString();
     this.registry = new MetricsRegistry();
     final ThreadPoolExecutor batchPool = (ThreadPoolExecutor) conn.getCurrentBatchPool();
+    final ThreadPoolExecutor rootPool = (ThreadPoolExecutor) conn.getCurrentRootLookupPool();
     final ThreadPoolExecutor metaPool = (ThreadPoolExecutor) conn.getCurrentMetaLookupPool();
 
     this.registry.newGauge(this.getClass(), "executorPoolActiveThreads", scope,
@@ -304,6 +305,15 @@ public class MetricsConnection implements StatisticTrackable {
           }
           @Override protected double getDenominator() {
             return batchPool.getMaximumPoolSize();
+          }
+        });
+    this.registry.newGauge(this.getClass(), "rootPoolActiveThreads", scope,
+        new RatioGauge() {
+          @Override protected double getNumerator() {
+            return rootPool.getActiveCount();
+          }
+          @Override protected double getDenominator() {
+            return rootPool.getMaximumPoolSize();
           }
         });
     this.registry.newGauge(this.getClass(), "metaPoolActiveThreads", scope,

@@ -83,7 +83,7 @@ import org.apache.hadoop.hbase.util.Bytes;
 import org.apache.hadoop.hbase.util.FSUtils;
 import org.apache.hadoop.hbase.util.HFileArchiveUtil;
 import org.apache.hadoop.hbase.util.Triple;
-import org.apache.hadoop.hbase.zookeeper.MetaTableLocator;
+import org.apache.hadoop.hbase.zookeeper.RootTableLocator;
 import org.apache.hadoop.hbase.zookeeper.ZooKeeperWatcher;
 import org.junit.Test;
 import org.junit.experimental.categories.Category;
@@ -154,8 +154,7 @@ public class TestCatalogJanitor {
       return this.connection;
     }
 
-    @Override
-    public MetaTableLocator getMetaTableLocator() {
+    public RootTableLocator getRootTableLocator() {
       return null;
     }
 
@@ -303,8 +302,7 @@ public class TestCatalogJanitor {
       return null;
     }
 
-    @Override
-    public MetaTableLocator getMetaTableLocator() {
+    public RootTableLocator getRootTableLocator() {
       return null;
     }
 

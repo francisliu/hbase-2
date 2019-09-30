@@ -92,6 +92,11 @@ public class FSTableDescriptors implements TableDescriptors {
     new ConcurrentHashMap<TableName, HTableDescriptor>();
 
   /**
+   * Table descriptor for <code>hbase:root</code> catalog table
+   */
+   private final HTableDescriptor rootTableDescriptor;
+
+  /**
    * Table descriptor for <code>hbase:meta</code> catalog table
    */
    private final HTableDescriptor metaTableDescriptor;
@@ -121,6 +126,7 @@ public class FSTableDescriptors implements TableDescriptors {
     this.rootdir = rootdir;
     this.fsreadonly = fsreadonly;
     this.usecache = usecache;
+    this.rootTableDescriptor = HTableDescriptor.rootTableDescriptor(conf);
     this.metaTableDescriptor = HTableDescriptor.metaTableDescriptor(conf);
   }
 
@@ -151,6 +157,10 @@ public class FSTableDescriptors implements TableDescriptors {
   public HTableDescriptor get(final TableName tablename)
   throws IOException {
     invocations++;
+    if (TableName.ROOT_TABLE_NAME.equals(tablename)) {
+      cachehits++;
+      return rootTableDescriptor;
+    }
     if (TableName.META_TABLE_NAME.equals(tablename)) {
       cachehits++;
       return metaTableDescriptor;
@@ -201,6 +211,9 @@ public class FSTableDescriptors implements TableDescriptors {
       for (Map.Entry<TableName, HTableDescriptor> entry: this.cache.entrySet()) {
         htds.put(entry.getKey().toString(), entry.getValue());
       }
+      // add hbase:meta to the response
+      htds.put(HTableDescriptor.ROOT_TABLEDESC.getTableName().getNameAsString(),
+        HTableDescriptor.ROOT_TABLEDESC);
       // add hbase:meta to the response
       htds.put(HTableDescriptor.META_TABLEDESC.getTableName().getNameAsString(),
         HTableDescriptor.META_TABLEDESC);
@@ -258,6 +271,9 @@ public class FSTableDescriptors implements TableDescriptors {
   public void add(HTableDescriptor htd) throws IOException {
     if (fsreadonly) {
       throw new NotImplementedException("Cannot add a table descriptor - in read only mode");
+    }
+    if (TableName.ROOT_TABLE_NAME.equals(htd.getTableName())) {
+      throw new NotImplementedException();
     }
     if (TableName.META_TABLE_NAME.equals(htd.getTableName())) {
       throw new NotImplementedException();
@@ -382,6 +398,7 @@ public class FSTableDescriptors implements TableDescriptors {
       // Clean away old versions
       for (FileStatus file : status) {
         Path path = file.getPath();
+        LOG.debug("Path of the most current table info file " + path);
         if (file != mostCurrent) {
           if (!fs.delete(file.getPath(), false)) {
             LOG.warn("Failed cleanup of " + path);

@@ -81,6 +81,10 @@ public final class TableName implements Comparable<TableName> {
   /** The hbase:meta table's name. */
   public static final TableName META_TABLE_NAME =
       valueOf(NamespaceDescriptor.SYSTEM_NAMESPACE_NAME_STR, "meta");
+  
+  /** The hbase:meta table's name. */
+  public static final TableName ROOT_TABLE_NAME =
+      valueOf(NamespaceDescriptor.SYSTEM_NAMESPACE_NAME_STR, "root");
 
   /** The Namespace table's name. */
   public static final TableName NAMESPACE_TABLE_NAME =
@@ -519,8 +523,10 @@ public final class TableName implements Comparable<TableName> {
   @InterfaceAudience.Private
   @Deprecated
   public KVComparator getRowComparator() {
-     if(TableName.META_TABLE_NAME.equals(this)) {
+    if (TableName.META_TABLE_NAME.equals(this)) {
       return KeyValue.META_COMPARATOR;
+    } else if (TableName.ROOT_TABLE_NAME.equals(this)) {
+      return KeyValue.ROOT_COMPARATOR;
     }
     return KeyValue.COMPARATOR;
   }

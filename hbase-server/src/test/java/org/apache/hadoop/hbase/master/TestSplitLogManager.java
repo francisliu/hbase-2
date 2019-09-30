@@ -65,7 +65,7 @@ import org.apache.hadoop.hbase.master.SplitLogManager.Task;
 import org.apache.hadoop.hbase.master.SplitLogManager.TaskBatch;
 import org.apache.hadoop.hbase.protobuf.generated.ZooKeeperProtos.SplitLogTask.RecoveryMode;
 import org.apache.hadoop.hbase.regionserver.TestMasterAddressTracker.NodeCreationListener;
-import org.apache.hadoop.hbase.zookeeper.MetaTableLocator;
+import org.apache.hadoop.hbase.zookeeper.RootTableLocator;
 import org.apache.hadoop.hbase.zookeeper.ZKSplitLog;
 import org.apache.hadoop.hbase.zookeeper.ZKUtil;
 import org.apache.hadoop.hbase.zookeeper.ZooKeeperWatcher;
@@ -158,8 +158,7 @@ public class TestSplitLogManager {
       return null;
     }
 
-    @Override
-    public MetaTableLocator getMetaTableLocator() {
+    public RootTableLocator getRootTableLocator() {
       return null;
     }
 

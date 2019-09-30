@@ -18,6 +18,7 @@
 
 package org.apache.hadoop.hbase.client;
 
+import java.util.Comparator;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Set;
@@ -45,6 +46,22 @@ import org.apache.hadoop.hbase.util.Bytes;
 public class MetaCache {
 
   private static final Log LOG = LogFactory.getLog(MetaCache.class);
+
+  private final static Comparator metaTableCacheComparator = new Comparator<byte[]>() {
+      @Override
+      public int compare(byte[] o1, byte[] o2) {
+        return TableName.META_TABLE_NAME.getRowComparator()
+            .compareRows(o1, 0, o1.length, o2, 0, o2.length);
+      }
+    };
+
+  private final static Comparator rootTableCacheComparator = new Comparator<byte[]>() {
+      @Override
+      public int compare(byte[] o1, byte[] o2) {
+        return TableName.ROOT_TABLE_NAME.getRowComparator()
+            .compareRows(o1, 0, o1.length, o2, 0, o2.length);
+      }
+    };
 
   /**
    * Map of table to table {@link HRegionLocation}s.
@@ -102,8 +119,23 @@ public class MetaCache {
   }
 
   private KVComparator getRowComparator(TableName tableName) {
-    return TableName.META_TABLE_NAME.equals(tableName) ? KeyValue.META_COMPARATOR
-        : KeyValue.COMPARATOR;
+    if (TableName.ROOT_TABLE_NAME.equals(tableName)) {
+      return KeyValue.ROOT_COMPARATOR;
+    }
+    if (TableName.META_TABLE_NAME.equals(tableName)) {
+      return KeyValue.META_COMPARATOR;
+    }
+    return KeyValue.COMPARATOR;
+  }
+
+  private Comparator getCacheComparator(TableName tableName) {
+    if (TableName.ROOT_TABLE_NAME.equals(tableName)) {
+      return rootTableCacheComparator;
+    }
+    if (TableName.META_TABLE_NAME.equals(tableName)) {
+      return metaTableCacheComparator;
+    }
+    return Bytes.BYTES_COMPARATOR;
   }
   /**
    * Put a newly discovered HRegionLocation into the cache.
@@ -196,7 +228,7 @@ public class MetaCache {
     result = this.cachedRegionLocations.get(tableName);
     // if tableLocations for this table isn't built yet, make one
     if (result == null) {
-      result = new CopyOnWriteArrayMap<>(Bytes.BYTES_COMPARATOR);
+      result = new CopyOnWriteArrayMap<>(getCacheComparator(tableName));
       ConcurrentNavigableMap<byte[], RegionLocations> old =
           this.cachedRegionLocations.putIfAbsent(tableName, result);
       if (old != null) {

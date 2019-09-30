@@ -57,9 +57,13 @@ public interface MetricsHBaseServerSource extends ExceptionTrackingSource {
   String GENERAL_QUEUE_DESC = "Number of calls in the general call queue.";
   String PRIORITY_QUEUE_NAME = "numCallsInPriorityQueue";
   String REPLICATION_QUEUE_NAME = "numCallsInReplicationQueue";
+  String MASTER_META_QUEUE_NAME = "numCallsInMetaQueueOnMaster";
+  String MASTER_ROOT_QUEUE_NAME = "numCallsInRootQueueOnMaster";
   String REPLICATION_QUEUE_DESC =
       "Number of calls in the replication call queue.";
   String PRIORITY_QUEUE_DESC = "Number of calls in the priority call queue.";
+  String MASTER_META_QUEUE_DESC = "Number of calls in the meta call queue on master.";
+  String MASTER_ROOT_QUEUE_DESC = "Number of calls in the root call queue on master.";
   String NUM_OPEN_CONNECTIONS_NAME = "numOpenConnections";
   String NUM_OPEN_CONNECTIONS_DESC = "Number of open connections.";
   String NUM_ACTIVE_HANDLER_NAME = "numActiveHandler";

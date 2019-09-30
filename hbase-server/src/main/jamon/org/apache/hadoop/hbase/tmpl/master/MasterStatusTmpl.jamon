@@ -19,6 +19,8 @@ limitations under the License.
 <%args>
 HMaster master;
 Map<String, Integer> frags = null;
+boolean metaFound = false;
+ServerName rootLocation = null;
 ServerName metaLocation = null;
 List<ServerName> servers = null;
 Set<ServerName> deadServers = null;
@@ -212,12 +214,12 @@ AssignmentManager assignmentManager = master.getAssignmentManager();
                 </ul>
                 <div class="tab-content" style="padding-bottom: 9px; border-bottom: 1px solid #ddd;">
                     <div class="tab-pane active" id="tab_userTables">
-                        <%if (metaLocation != null) %>
+                         <%if (metaFound) %> 
                             <& userTables &>
-                        </%if>
+                         </%if>
                     </div>
                     <div class="tab-pane" id="tab_catalogTables">
-                        <%if (metaLocation != null) %>
+                        <%if (rootLocation != null) %>
                             <& catalogTables &>
                         </%if>
                     </div>
@@ -382,7 +384,9 @@ AssignmentManager assignmentManager = master.getAssignmentManager();
         .intValue() + "%" : "n/a" %></td>
     </%if>
     <%java>String description = null;
-        if (tableName.equals(TableName.META_TABLE_NAME)){
+        if (tableName.equals(TableName.ROOT_TABLE_NAME)){
+            description = "The hbase:root table holds references to the hbase:meta Table regions.";
+        } else if (tableName.equals(TableName.META_TABLE_NAME)){
             description = "The hbase:meta table holds references to all User Table regions.";
         } else if (tableName.equals(Canary.DEFAULT_WRITE_TABLE_NAME)){
             description = "The hbase:canary table is used to sniff the write availbility of"

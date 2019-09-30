@@ -101,6 +101,14 @@ public class MasterFileSystem {
   final SplitLogManager splitLogManager;
   private final MasterServices services;
 
+
+  final static PathFilter ROOT_FILTER = new PathFilter() {
+    @Override
+    public boolean accept(Path p) {
+      return DefaultWALProvider.isRootFile(p);
+    }
+  };
+
   final static PathFilter META_FILTER = new PathFilter() {
     @Override
     public boolean accept(Path p) {
@@ -108,10 +116,10 @@ public class MasterFileSystem {
     }
   };
 
-  final static PathFilter NON_META_FILTER = new PathFilter() {
+  final static PathFilter NON_CATALOG_FILTER = new PathFilter() {
     @Override
     public boolean accept(Path p) {
-      return !DefaultWALProvider.isMetaFile(p);
+      return !DefaultWALProvider.isRootFile(p) && !DefaultWALProvider.isMetaFile(p);
     }
   };
 
@@ -333,6 +341,18 @@ public class MasterFileSystem {
     serverNames.add(serverName);
     splitMetaLog(serverNames);
   }
+  
+  /**
+   * Specialized method to handle the splitting for meta HLog
+   * @param serverName
+   * @throws IOException
+   */
+  public void splitRootLog(final ServerName serverName) throws IOException {
+    Set<ServerName> serverNames = new HashSet<ServerName>();
+    serverNames.add(serverName);
+    splitRootLog(serverNames);
+  }
+
 
   /**
    * Specialized method to handle the splitting for meta WAL
@@ -341,6 +361,15 @@ public class MasterFileSystem {
    */
   public void splitMetaLog(final Set<ServerName> serverNames) throws IOException {
     splitLog(serverNames, META_FILTER);
+  }
+  
+  /**
+   * Specialized method to handle the splitting for meta HLog
+   * @param serverNames
+   * @throws IOException
+   */
+  public void splitRootLog(final Set<ServerName> serverNames) throws IOException {
+    splitLog(serverNames, ROOT_FILTER);
   }
 
   @edu.umd.cs.findbugs.annotations.SuppressWarnings(value="UL_UNRELEASED_LOCK", justification=
@@ -403,7 +432,7 @@ public class MasterFileSystem {
   }
 
   public void splitLog(final Set<ServerName> serverNames) throws IOException {
-    splitLog(serverNames, NON_META_FILTER);
+    splitLog(serverNames, NON_CATALOG_FILTER);
   }
 
   /**
@@ -434,7 +463,9 @@ public class MasterFileSystem {
     splitTime = EnvironmentEdgeManager.currentTime() - splitTime;
 
     if (this.metricsMasterFilesystem != null) {
-      if (filter == META_FILTER) {
+      if (filter == ROOT_FILTER) {
+        this.metricsMasterFilesystem.addRootWALSplit(splitTime, splitLogSize);
+      } else if (filter == META_FILTER) {
         this.metricsMasterFilesystem.addMetaWALSplit(splitTime, splitLogSize);
       } else {
         this.metricsMasterFilesystem.addSplit(splitTime, splitLogSize);
@@ -533,7 +564,7 @@ public class MasterFileSystem {
       clusterId = FSUtils.getClusterId(fs, rd);
 
       // Make sure the meta region directory exists!
-      if (!FSUtils.metaRegionExists(fs, rd)) {
+      if (!FSUtils.rootRegionExists(fs, rd)) {
         bootstrap(rd, c);
       } else {
         // Migrate table descriptor files if necessary
@@ -541,13 +572,13 @@ public class MasterFileSystem {
             .migrateFSTableDescriptorsIfNecessary(fs, rd);
       }
 
-      // Create tableinfo-s for hbase:meta if not already there.
-
       // meta table is a system table, so descriptors are predefined,
       // we should get them from registry.
       FSTableDescriptors fsd = new FSTableDescriptors(c, fs, rd);
       fsd.createTableDescriptor(
-          new HTableDescriptor(fsd.get(TableName.META_TABLE_NAME)));
+        new HTableDescriptor(fsd.get(TableName.META_TABLE_NAME)));
+      fsd.createTableDescriptor(
+        new HTableDescriptor(fsd.get(TableName.ROOT_TABLE_NAME)));
     }
 
     return rd;
@@ -581,17 +612,26 @@ public class MasterFileSystem {
 
   private static void bootstrap(final Path rd, final Configuration c)
   throws IOException {
-    LOG.info("BOOTSTRAP: creating hbase:meta region");
+    LOG.info("BOOTSTRAP: creating hbase:meta region and hbase:root region");
     try {
       // Bootstrapping, make sure blockcache is off.  Else, one will be
       // created here in bootstrap and it'll need to be cleaned up.  Better to
       // not make it in first place.  Turn off block caching for bootstrap.
       // Enable after.
+      HRegionInfo rootHRI = new HRegionInfo(HRegionInfo.ROOT_REGIONINFO);
+      HTableDescriptor rootDescriptor = new FSTableDescriptors(c).get(TableName.ROOT_TABLE_NAME);
+      setInfoFamilyCachingForCatalog(rootDescriptor, false);
+      HRegion root = HRegion.createHRegion(rootHRI, rd, c, rootDescriptor, null, true, false);
+      setInfoFamilyCachingForCatalog(rootDescriptor, true);
+
       HRegionInfo metaHRI = new HRegionInfo(HRegionInfo.FIRST_META_REGIONINFO);
       HTableDescriptor metaDescriptor = new FSTableDescriptors(c).get(TableName.META_TABLE_NAME);
-      setInfoFamilyCachingForMeta(metaDescriptor, false);
+      setInfoFamilyCachingForCatalog(metaDescriptor, false);
       HRegion meta = HRegion.createHRegion(metaHRI, rd, c, metaDescriptor, null, true, true);
-      setInfoFamilyCachingForMeta(metaDescriptor, true);
+      setInfoFamilyCachingForCatalog(metaDescriptor, true);
+
+      HRegion.addRegionToMETA(root, meta);
+      HRegion.closeHRegion(root);
       HRegion.closeHRegion(meta);
     } catch (IOException e) {
       e = RemoteExceptionHandler.checkIOException(e);
@@ -603,7 +643,7 @@ public class MasterFileSystem {
   /**
    * Enable in memory caching for hbase:meta
    */
-  public static void setInfoFamilyCachingForMeta(final HTableDescriptor metaDescriptor,
+  public static void setInfoFamilyCachingForCatalog(final HTableDescriptor metaDescriptor,
       final boolean b) {
     for (HColumnDescriptor hcd: metaDescriptor.getColumnFamilies()) {
       if (Bytes.equals(hcd.getName(), HConstants.CATALOG_FAMILY)) {

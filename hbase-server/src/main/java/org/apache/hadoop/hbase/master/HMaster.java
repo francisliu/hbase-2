@@ -46,6 +46,8 @@ import javax.servlet.http.HttpServlet;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 
+import com.google.common.collect.Lists;
+import com.google.common.collect.Sets;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
@@ -60,14 +62,16 @@ import org.apache.hadoop.hbase.HBaseInterfaceAudience;
 import org.apache.hadoop.hbase.HColumnDescriptor;
 import org.apache.hadoop.hbase.HConstants;
 import org.apache.hadoop.hbase.HRegionInfo;
+import org.apache.hadoop.hbase.HRegionLocation;
 import org.apache.hadoop.hbase.HTableDescriptor;
 import org.apache.hadoop.hbase.MasterNotRunningException;
 import org.apache.hadoop.hbase.MetaMigrationConvertingToPB;
-import org.apache.hadoop.hbase.MetaTableAccessor;
+import org.apache.hadoop.hbase.CatalogAccessor;
 import org.apache.hadoop.hbase.NamespaceDescriptor;
 import org.apache.hadoop.hbase.NamespaceNotFoundException;
 import org.apache.hadoop.hbase.PleaseHoldException;
 import org.apache.hadoop.hbase.ProcedureInfo;
+import org.apache.hadoop.hbase.RegionLocations;
 import org.apache.hadoop.hbase.RegionStateListener;
 import org.apache.hadoop.hbase.ScheduledChore;
 import org.apache.hadoop.hbase.Server;
@@ -85,6 +89,7 @@ import org.apache.hadoop.hbase.client.MetaScanner.MetaScannerVisitor;
 import org.apache.hadoop.hbase.client.MetaScanner.MetaScannerVisitorBase;
 import org.apache.hadoop.hbase.client.RegionReplicaUtil;
 import org.apache.hadoop.hbase.client.Result;
+import org.apache.hadoop.hbase.constraint.ConstraintException;
 import org.apache.hadoop.hbase.coprocessor.CoprocessorHost;
 import org.apache.hadoop.hbase.exceptions.DeserializationException;
 import org.apache.hadoop.hbase.executor.ExecutorType;
@@ -164,7 +169,7 @@ import org.apache.hadoop.hbase.util.VersionInfo;
 import org.apache.hadoop.hbase.zookeeper.DrainingServerTracker;
 import org.apache.hadoop.hbase.zookeeper.LoadBalancerTracker;
 import org.apache.hadoop.hbase.zookeeper.MasterAddressTracker;
-import org.apache.hadoop.hbase.zookeeper.MetaTableLocator;
+import org.apache.hadoop.hbase.zookeeper.RootTableLocator;
 import org.apache.hadoop.hbase.zookeeper.RegionNormalizerTracker;
 import org.apache.hadoop.hbase.zookeeper.RegionServerTracker;
 import org.apache.hadoop.hbase.zookeeper.SplitOrMergeTracker;
@@ -303,7 +308,7 @@ public class HMaster extends HRegionServer implements MasterServices, Server {
   // initialization may have not completed yet.
   volatile boolean serviceStarted = false;
 
-  // flag set after we complete assignMeta.
+  // flag set after we complete assignRoot.
   private final ProcedureEvent serverCrashProcessingEnabled =
     new ProcedureEvent("server crash processing");
 
@@ -720,6 +725,9 @@ public class HMaster extends HRegionServer implements MasterServices, Server {
 
     // enable table descriptors cache
     this.tableDescriptors.setCacheOn();
+    // set the ROOT's descriptor to the correct replication
+    this.tableDescriptors.get(TableName.ROOT_TABLE_NAME).setRegionReplication(
+        conf.getInt(HConstants.META_REPLICAS_NUM, HConstants.DEFAULT_META_REPLICA_NUM));
     // set the META's descriptor to the correct replication
     this.tableDescriptors.get(TableName.META_TABLE_NAME).setRegionReplication(
         conf.getInt(HConstants.META_REPLICAS_NUM, HConstants.DEFAULT_META_REPLICA_NUM));
@@ -772,9 +780,9 @@ public class HMaster extends HRegionServer implements MasterServices, Server {
       this.fileSystemManager.getFailedServersFromLogFolders();
 
     // log splitting for hbase:meta server
-    ServerName oldMetaServerLocation = metaTableLocator.getMetaRegionLocation(this.getZooKeeper());
-    if (oldMetaServerLocation != null && previouslyFailedServers.contains(oldMetaServerLocation)) {
-      splitMetaLogBeforeAssignment(oldMetaServerLocation);
+    ServerName oldRootServerLocation = rootTableLocator.getRootRegionLocation(this.getZooKeeper());
+    if (oldRootServerLocation != null && previouslyFailedServers.contains(oldRootServerLocation)) {
+      splitRootLogBeforeAssignment(oldRootServerLocation);
       // Note: we can't remove oldMetaServerLocation from previousFailedServers list because it
       // may also host user regions
     }
@@ -806,11 +814,13 @@ public class HMaster extends HRegionServer implements MasterServices, Server {
     if (isStopped()) return;
 
     // Make sure meta assigned before proceeding.
-    status.setStatus("Assigning Meta Region");
-    assignMeta(status, previouslyFailedMetaRSs, HRegionInfo.DEFAULT_REPLICA_ID);
-    // check if master is shutting down because above assignMeta could return even hbase:meta isn't
+    status.setStatus("Assigning Root Region");
+    assignRoot(status, previouslyFailedMetaRSs, HRegionInfo.DEFAULT_REPLICA_ID);
+    // check if master is shutting down because above assignRoot could return even hbase:meta isn't
     // assigned when master is shutting down
     if (isStopped()) return;
+
+    assignMeta(status, previouslyFailedMetaRSs, HRegionInfo.DEFAULT_REPLICA_ID);
 
     status.setStatus("Submitting log splitting work for previously failed region servers");
     // Master has recovered hbase:meta region server and we put
@@ -870,14 +880,20 @@ public class HMaster extends HRegionServer implements MasterServices, Server {
     status.setStatus("Starting quota manager");
     initQuotaManager();
 
-    // assign the meta replicas
+    // assign the root replicas
     Set<ServerName> EMPTY_SET = new HashSet<ServerName>();
     int numReplicas = conf.getInt(HConstants.META_REPLICAS_NUM,
            HConstants.DEFAULT_META_REPLICA_NUM);
     for (int i = 1; i < numReplicas; i++) {
+      assignRoot(status, EMPTY_SET, i);
+    }
+    unassignExcessRootReplica(zooKeeper, numReplicas);
+
+    // assign the meta replicas
+    for (int i = 1; i < numReplicas; i++) {
       assignMeta(status, EMPTY_SET, i);
     }
-    unassignExcessMetaReplica(zooKeeper, numReplicas);
+    unassignExcessMetaReplica(numReplicas);
 
     // clear the dead servers with same host name and port of online server because we are not
     // removing dead server with same hostname and port of rs which is trying to check in before
@@ -934,16 +950,16 @@ public class HMaster extends HRegionServer implements MasterServices, Server {
     return new ServerManager(master, services);
   }
 
-  private void unassignExcessMetaReplica(ZooKeeperWatcher zkw, int numMetaReplicasConfigured) {
+  private void unassignExcessRootReplica(ZooKeeperWatcher zkw, int numMetaReplicasConfigured) {
     // unassign the unneeded replicas (for e.g., if the previous master was configured
     // with a replication of 3 and now it is 2, we need to unassign the 1 unneeded replica)
     try {
-      List<String> metaReplicaZnodes = zooKeeper.getMetaReplicaNodes();
+      List<String> metaReplicaZnodes = zooKeeper.getRootReplicaNodes();
       for (String metaReplicaZnode : metaReplicaZnodes) {
         int replicaId = zooKeeper.getMetaReplicaIdFromZnode(metaReplicaZnode);
         if (replicaId >= numMetaReplicasConfigured) {
-          RegionState r = MetaTableLocator.getMetaRegionState(zkw, replicaId);
-          LOG.info("Closing excess replica of meta region " + r.getRegion());
+          RegionState r = RootTableLocator.getRootRegionState(zkw, replicaId);
+          LOG.info("Closing excess replica of root region " + r.getRegion());
           // send a close and wait for a max of 30 seconds
           ServerManager.closeRegionSilentlyAndWait(getConnection(), r.getServerName(),
               r.getRegion(), 30000);
@@ -953,8 +969,116 @@ public class HMaster extends HRegionServer implements MasterServices, Server {
     } catch (Exception ex) {
       // ignore the exception since we don't want the master to be wedged due to potential
       // issues in the cleanup of the extra regions. We can do that cleanup via hbck or manually
-      LOG.warn("Ignoring exception " + ex);
+      LOG.warn("Ignoring exception ", ex);
     }
+  }
+  
+  private void unassignExcessMetaReplica(int numMetaReplicasConfigured) {
+    try {
+      for (Result row : CatalogAccessor.fullScanOfRoot(clusterConnection)) {
+        RegionLocations rl = CatalogAccessor.getRegionLocations(row);
+        for (HRegionLocation loc : rl.getRegionLocations()) {
+          if (loc.getRegionInfo().getReplicaId() >= numMetaReplicasConfigured) {
+            LOG.info("Closing excess replica of meta region " + loc.getRegionInfo());
+            // send a close and wait for a max of 30 seconds
+            ServerManager.closeRegionSilentlyAndWait(getConnection(), loc.getServerName(),
+                loc.getRegionInfo(), 30000);
+            CatalogAccessor.removeRegionReplicasFromRoot(
+                Sets.newHashSet(row.getRow()),
+                loc.getRegionInfo().getReplicaId(),
+                1,
+                clusterConnection);
+          }
+        }
+      }
+    } catch (Exception ex) {
+      // ignore the exception since we don't want the master to be wedged due to potential
+      // issues in the cleanup of the extra regions. We can do that cleanup via hbck or manually
+      LOG.warn("Ignoring exception ", ex);
+    }
+  }
+
+  /**
+   * Check <code>hbase:meta</code> is assigned. If not, assign it.
+   * @param status MonitoredTask
+   * @param previouslyFailedMetaRSs
+   * @param replicaId
+   * @throws InterruptedException
+   * @throws IOException
+   * @throws KeeperException
+   */
+  void assignRoot(MonitoredTask status, Set<ServerName> previouslyFailedMetaRSs, int replicaId)
+      throws InterruptedException, IOException, KeeperException {
+    // Work on meta region
+    int assigned = 0;
+    long timeout = this.conf.getLong("hbase.catalog.verification.timeout", 1000);
+    if (replicaId == HRegionInfo.DEFAULT_REPLICA_ID) {
+      status.setStatus("Assigning hbase:root region");
+    } else {
+      status.setStatus("Assigning hbase:root region, replicaId " + replicaId);
+    }
+    // Get current meta state from zk.
+    RegionStates regionStates = assignmentManager.getRegionStates();
+    RegionState rootState = RootTableLocator.getRootRegionState(getZooKeeper(), replicaId);
+    HRegionInfo hri = RegionReplicaUtil.getRegionInfoForReplica(HRegionInfo.ROOT_REGIONINFO,
+        replicaId);
+    ServerName currentRootServer = rootState.getServerName();
+    if (!ConfigUtil.useZKForAssignment(conf)) {
+      regionStates.createRegionState(hri, rootState.getState(),
+        currentRootServer, null);
+    } else {
+      regionStates.createRegionState(hri);
+    }
+    boolean rit = this.assignmentManager.
+      processRegionInTransitionAndBlockUntilAssigned(hri);
+    boolean rootRegionLocation = rootTableLocator.verifyRootRegionLocation(
+      this.getConnection(), this.getZooKeeper(), timeout, replicaId);
+    if (!rootRegionLocation || !rootState.isOpened()) {
+      // Meta location is not verified. It should be in transition, or offline.
+      // We will wait for it to be assigned in enableSSHandWaitForMeta below.
+      assigned++;
+      if (!ConfigUtil.useZKForAssignment(conf)) {
+        assignRootZkLess(regionStates, rootState, timeout, previouslyFailedMetaRSs);
+      } else if (!rit) {
+        // Assign meta since not already in transition
+        if (currentRootServer != null) {
+          // If the meta server is not known to be dead or online,
+          // just split the meta log, and don't expire it since this
+          // could be a full cluster restart. Otherwise, we will think
+          // this is a failover and lose previous region locations.
+          // If it is really a failover case, AM will find out in rebuilding
+          // user regions. Otherwise, we are good since all logs are split
+          // or known to be replayed before user regions are assigned.
+          if (serverManager.isServerOnline(currentRootServer)) {
+            LOG.info("Forcing expire of " + currentRootServer);
+            serverManager.expireServer(currentRootServer);
+          }
+          if (replicaId == HRegionInfo.DEFAULT_REPLICA_ID) {
+            splitMetaLogBeforeAssignment(currentRootServer);
+            previouslyFailedMetaRSs.add(currentRootServer);
+          }
+        }
+        assignmentManager.assignRoot(hri);
+      }
+    } else {
+      regionStates.updateRegionState(
+        hri, State.OPEN, currentRootServer);
+      this.assignmentManager.regionOnline(
+        hri, currentRootServer);
+    }
+
+    if (replicaId == HRegionInfo.DEFAULT_REPLICA_ID) enableMeta(TableName.ROOT_TABLE_NAME);
+
+    if ((RecoveryMode.LOG_REPLAY == this.getMasterFileSystem().getLogRecoveryMode())
+        && (!previouslyFailedMetaRSs.isEmpty())) {
+      // replay WAL edits mode need new hbase:meta RS is assigned firstly
+      status.setStatus("replaying log for Meta Region");
+      this.fileSystemManager.splitRootLog(previouslyFailedMetaRSs);
+    }
+
+    LOG.info("hbase:root with replicaId " + replicaId + " assigned=" + assigned + ", rit=" + rit +
+      ", location=" + rootTableLocator.getRootRegionLocation(this.getZooKeeper(), replicaId));
+    status.setStatus("ROOT assigned.");
   }
 
   /**
@@ -972,66 +1096,85 @@ public class HMaster extends HRegionServer implements MasterServices, Server {
     int assigned = 0;
     long timeout = this.conf.getLong("hbase.catalog.verification.timeout", 1000);
     if (replicaId == HRegionInfo.DEFAULT_REPLICA_ID) {
-      status.setStatus("Assigning hbase:meta region");
+      status.setStatus("Assigning hbase:meta regions");
     } else {
       status.setStatus("Assigning hbase:meta region, replicaId " + replicaId);
     }
-    // Get current meta state from zk.
+
+    List<Result> rows = CatalogAccessor.fullScanOfRoot(getConnection());
+    List<String> rits = Lists.newArrayList();
+
     RegionStates regionStates = assignmentManager.getRegionStates();
-    RegionState metaState = MetaTableLocator.getMetaRegionState(getZooKeeper(), replicaId);
-    HRegionInfo hri = RegionReplicaUtil.getRegionInfoForReplica(HRegionInfo.FIRST_META_REGIONINFO,
-        replicaId);
-    ServerName currentMetaServer = metaState.getServerName();
-    if (!ConfigUtil.useZKForAssignment(conf)) {
-      regionStates.createRegionState(hri, metaState.getState(),
-        currentMetaServer, null);
-    } else {
-      regionStates.createRegionState(hri);
-    }
-    boolean rit = this.assignmentManager.
-      processRegionInTransitionAndBlockUntilAssigned(hri);
-    boolean metaRegionLocation = metaTableLocator.verifyMetaRegionLocation(
-      this.getConnection(), this.getZooKeeper(), timeout, replicaId);
-    if (!metaRegionLocation || !metaState.isOpened()) {
-      // Meta location is not verified. It should be in transition, or offline.
-      // We will wait for it to be assigned in enableSSHandWaitForMeta below.
-      assigned++;
-      if (!ConfigUtil.useZKForAssignment(conf)) {
-        assignMetaZkLess(regionStates, metaState, timeout, previouslyFailedMetaRSs);
-      } else if (!rit) {
-        // Assign meta since not already in transition
-        if (currentMetaServer != null) {
-          // If the meta server is not known to be dead or online,
-          // just split the meta log, and don't expire it since this
-          // could be a full cluster restart. Otherwise, we will think
-          // this is a failover and lose previous region locations.
-          // If it is really a failover case, AM will find out in rebuilding
-          // user regions. Otherwise, we are good since all logs are split
-          // or known to be replayed before user regions are assigned.
-          if (serverManager.isServerOnline(currentMetaServer)) {
-            LOG.info("Forcing expire of " + currentMetaServer);
-            serverManager.expireServer(currentMetaServer);
-          }
-          if (replicaId == HRegionInfo.DEFAULT_REPLICA_ID) {
-            splitMetaLogBeforeAssignment(currentMetaServer);
-            previouslyFailedMetaRSs.add(currentMetaServer);
-          }
-        }
-        assignmentManager.assignMeta(hri);
+    for (Result row : rows) {
+      ServerName currServer = RegionStateStore.getRegionServer(row, replicaId);
+      RegionState.State state = RegionStateStore.getRegionState(row, replicaId);
+      HRegionInfo hri = RegionReplicaUtil.getRegionInfoForReplica(
+          CatalogAccessor.getHRegionInfo(row), replicaId);
+
+      if (RegionState.isUnassignable(state)) {
+        LOG.debug("Skipping unassignable hbase:meta region: " + hri);
+        continue;
       }
-    } else {
-      // Region already assigned. We didn't assign it. Add to in-memory state.
-      regionStates.updateRegionState(hri, State.OPEN, currentMetaServer);
-      this.assignmentManager.regionOnline(hri, currentMetaServer);
+
+      RegionState regionState = null;
+      if (!ConfigUtil.useZKForAssignment(conf)) {
+        regionState = regionStates.createRegionState(hri, state, currServer, null);
+      } else {
+        regionState = regionStates.createRegionState(hri);
+      }
+      boolean rit = this.assignmentManager.processRegionInTransitionAndBlockUntilAssigned(hri);
+      if (rit) {
+        rits.add(hri.getRegionNameAsString());
+      }
+      boolean regionLocation = currServer == null ?
+          false :
+          CatalogAccessor.verifyRegionLocation(getConnection(), hri, currServer, replicaId);
+      boolean useZK = ConfigUtil.useZKForAssignment(conf);
+      //second predicate is only relevant for !useZK, since regionState would be always OFFLINE
+      //in the other case
+      if (!regionLocation || !useZK && !regionState.isOpened()) {
+        // Meta location is not verified. It should be in transition, or offline.
+        // We will wait for it to be assigned in enableSSHandWaitForMeta below.
+        assigned++;
+        if (!useZK) {
+          assignMetaZkLess(regionStates, regionState, hri, timeout, previouslyFailedMetaRSs);
+        } else if (!rit) {
+          // Assign meta since not already in transition
+          if (currServer != null) {
+            // If the meta server is not known to be dead or online,
+            // just split the meta log, and don't expire it since this
+            // could be a full cluster restart. Otherwise, we will think
+            // this is a failover and lose previous region locations.
+            // If it is really a failover case, AM will find out in rebuilding
+            // user regions. Otherwise, we are good since all logs are split
+            // or known to be replayed before user regions are assigned.
+            if (serverManager.isServerOnline(currServer)) {
+              LOG.info("Forcing expire of " + currServer);
+              serverManager.expireServer(currServer);
+            }
+            if (replicaId == HRegionInfo.DEFAULT_REPLICA_ID) {
+              splitMetaLogBeforeAssignment(currServer);
+              previouslyFailedMetaRSs.add(currServer);
+            }
+          }
+          assignmentManager.assign(hri, true);
+        }
+      } else {
+        // Region already assigned. We didn't assign it. Add to in-memory state.
+        regionStates.updateRegionState(hri, State.OPEN, currServer);
+        this.assignmentManager.regionOnline(hri, currServer);
+      }
     }
 
-    if (replicaId == HRegionInfo.DEFAULT_REPLICA_ID) enableMeta(TableName.META_TABLE_NAME);
+    if (replicaId == HRegionInfo.DEFAULT_REPLICA_ID) {
+      enableMeta(TableName.META_TABLE_NAME);
+    }
 
     if ((RecoveryMode.LOG_REPLAY == this.getMasterFileSystem().getLogRecoveryMode())
         && (!previouslyFailedMetaRSs.isEmpty())) {
       // replay WAL edits mode need new hbase:meta RS is assigned firstly
       status.setStatus("replaying log for Meta Region");
-      this.fileSystemManager.splitMetaLog(previouslyFailedMetaRSs);
+      this.fileSystemManager.splitRootLog(previouslyFailedMetaRSs);
     }
 
     // Make sure a hbase:meta location is set. We need to enable SSH here since
@@ -1039,13 +1182,44 @@ public class HMaster extends HRegionServer implements MasterServices, Server {
     // by SSH so that system tables can be assigned.
     // No need to wait for meta is assigned = 0 when meta is just verified.
     if (replicaId == HRegionInfo.DEFAULT_REPLICA_ID) enableCrashedServerProcessing(assigned != 0);
-    LOG.info("hbase:meta with replicaId " + replicaId + " assigned=" + assigned + ", rit=" + rit +
-      ", location=" + metaTableLocator.getMetaRegionLocation(this.getZooKeeper(), replicaId));
+    LOG.info("hbase:meta with replicaId " + replicaId + " assigned=" + assigned + ", rits=" + rits +
+      ", location=" + CatalogAccessor.getTableRegionsAndLocations(
+        getZooKeeper(), getConnection(), TableName.META_TABLE_NAME, true));
     status.setStatus("META assigned.");
   }
 
-  private void assignMetaZkLess(RegionStates regionStates, RegionState regionState, long timeout,
+  private void assignRootZkLess(RegionStates regionStates, RegionState regionState, long timeout,
       Set<ServerName> previouslyFailedRs) throws IOException, KeeperException {
+    if (!regionState.getRegion().isRootRegion()) {
+      throw new IllegalStateException(
+          "Calling assignRootZkLess on a non-root region: "+regionState);
+    }
+
+    ServerName currentServer = regionState.getServerName();
+    if (serverManager.isServerOnline(currentServer)) {
+      LOG.info("Root was in transition on " + currentServer);
+      assignmentManager.processRegionInTransitionZkLess();
+    } else {
+      if (currentServer != null) {
+        if (regionState.getRegion().getReplicaId() == HRegionInfo.DEFAULT_REPLICA_ID) {
+          splitRootLogBeforeAssignment(currentServer);
+          regionStates.logSplit(HRegionInfo.ROOT_REGIONINFO);
+          previouslyFailedRs.add(currentServer);
+        }
+      }
+      LOG.info("Re-assigning hbase:root, it was on " + currentServer);
+      regionStates.updateRegionState(regionState.getRegion(), State.OFFLINE);
+      assignmentManager.assignRoot(regionState.getRegion());
+    }
+  }
+
+  private void assignMetaZkLess(RegionStates regionStates,
+                                RegionState regionState,
+                                HRegionInfo hri,
+                                long timeout,
+                                Set<ServerName> previouslyFailedRs)
+      throws IOException, KeeperException {
+
     ServerName currentServer = regionState.getServerName();
     if (serverManager.isServerOnline(currentServer)) {
       LOG.info("Meta was in transition on " + currentServer);
@@ -1054,13 +1228,13 @@ public class HMaster extends HRegionServer implements MasterServices, Server {
       if (currentServer != null) {
         if (regionState.getRegion().getReplicaId() == HRegionInfo.DEFAULT_REPLICA_ID) {
           splitMetaLogBeforeAssignment(currentServer);
-          regionStates.logSplit(HRegionInfo.FIRST_META_REGIONINFO);
+          regionStates.logSplit(hri);
           previouslyFailedRs.add(currentServer);
         }
       }
       LOG.info("Re-assigning hbase:meta, it was on " + currentServer);
       regionStates.updateRegionState(regionState.getRegion(), State.OFFLINE);
-      assignmentManager.assignMeta(regionState.getRegion());
+      assignmentManager.assign(regionState.getRegion(), true);
     }
   }
 
@@ -1075,6 +1249,35 @@ public class HMaster extends HRegionServer implements MasterServices, Server {
       catalogJanitorChore.getEnabled() : false;
   }
 
+  private void splitRootLogBeforeAssignment(ServerName currentRootServer) throws IOException {
+    if (RecoveryMode.LOG_REPLAY == this.getMasterFileSystem().getLogRecoveryMode()) {
+      // In log replay mode, we mark hbase:meta region as recovering in ZK
+      Set<HRegionInfo> regions = new HashSet<HRegionInfo>();
+      regions.add(HRegionInfo.ROOT_REGIONINFO);
+      this.fileSystemManager.prepareLogReplay(currentRootServer, regions);
+    } else {
+      int tries = conf.getInt("hbase.master.initialization.split.root.log.tries", 1);
+      for (int i = 1; ; i++) {
+        try {
+          // In recovered.edits mode: create recovered edits file for hbase:root server
+          this.fileSystemManager.splitRootLog(currentRootServer);
+          break;
+        } catch (IOException e1) {
+          LOG.error("Failed attempt " + i + " to split root log", e1);
+          if (i == tries) {
+            throw e1;
+          }
+          LOG.warn("Trying to split root log again");
+          try {
+            Thread.sleep(5000 * i);
+          } catch (InterruptedException e2) {
+            throw new InterruptedIOException("Interrupted sleep for root log split retry");
+          }
+        }
+      }
+    }
+  }
+
   private void splitMetaLogBeforeAssignment(ServerName currentMetaServer) throws IOException {
     if (RecoveryMode.LOG_REPLAY == this.getMasterFileSystem().getLogRecoveryMode()) {
       // In log replay mode, we mark hbase:meta region as recovering in ZK
@@ -1082,8 +1285,25 @@ public class HMaster extends HRegionServer implements MasterServices, Server {
       regions.add(HRegionInfo.FIRST_META_REGIONINFO);
       this.fileSystemManager.prepareLogReplay(currentMetaServer, regions);
     } else {
-      // In recovered.edits mode: create recovered edits file for hbase:meta server
-      this.fileSystemManager.splitMetaLog(currentMetaServer);
+      int tries = conf.getInt("hbase.master.initialization.split.meta.log.tries", 1);
+      for (int i = 1; ; i++) {
+        try {
+          // In recovered.edits mode: create recovered edits file for hbase:meta server
+          this.fileSystemManager.splitMetaLog(currentMetaServer);
+          break;
+        } catch (IOException e1) {
+          LOG.error("Failed attempt " + i + " to split meta log", e1);
+          if (i == tries) {
+            throw e1;
+          }
+          LOG.warn("Trying to split meta log again");
+          try {
+            Thread.sleep(5000 * i);
+          } catch (InterruptedException e2) {
+            throw new InterruptedIOException("Interrupted sleep for meta log split retry");
+          }
+        }
+      }
     }
   }
 
@@ -1091,7 +1311,7 @@ public class HMaster extends HRegionServer implements MasterServices, Server {
   throws IOException, InterruptedException {
     // If crashed server processing is disabled, we enable it and expire those dead but not expired
     // servers. This is required so that if meta is assigning to a server which dies after
-    // assignMeta starts assignment, ServerCrashProcedure can re-assign it. Otherwise, we will be
+    // assignRoot starts assignment, ServerCrashProcedure can re-assign it. Otherwise, we will be
     // stuck here waiting forever if waitForMeta is specified.
     if (!isServerCrashProcessingEnabled()) {
       setServerCrashProcessingEnabled(true);
@@ -1099,10 +1319,17 @@ public class HMaster extends HRegionServer implements MasterServices, Server {
     }
 
     if (waitForMeta) {
-      metaTableLocator.waitMetaRegionLocation(this.getZooKeeper());
+      rootTableLocator.waitRootRegionLocation(this.getZooKeeper());
       // Above check waits for general meta availability but this does not
       // guarantee that the transition has completed
-      this.assignmentManager.waitForAssignment(HRegionInfo.FIRST_META_REGIONINFO);
+      this.assignmentManager.waitForAssignment(HRegionInfo.ROOT_REGIONINFO);
+
+      for (HRegionInfo hri :
+          CatalogAccessor.getTableRegions(
+              zooKeeper, clusterConnection, TableName.META_TABLE_NAME, true)) {
+        LOG.debug("Waiting for Meta Region assignment: "+hri);
+        this.assignmentManager.waitForAssignment(hri);
+      }
     }
   }
 
@@ -1123,6 +1350,25 @@ public class HMaster extends HRegionServer implements MasterServices, Server {
     String metaRecoveringZNode = ZKUtil.joinZNode(zooKeeper.recoveringRegionsZNode,
       HRegionInfo.FIRST_META_REGIONINFO.getEncodedName());
     List<String> regionFailedServers = ZKUtil.listChildrenNoWatch(zooKeeper, metaRecoveringZNode);
+    if (regionFailedServers == null) return result;
+
+    for(String failedServer : regionFailedServers) {
+      ServerName server = ServerName.parseServerName(failedServer);
+      result.add(server);
+    }
+    return result;
+  }
+  
+  /**
+   * This function returns a set of region server names under hbase:root recovering region ZK node
+   * @return Set of root server names which were recorded in ZK
+   * @throws KeeperException
+   */
+  private Set<ServerName> getPreviouselyFailedRootServersFromZK() throws KeeperException {
+    Set<ServerName> result = new HashSet<ServerName>();
+    String rootRecoveringZnode = ZKUtil.joinZNode(zooKeeper.recoveringRegionsZNode,
+      HRegionInfo.ROOT_REGIONINFO.getEncodedName());
+    List<String> regionFailedServers = ZKUtil.listChildrenNoWatch(zooKeeper, rootRecoveringZnode);
     if (regionFailedServers == null) return result;
 
     for(String failedServer : regionFailedServers) {
@@ -1171,6 +1417,9 @@ public class HMaster extends HRegionServer implements MasterServices, Server {
     this.service.startExecutorService(ExecutorType.MASTER_META_SERVER_OPERATIONS,
       conf.getInt(HConstants.MASTER_META_SERVER_OPERATIONS_THREADS,
         HConstants.MASTER_META_SERVER_OPERATIONS_THREADS_DEFAULT));
+      this.service.startExecutorService(ExecutorType.MASTER_ROOT_SERVER_OPERATIONS,
+          conf.getInt(HConstants.MASTER_ROOT_SERVER_OPERATIONS_THREADS,
+              HConstants.MASTER_ROOT_SERVER_OPERATIONS_THREADS_DEFAULT));
     this.service.startExecutorService(ExecutorType.M_LOG_REPLAY_OPS, conf.getInt(
       HConstants.MASTER_LOG_REPLAY_OPS_THREADS, HConstants.MASTER_LOG_REPLAY_OPS_THREADS_DEFAULT));
     this.service.startExecutorService(ExecutorType.MASTER_SNAPSHOT_OPERATIONS, conf.getInt(
@@ -1535,7 +1784,8 @@ public class HMaster extends HRegionServer implements MasterServices, Server {
         return;
       }
     } else {
-      dest = ServerName.valueOf(Bytes.toString(destServerName));
+      ServerName candidate = ServerName.valueOf(Bytes.toString(destServerName));
+      dest = balancer.randomAssignment(hri, Lists.newArrayList(candidate));
       if (dest.equals(serverName) && balancer instanceof BaseLoadBalancer
           && !((BaseLoadBalancer)balancer).shouldBeOnMaster(hri)) {
         // To avoid unnecessary region moving later by balancer. Don't put user
@@ -1944,7 +2194,8 @@ public class HMaster extends HRegionServer implements MasterServices, Server {
   }
 
   private static boolean isCatalogTable(final TableName tableName) {
-    return tableName.equals(TableName.META_TABLE_NAME);
+    return tableName.equals(TableName.META_TABLE_NAME)
+        || tableName.equals(TableName.ROOT_TABLE_NAME);
   }
 
   @Override
@@ -2254,7 +2505,7 @@ public class HMaster extends HRegionServer implements MasterServices, Server {
     if (isCatalogTable(tableName)) {
       throw new IOException("Can't modify catalog tables");
     }
-    if (!MetaTableAccessor.tableExists(getConnection(), tableName)) {
+    if (!CatalogAccessor.tableExists(getConnection(), tableName)) {
       throw new TableNotFoundException(tableName);
     }
     if (!getAssignmentManager().getTableStateManager().
@@ -2529,9 +2780,9 @@ public class HMaster extends HRegionServer implements MasterServices, Server {
   }
 
   /**
-   * ServerCrashProcessingEnabled is set false before completing assignMeta to prevent processing
+   * ServerCrashProcessingEnabled is set false before completing assignRoot to prevent processing
    * of crashed servers.
-   * @return true if assignMeta has completed;
+   * @return true if assignRoot has completed;
    */
   @Override
   public boolean isServerCrashProcessingEnabled() {

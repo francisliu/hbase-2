@@ -41,6 +41,8 @@ import org.apache.hadoop.hbase.master.procedure.MasterProcedureEnv;
 import org.apache.hadoop.hbase.procedure2.ProcedureExecutor;
 import org.apache.hadoop.hbase.protobuf.generated.HBaseProtos.SnapshotDescription;
 import org.apache.hadoop.hbase.protobuf.generated.QuotaProtos.Quotas;
+import org.apache.hadoop.hbase.protobuf.generated.RegionServerStatusProtos.RegionStateTransition
+    .TransitionCode;
 
 /**
  * Provides the coprocessor framework and environment for master oriented
@@ -1001,6 +1003,17 @@ public class MasterCoprocessorHost
           throws IOException {
         oserver.postGetTableDescriptors(ctx, tableNamesList, descriptors, regex);
       }
+    });
+  }
+
+  public void preOnRegionTransition(final HRegionInfo hri, final TransitionCode code)
+      throws IOException {
+    execOperation(coprocessors.isEmpty() ? null : new CoprocessorOperation() {
+       @Override
+       public void call(MasterObserver oserver, ObserverContext<MasterCoprocessorEnvironment> ctx)
+           throws IOException {
+         oserver.preOnRegionTransition(ctx, hri, code);
+       }
     });
   }
 

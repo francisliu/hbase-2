@@ -50,7 +50,7 @@ import org.apache.hadoop.hbase.regionserver.ServerNonceManager;
 import org.apache.hadoop.hbase.regionserver.throttle.ThroughputController;
 import org.apache.hadoop.hbase.util.Bytes;
 import org.apache.hadoop.hbase.wal.WAL;
-import org.apache.hadoop.hbase.zookeeper.MetaTableLocator;
+import org.apache.hadoop.hbase.zookeeper.RootTableLocator;
 import org.apache.hadoop.hbase.zookeeper.ZooKeeperWatcher;
 import org.apache.zookeeper.KeeperException;
 
@@ -165,8 +165,7 @@ public class MockRegionServerServices implements RegionServerServices {
     return null;
   }
 
-  @Override
-  public MetaTableLocator getMetaTableLocator() {
+  public RootTableLocator getRootTableLocator() {
     return null;
   }
 

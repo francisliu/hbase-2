@@ -33,7 +33,7 @@ import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.hbase.DoNotRetryIOException;
 import org.apache.hadoop.hbase.HRegionInfo;
 import org.apache.hadoop.hbase.HTableDescriptor;
-import org.apache.hadoop.hbase.MetaTableAccessor;
+import org.apache.hadoop.hbase.CatalogAccessor;
 import org.apache.hadoop.hbase.TableExistsException;
 import org.apache.hadoop.hbase.TableName;
 import org.apache.hadoop.hbase.TableStateManager;
@@ -282,7 +282,7 @@ public class CreateTableProcedure
 
   private boolean prepareCreate(final MasterProcedureEnv env) throws IOException {
     final TableName tableName = getTableName();
-    if (MetaTableAccessor.tableExists(env.getMasterServices().getConnection(), tableName)) {
+    if (CatalogAccessor.tableExists(env.getMasterServices().getConnection(), tableName)) {
       setFailure("master-create-table", new TableExistsException(getTableName()));
       return false;
     }
@@ -470,7 +470,7 @@ public class CreateTableProcedure
   protected static void addRegionsToMeta(final MasterProcedureEnv env,
       final HTableDescriptor hTableDescriptor,
       final List<HRegionInfo> regionInfos) throws IOException {
-    MetaTableAccessor.addRegionsToMeta(env.getMasterServices().getConnection(),
+    CatalogAccessor.addRegionsToCatalog(env.getMasterServices().getConnection(),
       regionInfos, hTableDescriptor.getRegionReplication());
   }
 

@@ -43,7 +43,7 @@ import org.apache.hadoop.hbase.HTableDescriptor;
 import org.apache.hadoop.hbase.InvalidFamilyOperationException;
 import org.apache.hadoop.hbase.testclassification.LargeTests;
 import org.apache.hadoop.hbase.MasterNotRunningException;
-import org.apache.hadoop.hbase.MetaTableAccessor;
+import org.apache.hadoop.hbase.CatalogAccessor;
 import org.apache.hadoop.hbase.ServerName;
 import org.apache.hadoop.hbase.TableName;
 import org.apache.hadoop.hbase.TableNotDisabledException;
@@ -1195,7 +1195,7 @@ public class TestAdmin1 {
     ht.flushCommits();
     ht.close();
     List<Pair<HRegionInfo, ServerName>> regions =
-        MetaTableAccessor.getTableRegionsAndLocations(TEST_UTIL.getZooKeeperWatcher(),
+        CatalogAccessor.getTableRegionsAndLocations(TEST_UTIL.getZooKeeperWatcher(),
                           TEST_UTIL.getConnection(), tableName);
     boolean gotException = false;
     // the element at index 1 would be a replica (since the metareader gives us ordered
@@ -1290,7 +1290,7 @@ public class TestAdmin1 {
     createReplicaTable(tableName, "f".getBytes());
     final int regionReplication = admin.getTableDescriptor(tableName).getRegionReplication();
 
-    List<Pair<HRegionInfo, ServerName>> regions = MetaTableAccessor.getTableRegionsAndLocations(
+    List<Pair<HRegionInfo, ServerName>> regions = CatalogAccessor.getTableRegionsAndLocations(
       TEST_UTIL.getZooKeeperWatcher(), TEST_UTIL.getConnection(), tableName);
     assertEquals(9, regions.size());
     final int primaryRegionCount = regions.size() / regionReplication;
@@ -1317,7 +1317,7 @@ public class TestAdmin1 {
       }
     });
 
-    regions = MetaTableAccessor.getTableRegionsAndLocations(TEST_UTIL.getZooKeeperWatcher(),
+    regions = CatalogAccessor.getTableRegionsAndLocations(TEST_UTIL.getZooKeeperWatcher(),
       TEST_UTIL.getConnection(), tableName);
     assertEquals(12, regions.size());
     final int primaryRegionCountAfterSplit = regions.size() / regionReplication;
@@ -1347,7 +1347,7 @@ public class TestAdmin1 {
       }
     });
 
-    regions = MetaTableAccessor.getTableRegionsAndLocations(TEST_UTIL.getZooKeeperWatcher(),
+    regions = CatalogAccessor.getTableRegionsAndLocations(TEST_UTIL.getZooKeeperWatcher(),
       TEST_UTIL.getConnection(), tableName);
     assertEquals(9, regions.size());
     // Offline region after region merge

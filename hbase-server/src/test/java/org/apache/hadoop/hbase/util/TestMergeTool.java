@@ -144,7 +144,7 @@ public class TestMergeTool extends HBaseTestCase {
     wals = new WALFactory(conf, null, "TestMergeTool");
     try {
       // Create meta region
-      createMetaRegion();
+      createRootAndMetaRegion();
       new FSTableDescriptors(conf, this.fs, this.testDir).createTableDescriptor(this.desc);
       /*
        * Create the regions we will merge

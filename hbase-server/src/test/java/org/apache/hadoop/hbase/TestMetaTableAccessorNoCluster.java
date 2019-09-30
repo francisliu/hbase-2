@@ -194,7 +194,7 @@ public class TestMetaTableAccessorNoCluster {
 
       // Scan meta for user tables and verify we got back expected answer.
       NavigableMap<HRegionInfo, Result> hris =
-        MetaTableAccessor.getServerUserRegions(connection, sn);
+        CatalogAccessor.getServerUserRegions(connection, sn);
       assertEquals(1, hris.size());
       assertTrue(hris.firstEntry().getKey().equals(HRegionInfo.FIRST_META_REGIONINFO));
       assertTrue(Bytes.equals(rowToVerify, hris.firstEntry().getValue().getRow()));

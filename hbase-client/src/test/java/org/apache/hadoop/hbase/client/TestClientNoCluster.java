@@ -96,7 +96,7 @@ import com.google.protobuf.ServiceException;
 public class TestClientNoCluster extends Configured implements Tool {
   private static final Log LOG = LogFactory.getLog(TestClientNoCluster.class);
   private Configuration conf;
-  public static final ServerName META_SERVERNAME =
+  public static final ServerName ROOT_SERVERNAME =
       ServerName.valueOf("meta.example.org", 16010, 12345);
 
   @Before
@@ -112,16 +112,16 @@ public class TestClientNoCluster extends Configured implements Tool {
    * Simple cluster registry inserted in place of our usual zookeeper based one.
    */
   static class SimpleRegistry implements Registry {
-    final ServerName META_HOST = META_SERVERNAME;
+    final ServerName ROOT_HOST = ROOT_SERVERNAME;
 
     @Override
     public void init(Connection connection) {
     }
 
     @Override
-    public RegionLocations getMetaRegionLocation() throws IOException {
+    public RegionLocations getRootRegionLocation() throws IOException {
       return new RegionLocations(
-        new HRegionLocation(HRegionInfo.FIRST_META_REGIONINFO, META_HOST));
+        new HRegionLocation(HRegionInfo.ROOT_REGIONINFO, ROOT_HOST));
     }
 
     @Override
@@ -151,7 +151,7 @@ public class TestClientNoCluster extends Configured implements Tool {
     Configuration localConfig = HBaseConfiguration.create(this.conf);
     // This override mocks up our exists/get call to throw a RegionServerStoppedException.
     localConfig.set("hbase.client.connection.impl", RpcTimeoutConnection.class.getName());
-    Table table = new HTable(localConfig, TableName.META_TABLE_NAME);
+    Table table = new HTable(localConfig, TableName.ROOT_TABLE_NAME);
     Throwable t = null;
     LOG.info("Start");
     try {
@@ -188,7 +188,7 @@ public class TestClientNoCluster extends Configured implements Tool {
     // and it has expired.  Otherwise, if this functionality is broke, all retries will be run --
     // all ten of them -- and we'll get the RetriesExhaustedException exception.
     localConfig.setInt(HConstants.HBASE_CLIENT_META_OPERATION_TIMEOUT, pause - 1);
-    Table table = new HTable(localConfig, TableName.META_TABLE_NAME);
+    Table table = new HTable(localConfig, TableName.ROOT_TABLE_NAME);
     Throwable t = null;
     try {
       // An exists call turns into a get w/ a flag.
@@ -211,7 +211,8 @@ public class TestClientNoCluster extends Configured implements Tool {
     this.conf.set("hbase.client.connection.impl",
       RegionServerStoppedOnScannerOpenConnection.class.getName());
     try (Connection connection = ConnectionFactory.createConnection(conf)) {
-      MetaScanner.metaScan(connection, null);
+      MetaScanner.metaScan(connection, null, null, null, Integer.MAX_VALUE,
+              TableName.ROOT_TABLE_NAME);
     }
   }
 
@@ -222,7 +223,7 @@ public class TestClientNoCluster extends Configured implements Tool {
     // Go against meta else we will try to find first region for the table on construction which
     // means we'll have to do a bunch more mocking.  Tests that go against meta only should be
     // good for a bit of testing.
-    Table table = new HTable(this.conf, TableName.META_TABLE_NAME);
+    Table table = new HTable(this.conf, TableName.ROOT_TABLE_NAME);
     ResultScanner scanner = table.getScanner(HConstants.CATALOG_FAMILY);
     try {
       Result result = null;
@@ -242,7 +243,7 @@ public class TestClientNoCluster extends Configured implements Tool {
     // Go against meta else we will try to find first region for the table on construction which
     // means we'll have to do a bunch more mocking.  Tests that go against meta only should be
     // good for a bit of testing.
-    Table table = new HTable(this.conf, TableName.META_TABLE_NAME);
+    Table table = new HTable(this.conf, TableName.ROOT_TABLE_NAME);
     ResultScanner scanner = table.getScanner(HConstants.CATALOG_FAMILY);
     try {
       Result result = null;
@@ -336,6 +337,17 @@ public class TestClientNoCluster extends Configured implements Tool {
               setMoreResults(false).build());
       } catch (ServiceException e) {
         throw new IOException(e);
+      }
+    }
+    // Override this so client doesn't try to scan root to find meta.
+    // This is required for testDoNotRetryMetaScanner() 
+    @Override
+    public HRegionLocation getRegionLocation(final TableName tableName,
+        final byte [] row, boolean booleanReload) throws IOException {
+      if (tableName.equals(TableName.META_TABLE_NAME)) {
+        return new HRegionLocation(HRegionInfo.ROOT_REGIONINFO, ROOT_SERVERNAME);
+      } else {
+        return super.relocateRegion(tableName, row);
       }
     }
 
@@ -466,7 +478,7 @@ public class TestClientNoCluster extends Configured implements Tool {
     @Override
     public GetResponse get(RpcController controller, GetRequest request)
     throws ServiceException {
-      boolean metaRegion = isMetaRegion(request.getRegion().getValue().toByteArray(),
+      boolean metaRegion = isRootRegion(request.getRegion().getValue().toByteArray(),
         request.getRegion().getType());
       if (!metaRegion) {
         return doGetResponse(request);
@@ -591,12 +603,12 @@ public class TestClientNoCluster extends Configured implements Tool {
    * @param type
    * @return True if we are dealing with a hbase:meta region.
    */
-  static boolean isMetaRegion(final byte [] name, final RegionSpecifierType type) {
+  static boolean isRootRegion(final byte [] name, final RegionSpecifierType type) {
     switch (type) {
     case REGION_NAME:
-      return Bytes.equals(HRegionInfo.FIRST_META_REGIONINFO.getRegionName(), name);
+      return Bytes.equals(HRegionInfo.ROOT_REGIONINFO.getRegionName(), name);
     case ENCODED_REGION_NAME:
-      return Bytes.equals(HRegionInfo.FIRST_META_REGIONINFO.getEncodedNameAsBytes(), name);
+      return Bytes.equals(HRegionInfo.ROOT_REGIONINFO.getEncodedNameAsBytes(), name);
     default: throw new UnsupportedOperationException();
     }
   }
@@ -634,7 +646,7 @@ public class TestClientNoCluster extends Configured implements Tool {
     CellProtos.Cell.Builder cellBuilder = getBaseCellBuilder(row);
     cellBuilder.setQualifier(ByteStringer.wrap(HConstants.STARTCODE_QUALIFIER));
     // TODO:
-    cellBuilder.setValue(ByteStringer.wrap(Bytes.toBytes(META_SERVERNAME.getStartcode())));
+    cellBuilder.setValue(ByteStringer.wrap(Bytes.toBytes(ROOT_SERVERNAME.getStartcode())));
     return cellBuilder.build();
   }
 

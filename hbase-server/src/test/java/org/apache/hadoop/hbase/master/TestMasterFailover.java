@@ -10,6 +10,7 @@
  *
  *     http://www.apache.org/licenses/LICENSE-2.0
  *
+ *                                                                                               <<<
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -44,7 +45,7 @@ import org.apache.hadoop.hbase.HConstants;
 import org.apache.hadoop.hbase.HRegionInfo;
 import org.apache.hadoop.hbase.HTableDescriptor;
 import org.apache.hadoop.hbase.testclassification.LargeTests;
-import org.apache.hadoop.hbase.MetaTableAccessor;
+import org.apache.hadoop.hbase.CatalogAccessor;
 import org.apache.hadoop.hbase.MiniHBaseCluster;
 import org.apache.hadoop.hbase.RegionTransition;
 import org.apache.hadoop.hbase.ServerName;
@@ -69,7 +70,7 @@ import org.apache.hadoop.hbase.util.JVMClusterUtil;
 import org.apache.hadoop.hbase.util.JVMClusterUtil.MasterThread;
 import org.apache.hadoop.hbase.util.JVMClusterUtil.RegionServerThread;
 import org.apache.hadoop.hbase.util.Threads;
-import org.apache.hadoop.hbase.zookeeper.MetaTableLocator;
+import org.apache.hadoop.hbase.zookeeper.RootTableLocator;
 import org.apache.hadoop.hbase.zookeeper.ZKAssign;
 import org.apache.hadoop.hbase.zookeeper.ZKTableStateManager;
 import org.apache.hadoop.hbase.zookeeper.ZooKeeperWatcher;
@@ -233,9 +234,9 @@ public class TestMasterFailover {
 
     log("Regions in hbase:meta and namespace have been created");
 
-    // at this point we only expect 4 regions to be assigned out
+    // at this point we only expect 5 regions to be assigned out
     // (catalogs and namespace, + 2 merging regions)
-    assertEquals(4, cluster.countServedRegions());
+    assertEquals(5, cluster.countServedRegions());
 
     // Move merging regions to the same region server
     AssignmentManager am = master.getAssignmentManager();
@@ -574,13 +575,13 @@ public class TestMasterFailover {
     HRegionInfo hriDisabled = new HRegionInfo(htdDisabled.getTableName(), null, null);
     createRegion(hriDisabled, rootdir, conf, htdDisabled);
 
-    List<HRegionInfo> disabledRegions = TEST_UTIL.createMultiRegionsInMeta(
+    List<HRegionInfo> disabledRegions =  TEST_UTIL.createMultiRegionsInMeta(
         TEST_UTIL.getConfiguration(), htdDisabled, SPLIT_KEYS);
 
     log("Regions in hbase:meta and Namespace have been created");
 
-    // at this point we only expect 2 regions to be assigned out (catalogs and namespace  )
-    assertEquals(2, cluster.countServedRegions());
+    // at this point we only expect 3 regions to be assigned out (catalogs and namespace  )
+    assertEquals(3, cluster.countServedRegions());
 
     // The first RS will stay online
     List<RegionServerThread> regionservers =
@@ -940,7 +941,10 @@ public class TestMasterFailover {
     LOG.info("\n\n" + string + " \n\n");
   }
 
-  @Test (timeout=180000)
+  
+  // This test wont work for split meta and zk assignment
+  // Look at isCarryingMeta() in AssignmentManager, we no longer check for unassigned znode 
+  @Ignore 
   public void testShouldCheckMasterFailOverWhenMETAIsInOpenedState()
       throws Exception {
     LOG.info("Starting testShouldCheckMasterFailOverWhenMETAIsInOpenedState");
@@ -1219,13 +1223,13 @@ public class TestMasterFailover {
 
     HRegionInfo hriOffline = new HRegionInfo(offlineTable.getTableName(), null, null);
     createRegion(hriOffline, rootdir, conf, offlineTable);
-    MetaTableAccessor.addRegionToMeta(master.getConnection(), hriOffline);
+    CatalogAccessor.addRegionToCatalog(master.getConnection(), hriOffline);
 
     log("Regions in hbase:meta and namespace have been created");
 
     // at this point we only expect 3 regions to be assigned out
     // (catalogs and namespace, + 1 online region)
-    assertEquals(3, cluster.countServedRegions());
+    assertEquals(4, cluster.countServedRegions());
     HRegionInfo hriOnline = null;
     try (RegionLocator locator =
         TEST_UTIL.getConnection().getRegionLocator(TableName.valueOf("onlineTable"))) {
@@ -1249,7 +1253,7 @@ public class TestMasterFailover {
     
     HRegionInfo failedClose = new HRegionInfo(offlineTable.getTableName(), null, null);
     createRegion(failedClose, rootdir, conf, offlineTable);
-    MetaTableAccessor.addRegionToMeta(master.getConnection(), failedClose);
+    CatalogAccessor.addRegionToCatalog(master.getConnection(), failedClose);
     
     oldState = new RegionState(failedClose, State.PENDING_CLOSE);
     newState = new RegionState(failedClose, State.FAILED_CLOSE, newState.getServerName());
@@ -1258,7 +1262,7 @@ public class TestMasterFailover {
    
     HRegionInfo failedOpen = new HRegionInfo(offlineTable.getTableName(), null, null);
     createRegion(failedOpen, rootdir, conf, offlineTable);
-    MetaTableAccessor.addRegionToMeta(master.getConnection(), failedOpen);
+    CatalogAccessor.addRegionToCatalog(master.getConnection(), failedOpen);
     
     // Simulate a region transitioning to failed open when the region server reports the
     // transition as FAILED_OPEN
@@ -1268,7 +1272,7 @@ public class TestMasterFailover {
     
     HRegionInfo failedOpenNullServer = new HRegionInfo(offlineTable.getTableName(), null, null);
     createRegion(failedOpenNullServer, rootdir, conf, offlineTable);
-    MetaTableAccessor.addRegionToMeta(master.getConnection(), failedOpenNullServer);
+    CatalogAccessor.addRegionToCatalog(master.getConnection(), failedOpenNullServer);
     
     // Simulate a region transitioning to failed open when the master couldn't find a plan for
     // the region
@@ -1314,7 +1318,8 @@ public class TestMasterFailover {
    * Test meta in transition when master failover
    */
   @Test(timeout = 180000)
-  public void testMetaInTransitionWhenMasterFailover() throws Exception {
+  //TODO add one for Meta
+  public void testRootInTransitionWhenMasterFailover() throws Exception {
     final int NUM_MASTERS = 1;
     final int NUM_RS = 1;
 
@@ -1331,12 +1336,12 @@ public class TestMasterFailover {
     HRegionServer rs = cluster.getRegionServer(0);
     ServerName metaServerName = cluster.getLiveRegionServerThreads()
       .get(0).getRegionServer().getServerName();
-    activeMaster.move(HRegionInfo.FIRST_META_REGIONINFO.getEncodedNameAsBytes(),
+    activeMaster.move(HRegionInfo.ROOT_REGIONINFO.getEncodedNameAsBytes(),
       Bytes.toBytes(metaServerName.getServerName()));
     TEST_UTIL.waitUntilNoRegionsInTransition(60000);
     assertEquals("Meta should be assigned on expected regionserver",
-      metaServerName, activeMaster.getMetaTableLocator()
-        .getMetaRegionLocation(activeMaster.getZooKeeper()));
+      metaServerName, activeMaster.getRootTableLocator()
+        .getRootRegionLocation(activeMaster.getZooKeeper()));
 
     // Now kill master, meta should remain on rs, where we placed it before.
     log("Aborting master");
@@ -1346,7 +1351,7 @@ public class TestMasterFailover {
 
     // meta should remain where it was
     RegionState metaState =
-      MetaTableLocator.getMetaRegionState(rs.getZooKeeper());
+      RootTableLocator.getRootRegionState(rs.getZooKeeper());
     assertEquals("hbase:meta should be onlined on RS",
       metaState.getServerName(), rs.getServerName());
     assertEquals("hbase:meta should be onlined on RS",
@@ -1361,7 +1366,7 @@ public class TestMasterFailover {
 
     // ensure meta is still deployed on RS
     metaState =
-      MetaTableLocator.getMetaRegionState(activeMaster.getZooKeeper());
+      RootTableLocator.getRootRegionState(activeMaster.getZooKeeper());
     assertEquals("hbase:meta should be onlined on RS",
       metaState.getServerName(), rs.getServerName());
     assertEquals("hbase:meta should be onlined on RS",
@@ -1371,9 +1376,9 @@ public class TestMasterFailover {
     // that simulates, that RS successfully deployed, but
     // RPC was lost right before failure.
     // region server should expire (how it can be verified?)
-    MetaTableLocator.setMetaLocation(activeMaster.getZooKeeper(),
+    RootTableLocator.setRootLocation(activeMaster.getZooKeeper(),
       rs.getServerName(), State.PENDING_OPEN);
-    Region meta = rs.getFromOnlineRegions(HRegionInfo.FIRST_META_REGIONINFO.getEncodedName());
+    Region meta = rs.getFromOnlineRegions(HRegionInfo.ROOT_REGIONINFO.getEncodedName());
     rs.removeFromOnlineRegions(meta, null);
     ((HRegion)meta).close();
 
@@ -1393,7 +1398,7 @@ public class TestMasterFailover {
     log("Meta was assigned");
 
     metaState =
-      MetaTableLocator.getMetaRegionState(activeMaster.getZooKeeper());
+      RootTableLocator.getRootRegionState(activeMaster.getZooKeeper());
     assertEquals("hbase:meta should be onlined on RS",
       metaState.getServerName(), rs.getServerName());
     assertEquals("hbase:meta should be onlined on RS",
@@ -1403,7 +1408,7 @@ public class TestMasterFailover {
     // that simulates, that RS successfully deployed, but
     // RPC was lost right before failure.
     // region server should expire (how it can be verified?)
-    MetaTableLocator.setMetaLocation(activeMaster.getZooKeeper(),
+    RootTableLocator.setRootLocation(activeMaster.getZooKeeper(),
       rs.getServerName(), State.PENDING_CLOSE);
 
     log("Aborting master");
@@ -1412,7 +1417,7 @@ public class TestMasterFailover {
     log("Master has aborted");
 
     rs.getRSRpcServices().closeRegion(null, RequestConverter.buildCloseRegionRequest(
-      rs.getServerName(), HRegionInfo.FIRST_META_REGIONINFO.getEncodedName(), false));
+      rs.getServerName(), HRegionInfo.ROOT_REGIONINFO.getEncodedName(), false));
 
     // Start up a new master
     log("Starting up a new master");
@@ -1427,10 +1432,10 @@ public class TestMasterFailover {
     rs.getRSRpcServices().closeRegion(
       null,
       RequestConverter.buildCloseRegionRequest(rs.getServerName(),
-        HRegionInfo.FIRST_META_REGIONINFO.getEncodedName(), false));
+        HRegionInfo.ROOT_REGIONINFO.getEncodedName(), false));
 
     // Set a dummy server to check if master reassigns meta on restart
-    MetaTableLocator.setMetaLocation(activeMaster.getZooKeeper(),
+    RootTableLocator.setRootLocation(activeMaster.getZooKeeper(),
       ServerName.valueOf("dummyserver.example.org", 1234, -1L), State.OPEN);
 
     log("Aborting master");

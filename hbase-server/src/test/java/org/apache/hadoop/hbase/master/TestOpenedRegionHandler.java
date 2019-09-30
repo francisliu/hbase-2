@@ -217,7 +217,7 @@ public class TestOpenedRegionHandler {
     Region region = null;
     while (iterator.hasNext()) {
       region = iterator.next();
-      if (!region.getRegionInfo().isMetaTable()) {
+      if (!(region.getRegionInfo().isRootRegion() || region.getRegionInfo().isMetaRegion())) {
         break;
       }
     }

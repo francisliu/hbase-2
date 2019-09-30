@@ -34,7 +34,7 @@ import org.apache.hadoop.hbase.HConstants;
 import org.apache.hadoop.hbase.HRegionInfo;
 import org.apache.hadoop.hbase.HTableDescriptor;
 import org.apache.hadoop.hbase.testclassification.MediumTests;
-import org.apache.hadoop.hbase.MetaTableAccessor;
+import org.apache.hadoop.hbase.CatalogAccessor;
 import org.apache.hadoop.hbase.MiniHBaseCluster;
 import org.apache.hadoop.hbase.PleaseHoldException;
 import org.apache.hadoop.hbase.ServerName;
@@ -88,7 +88,7 @@ public class TestMaster {
       TEST_UTIL.loadTable(ht, FAMILYNAME, false);
     }
 
-    List<Pair<HRegionInfo, ServerName>> tableRegions = MetaTableAccessor.getTableRegionsAndLocations(
+    List<Pair<HRegionInfo, ServerName>> tableRegions = CatalogAccessor.getTableRegionsAndLocations(
         m.getZooKeeper(),
         m.getConnection(), TABLENAME);
     LOG.info("Regions after load: " + Joiner.on(',').join(tableRegions));
@@ -107,7 +107,7 @@ public class TestMaster {
       Thread.sleep(100);
     }
     LOG.info("Making sure we can call getTableRegions while opening");
-    tableRegions = MetaTableAccessor.getTableRegionsAndLocations(m.getZooKeeper(),
+    tableRegions = CatalogAccessor.getTableRegionsAndLocations(m.getZooKeeper(),
       m.getConnection(),
       TABLENAME, false);
 
@@ -119,7 +119,7 @@ public class TestMaster {
         m.getTableRegionForRow(TABLENAME, Bytes.toBytes("cde"));
     LOG.info("Result is: " + pair);
     Pair<HRegionInfo, ServerName> tableRegionFromName =
-        MetaTableAccessor.getRegion(m.getConnection(),
+        CatalogAccessor.getRegion(m.getConnection(),
           pair.getFirst().getRegionName());
     assertEquals(tableRegionFromName.getFirst(), pair.getFirst());
   }

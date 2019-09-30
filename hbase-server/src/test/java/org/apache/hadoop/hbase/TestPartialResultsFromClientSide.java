@@ -837,7 +837,7 @@ public class TestPartialResultsFromClientSide {
   }
 
   private void moveRegion(Table table, int index) throws IOException{
-    List<Pair<HRegionInfo, ServerName>> regions = MetaTableAccessor
+    List<Pair<HRegionInfo, ServerName>> regions = CatalogAccessor
         .getTableRegionsAndLocations(TEST_UTIL.getZooKeeperWatcher(), TEST_UTIL.getConnection(),
             table.getName());
     assertEquals(1, regions.size());

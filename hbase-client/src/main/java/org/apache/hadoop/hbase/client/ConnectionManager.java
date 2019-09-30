@@ -56,7 +56,7 @@ import org.apache.hadoop.hbase.HRegionInfo;
 import org.apache.hadoop.hbase.HRegionLocation;
 import org.apache.hadoop.hbase.HTableDescriptor;
 import org.apache.hadoop.hbase.MasterNotRunningException;
-import org.apache.hadoop.hbase.MetaTableAccessor;
+import org.apache.hadoop.hbase.CatalogAccessor;
 import org.apache.hadoop.hbase.RegionLocations;
 import org.apache.hadoop.hbase.ServerName;
 import org.apache.hadoop.hbase.TableName;
@@ -556,6 +556,8 @@ class ConnectionManager {
       justification="Access to the conncurrent hash map is under a lock so should be fine.")
   static class HConnectionImplementation implements ClusterConnection, Closeable {
     static final Log LOG = LogFactory.getLog(HConnectionImplementation.class);
+    private volatile boolean hasRoot = true;
+
     private final boolean hostnamesCanChange;
     private final long pause;
     private final boolean useMetaReplicas;
@@ -587,8 +589,9 @@ class ConnectionManager {
     // thread executor shared by all HTableInterface instances created
     // by this connection
     private volatile ExecutorService batchPool = null;
-    // meta thread executor shared by all HTableInterface instances created
+    // root and meta thread executors shared by all HTableInterface instances created
     // by this connection
+    private volatile ExecutorService rootLookupPool = null;
     private volatile ExecutorService metaLookupPool = null;
     private volatile boolean cleanupPool = false;
 
@@ -859,8 +862,30 @@ class ConnectionManager {
       return this.metaLookupPool;
     }
 
+    private ExecutorService getRootLookupPool() {
+      if (this.rootLookupPool == null) {
+        synchronized (this) {
+          if (this.rootLookupPool == null) {
+            //Some of the threads would be used for meta replicas
+            //To start with, threads.max.core threads can hit the meta (including replicas).
+            //After that, requests will get queued up in the passed queue, and only after
+            //the queue is full, a new thread will be started
+            this.rootLookupPool = getThreadPool(
+               conf.getInt("hbase.hconnection.root.lookup.threads.max", 128),
+               conf.getInt("hbase.hconnection.root.lookup.threads.core", 10),
+             "-rootLookup-shared-", new LinkedBlockingQueue<Runnable>());
+          }
+        }
+      }
+      return this.rootLookupPool;
+    }
+
     protected ExecutorService getCurrentMetaLookupPool() {
       return metaLookupPool;
+    }
+
+    protected ExecutorService getCurrentRootLookupPool() {
+      return rootLookupPool;
     }
 
     protected ExecutorService getCurrentBatchPool() {
@@ -1161,7 +1186,8 @@ class ConnectionManager {
       // Since this is an explicit request not to use any caching, finding
       // disabled tables should not be desirable.  This will ensure that an exception is thrown when
       // the first time a disabled table is interacted with.
-      if (!tableName.equals(TableName.META_TABLE_NAME) && isTableDisabled(tableName)) {
+      if (!tableName.equals(TableName.META_TABLE_NAME) &&
+          !tableName.equals(TableName.ROOT_TABLE_NAME) && isTableDisabled(tableName)) {
         throw new TableNotEnabledException(tableName.getNameAsString() + " is disabled.");
       }
 
@@ -1190,15 +1216,41 @@ class ConnectionManager {
         throw new IllegalArgumentException(
             "table name cannot be null or zero length");
       }
-      if (tableName.equals(TableName.META_TABLE_NAME)) {
-        return locateMeta(tableName, useCache, replicaId);
+      if (tableName.equals(TableName.ROOT_TABLE_NAME) ||
+          tableName.equals(TableName.META_TABLE_NAME) && !hasRoot) {
+        //Failfast instead of potentially spamming zk.
+        //This can other occur through a regular user region (or meta) look
+        //up or if a user is explicitly trying to scan hbase:root. In the former case
+        //the thrown exception will be caught in the locateRegion() call preceding
+        //this which trigger a retry and in turn will retry the correct region location.
+        //In the latter case it would be an advanced use case and the user will either
+        //fail (not support clusters without hbase:root) or handle it accordingly.
+        if (tableName.equals(TableName.ROOT_TABLE_NAME) && !hasRoot) {
+          String msg =
+              "Looking for hbase:root, while cluster has hbase:meta a primoridal region.";
+          LOG.debug(msg);
+          throw new FoundMetaOnRootLookupException(msg);
+        }
+        return locatePrimordialRegion(tableName, useCache, replicaId);
       } else {
-        // Region not in the cache - have to go to the meta RS
-        return locateRegionInMeta(tableName, row, useCache, retry, replicaId);
+        try {
+          return locateRegionInMeta(tableName, row, useCache, retry, replicaId);
+        } catch (FoundMetaOnRootLookupException ex) {
+          LOG.debug("Found Meta on Root retrying once", ex);
+          //After the exception the location of meta (primoridal) should be cached.
+          //A retry of this call would return the location of the primordial region
+          //reading it from cache so no scan of the non-existent root table would occur
+          return locateRegionInMeta(tableName, row, useCache, retry, replicaId);
+        } catch (FoundRootOnMetaLookupException ex) {
+          LOG.debug("Found Root On Meta retrying once", ex);
+          //A Retry will now try to scan root for for the location
+          //of a particular meta
+          return locateRegionInMeta(tableName, row, useCache, retry, replicaId);
+        }
       }
     }
 
-    private RegionLocations locateMeta(final TableName tableName,
+    private RegionLocations locatePrimordialRegion(final TableName tableName,
         boolean useCache, int replicaId) throws IOException {
       // HBASE-10785: We cache the location of the META itself, so that we are not overloading
       // zookeeper with one request for every region lookup. We cache the META with empty row
@@ -1224,9 +1276,21 @@ class ConnectionManager {
         }
 
         // Look up from zookeeper
-        locations = this.registry.getMetaRegionLocation();
+        locations = this.registry.getRootRegionLocation();
         if (locations != null) {
-          cacheLocation(tableName, locations);
+          TableName finalTableName = tableName;
+          HRegionLocation loc = locations.getRegionLocation();
+          finalTableName = loc.getRegionInfo().getTable();
+          hasRoot = finalTableName.equals(TableName.ROOT_TABLE_NAME);
+          cacheLocation(finalTableName, locations);
+          if (!finalTableName.equals(tableName)) {
+            LOG.debug("Primordial region switched to " + loc.getRegionInfo().getRegionNameAsString());
+            if (finalTableName.equals(TableName.ROOT_TABLE_NAME)) {
+              throw new FoundRootOnMetaLookupException("Trigger retry found Root instead of " + tableName);
+            } else {
+              throw new FoundMetaOnRootLookupException("Trigger retry found Meta instead of " + tableName);
+            }
+          }
         }
       }
       return locations;
@@ -1236,9 +1300,9 @@ class ConnectionManager {
       * Search the hbase:meta table for the HRegionLocation
       * info that contains the table and row we're seeking.
       */
-    private RegionLocations locateRegionInMeta(TableName tableName, byte[] row,
-                   boolean useCache, boolean retry, int replicaId) throws IOException {
-
+    private RegionLocations locateRegionInMeta(
+            TableName tableName, byte[] row,
+            boolean useCache, boolean retry, int replicaId) throws IOException {
       // If we are supposed to be using the cache, look in the cache to see if
       // we already have the region.
       if (useCache) {
@@ -1246,6 +1310,11 @@ class ConnectionManager {
         if (locations != null && locations.getRegionLocation(replicaId) != null) {
           return locations;
         }
+      }
+
+      TableName parentTable = TableName.META_TABLE_NAME;
+      if (TableName.META_TABLE_NAME.equals(tableName)) {
+        parentTable = TableName.ROOT_TABLE_NAME;
       }
 
       // build the key of the meta region we should be looking for.
@@ -1293,21 +1362,35 @@ class ConnectionManager {
           Result regionInfoRow = null;
           ReversedClientScanner rcs = null;
           try {
-            rcs = new ClientSmallReversedScanner(conf, s, TableName.META_TABLE_NAME, this,
-              rpcCallerFactory, rpcControllerFactory, getMetaLookupPool(), 0);
-            regionInfoRow = rcs.next();
+            ExecutorService pool = TableName.ROOT_TABLE_NAME.equals(parentTable) ?
+                getRootLookupPool() : getMetaLookupPool();
+            rcs = new ClientSmallReversedScanner(conf, s, parentTable, this,
+              rpcCallerFactory, rpcControllerFactory, pool, 0);
+            HRegionInfo regionInfo = null;
+            do {
+              regionInfo = null;
+              regionInfoRow = rcs.next();
+              RegionLocations locations = CatalogAccessor.getRegionLocations(regionInfoRow);
+              if (locations != null) {
+                regionInfo = locations.getRegionLocation(replicaId).getRegionInfo();
+              }
+            } while (regionInfo != null && regionInfo.isSplit());
           } finally {
             if (rcs != null) {
               rcs.close();
             }
           }
 
+
+          if (regionInfoRow == null && tableName.equals(TableName.META_TABLE_NAME)) {
+            throw new IOException("Meta table not ready yet");
+          }
           if (regionInfoRow == null) {
             throw new TableNotFoundException(tableName);
           }
 
           // convert the row result into the HRegionLocation we need!
-          RegionLocations locations = MetaTableAccessor.getRegionLocations(regionInfoRow);
+          RegionLocations locations = CatalogAccessor.getRegionLocations(regionInfoRow);
           if (locations == null || locations.getRegionLocation(replicaId) == null) {
             throw new IOException("HRegionInfo was null in " +
               tableName + ", row=" + regionInfoRow);
@@ -1315,7 +1398,7 @@ class ConnectionManager {
           HRegionInfo regionInfo = locations.getRegionLocation(replicaId).getRegionInfo();
           if (regionInfo == null) {
             throw new IOException("HRegionInfo was null or empty in " +
-              TableName.META_TABLE_NAME + ", row=" + regionInfoRow);
+              parentTable + ", row=" + regionInfoRow);
           }
 
           // possible we got a region of a different table...
@@ -1336,13 +1419,14 @@ class ConnectionManager {
 
           ServerName serverName = locations.getRegionLocation(replicaId).getServerName();
           if (serverName == null) {
-            throw new NoServerForRegionException("No server address listed in " +
-              TableName.META_TABLE_NAME + " for region " + regionInfo.getRegionNameAsString() +
-              " containing row " + Bytes.toStringBinary(row));
+            throw new NoServerForRegionException("No server address listed " +
+              "in " + parentTable + " for region " +
+              regionInfo.getRegionNameAsString() + " replicaId " + replicaId + " containing row " +
+              Bytes.toStringBinary(row));
           }
 
           if (isDeadServer(serverName)){
-            throw new RegionServerStoppedException("hbase:meta says the region "+
+            throw new RegionServerStoppedException(parentTable+" says the region "+
                 regionInfo.getRegionNameAsString()+" is managed by the server " + serverName +
                 ", but it is dead.");
           }
@@ -1357,15 +1441,22 @@ class ConnectionManager {
         } catch (IOException e) {
           ExceptionUtil.rethrowIfInterrupt(e);
 
+          //If we run into these exceptions just exit quickly
+          if (e instanceof FoundMetaOnRootLookupException ||
+              e instanceof FoundRootOnMetaLookupException) {
+            throw e;
+          }
+
           if (e instanceof RemoteException) {
             e = ((RemoteException)e).unwrapRemoteException();
           }
           if (tries < localNumRetries - 1) {
             if (LOG.isDebugEnabled()) {
-              LOG.debug("locateRegionInMeta parentTable=" + TableName.META_TABLE_NAME +
-                  ", metaLocation=" + ", attempt=" + tries + " of " + localNumRetries +
-                  " failed; retrying after sleep of " +
-                  ConnectionUtils.getPauseTime(pauseBase, tries) + " because: " + e.getMessage());
+              LOG.debug("locateRegionInMeta parentTable=" +
+                  parentTable + ", metaLocation=" +
+                ", attempt=" + tries + " of " +
+                localNumRetries + " failed; retrying after sleep of " +
+                ConnectionUtils.getPauseTime(pauseBase, tries) + " because: " + e.getMessage(), e);
             }
           } else {
             throw e;
@@ -1373,7 +1464,7 @@ class ConnectionManager {
           // Only relocate the parent region if necessary
           if(!(e instanceof RegionOfflineException ||
               e instanceof NoServerForRegionException)) {
-            relocateRegion(TableName.META_TABLE_NAME, metaKey, replicaId);
+            relocateRegion(parentTable, metaKey, replicaId);
           }
         } finally {
           userRegionLock.unlock();
@@ -2754,6 +2845,18 @@ class ConnectionManager {
       public void addError() {
         retries.incrementAndGet();
       }
+    }
+  }
+
+  public static class FoundMetaOnRootLookupException extends DoNotRetryIOException {
+    public FoundMetaOnRootLookupException(String msg) {
+      super(msg);
+    }
+  }
+
+  public static class FoundRootOnMetaLookupException extends DoNotRetryIOException {
+    public FoundRootOnMetaLookupException(String msg) {
+      super(msg);
     }
   }
 }

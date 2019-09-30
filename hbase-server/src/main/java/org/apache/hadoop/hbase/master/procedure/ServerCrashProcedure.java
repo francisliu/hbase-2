@@ -23,6 +23,7 @@ import java.io.InterruptedIOException;
 import java.io.OutputStream;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -30,17 +31,24 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.locks.Lock;
 
+import com.google.common.base.Objects;
+import com.google.common.collect.Sets;
+
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.hbase.HConstants;
 import org.apache.hadoop.hbase.HRegionInfo;
+import org.apache.hadoop.hbase.CatalogAccessor;
 import org.apache.hadoop.hbase.ServerName;
+import org.apache.hadoop.hbase.TableName;
 import org.apache.hadoop.hbase.client.ClusterConnection;
 import org.apache.hadoop.hbase.client.RegionReplicaUtil;
 import org.apache.hadoop.hbase.master.AssignmentManager;
+import org.apache.hadoop.hbase.master.HMaster;
 import org.apache.hadoop.hbase.master.MasterFileSystem;
 import org.apache.hadoop.hbase.master.MasterServices;
 import org.apache.hadoop.hbase.master.RegionState;
+import org.apache.hadoop.hbase.master.RegionState.State;
 import org.apache.hadoop.hbase.master.RegionStates;
 import org.apache.hadoop.hbase.procedure2.ProcedureYieldException;
 import org.apache.hadoop.hbase.procedure2.StateMachineProcedure;
@@ -50,7 +58,8 @@ import org.apache.hadoop.hbase.protobuf.generated.MasterProcedureProtos;
 import org.apache.hadoop.hbase.protobuf.generated.MasterProcedureProtos.ServerCrashState;
 import org.apache.hadoop.hbase.protobuf.generated.ZooKeeperProtos;
 import org.apache.hadoop.hbase.protobuf.generated.ZooKeeperProtos.SplitLogTask.RecoveryMode;
-import org.apache.hadoop.hbase.zookeeper.MetaTableLocator;
+import org.apache.hadoop.hbase.util.EnvironmentEdgeManager;
+import org.apache.hadoop.hbase.zookeeper.RootTableLocator;
 import org.apache.hadoop.hbase.zookeeper.ZKAssign;
 import org.apache.hadoop.hbase.zookeeper.ZooKeeperWatcher;
 import org.apache.hadoop.util.StringUtils;
@@ -102,9 +111,9 @@ implements ServerProcedureInterface {
 
   public static final int DEFAULT_WAIT_ON_RIT = 30000;
 
-  private static final Set<HRegionInfo> META_REGION_SET = new HashSet<HRegionInfo>();
+  private static final Set<HRegionInfo> ROOT_REGION_SET = new HashSet<HRegionInfo>();
   static {
-    META_REGION_SET.add(HRegionInfo.FIRST_META_REGIONINFO);
+    ROOT_REGION_SET.add(HRegionInfo.ROOT_REGIONINFO);
   }
 
   /**
@@ -127,7 +136,10 @@ implements ServerProcedureInterface {
    */
   private List<HRegionInfo> regionsAssigned;
 
+  private Set<HRegionInfo> metaRegionsCrashedOnServer;
+
   private boolean distributedLogReplay = false;
+  private boolean carryingRoot = false;
   private boolean carryingMeta = false;
   private boolean shouldSplitWal;
 
@@ -141,6 +153,11 @@ implements ServerProcedureInterface {
    * move this back up into StateMachineProcedure
    */
   private int previousState;
+  
+  /**
+   * True if this was the result of a deserialized proc
+   */
+  private boolean deserialized;
 
   /**
    * Call this constructor queuing up a Procedure.
@@ -152,9 +169,11 @@ implements ServerProcedureInterface {
       final MasterProcedureEnv env,
       final ServerName serverName,
       final boolean shouldSplitWal,
+      final boolean carryingRoot,
       final boolean carryingMeta) {
     this.serverName = serverName;
     this.shouldSplitWal = shouldSplitWal;
+    this.carryingRoot = carryingRoot;
     this.carryingMeta = carryingMeta;
     this.setOwner(env.getRequestUser().getShortName());
   }
@@ -204,10 +223,11 @@ implements ServerProcedureInterface {
     try {
       switch (state) {
       case SERVER_CRASH_START:
-        LOG.info("Start processing crashed " + this.serverName);
+        LOG.info("Start processing crashed " + this.serverName+ " - "+carryingRoot+"/"+carryingMeta);
         start(env);
         // If carrying meta, process it first. Else, get list of regions on crashed server.
-        if (this.carryingMeta) setNextState(ServerCrashState.SERVER_CRASH_PROCESS_META);
+        if (this.carryingRoot) setNextState(ServerCrashState.SERVER_CRASH_PROCESS_ROOT);
+        else if (this.carryingMeta) setNextState(ServerCrashState.SERVER_CRASH_PROCESS_META);
         else setNextState(ServerCrashState.SERVER_CRASH_GET_REGIONS);
         break;
 
@@ -236,7 +256,31 @@ implements ServerProcedureInterface {
         }
         break;
 
+      case SERVER_CRASH_PROCESS_ROOT:
+        // If we fail processing hbase:root, yield.
+        if (!processRoot(env)) {
+          throwProcedureYieldException("Waiting on regions-in-transition to clear");
+        }
+        if (this.carryingMeta) {
+          setNextState(ServerCrashState.SERVER_CRASH_PROCESS_META);
+        } else {
+          setNextState(ServerCrashState.SERVER_CRASH_GET_REGIONS);
+        }
+        break;
+
       case SERVER_CRASH_PROCESS_META:
+        // If hbase:root is not assigned, yield.
+        if (!isRootAssignedQuickTest(env)) {
+          // isRootAssignedQuickTest does not really wait. Let's delay a little before
+          // another round of execution.
+          long wait =
+              env.getMasterConfiguration().getLong(KEY_SHORT_WAIT_ON_META,
+                DEFAULT_SHORT_WAIT_ON_META);
+          wait = wait / 10;
+          Thread.sleep(wait);
+          throwProcedureYieldException("Waiting on hbase:root assignment");
+        }
+
         // If we fail processing hbase:meta, yield.
         if (!processMeta(env)) {
           throwProcedureYieldException("Waiting on regions-in-transition to clear");
@@ -257,7 +301,7 @@ implements ServerProcedureInterface {
         break;
 
       case SERVER_CRASH_ASSIGN:
-        List<HRegionInfo> regionsToAssign = calcRegionsToAssign(env);
+        List<HRegionInfo> regionsToAssign = calcRegionsToAssign(env, false);
 
         // Assign may not be idempotent. SSH used to requeue the SSH if we got an IOE assigning
         // which is what we are mimicing here but it looks prone to double assignment if assign
@@ -307,8 +351,7 @@ implements ServerProcedureInterface {
         throw new UnsupportedOperationException("unhandled state=" + state);
       }
     } catch (ProcedureYieldException e) {
-      LOG.warn("Failed serverName=" + this.serverName + ", state=" + state + "; retry "
-          + e.getMessage());
+      LOG.warn("Failed serverName=" + this.serverName + ", state=" + state + "; retry ", e);
       throw e;
     } catch (IOException e) {
       LOG.warn("Failed serverName=" + this.serverName + ", state=" + state + "; retry", e);
@@ -338,60 +381,118 @@ implements ServerProcedureInterface {
    * @throws IOException
    * @throws InterruptedException
    */
-  private boolean processMeta(final MasterProcedureEnv env)
+  private boolean processRoot(final MasterProcedureEnv env)
   throws IOException {
-    if (LOG.isDebugEnabled()) LOG.debug("Processing hbase:meta that was on " + this.serverName);
+    if (LOG.isDebugEnabled()) LOG.debug("Processing hbase:root that was on " + this.serverName);
     MasterServices services = env.getMasterServices();
     MasterFileSystem mfs = services.getMasterFileSystem();
     AssignmentManager am = services.getAssignmentManager();
-    HRegionInfo metaHRI = HRegionInfo.FIRST_META_REGIONINFO;
+    HRegionInfo rootHRI = HRegionInfo.ROOT_REGIONINFO;
     if (this.shouldSplitWal) {
       if (this.distributedLogReplay) {
-        prepareLogReplay(env, META_REGION_SET);
+        prepareLogReplay(env, ROOT_REGION_SET);
       } else {
         // TODO: Matteo. We BLOCK here but most important thing to be doing at this moment.
-        mfs.splitMetaLog(serverName);
-        am.getRegionStates().logSplit(metaHRI);
+        mfs.splitRootLog(serverName);
+        am.getRegionStates().logSplit(rootHRI);
       }
     }
 
     // Assign meta if still carrying it. Check again: region may be assigned because of RIT timeout
     boolean processed = true;
-    boolean shouldAssignMeta = false;
-    AssignmentManager.ServerHostRegion rsCarryingMetaRegion = am.isCarryingMeta(serverName);
-      switch (rsCarryingMetaRegion) {
-        case HOSTING_REGION:
-          LOG.info("Server " + serverName + " was carrying META. Trying to assign.");
-          am.regionOffline(HRegionInfo.FIRST_META_REGIONINFO);
-          shouldAssignMeta = true;
+    boolean shouldAssignRoot = false;
+    AssignmentManager.ServerHostRegion rsCarryingRootRegion = am.isCarryingRoot(serverName);
+    switch (rsCarryingRootRegion) {
+      case TRANSITION_HOSTING_REGION:
+      case HOSTING_REGION:
+        LOG.info("Server " + serverName + " was carrying ROOT. Trying to assign.");
+        am.regionOffline(HRegionInfo.ROOT_REGIONINFO);
+        shouldAssignRoot = true;
+        break;
+      case UNKNOWN:
+        if (!services.getRootTableLocator().isLocationAvailable(services.getZooKeeper())) {
+          // the ROOT location as per master is null. This could happen in case when meta
+          // assignment in previous run failed, while meta znode has been updated to null.
+          // We should try to assign the meta again.
+          shouldAssignRoot = true;
           break;
-        case UNKNOWN:
-          if (!services.getMetaTableLocator().isLocationAvailable(services.getZooKeeper())) {
-            // the meta location as per master is null. This could happen in case when meta
-            // assignment in previous run failed, while meta znode has been updated to null.
-            // We should try to assign the meta again.
-            shouldAssignMeta = true;
-            break;
-          }
-          // fall through
-        case NOT_HOSTING_REGION:
-          LOG.info("META has been assigned to otherwhere, skip assigning.");
-          break;
-        default:
-          throw new IOException("Unsupported action in MetaServerShutdownHandler");
+        }
+        // fall through
+      case NOT_HOSTING_REGION:
+        LOG.info("ROOT has been assigned elsewhere, skip assigning.");
+        break;
+      default:
+        throw new IOException("Unsupported action in RootServerShutdownHandler: " + rsCarryingRootRegion);
     }
-    if (shouldAssignMeta) {
+    if (shouldAssignRoot) {
       // TODO: May block here if hard time figuring state of meta.
-      verifyAndAssignMetaWithRetries(env);
+      verifyAndAssignRootWithRetries(env);
       if (this.shouldSplitWal && distributedLogReplay) {
         int timeout = env.getMasterConfiguration().getInt(KEY_WAIT_ON_RIT, DEFAULT_WAIT_ON_RIT);
-        if (!waitOnRegionToClearRegionsInTransition(am, metaHRI, timeout)) {
+        if (!waitOnRegionToClearRegionsInTransition(am, rootHRI, timeout)) {
           processed = false;
         } else {
           // TODO: Matteo. We BLOCK here but most important thing to be doing at this moment.
-          mfs.splitMetaLog(serverName);
+          mfs.splitRootLog(serverName);
         }
       }
+    }
+    return processed;
+  }
+
+  /**
+   * @param env
+   * @return False if we fail to assign and split logs on meta ('process').
+   * @throws IOException
+   * @throws InterruptedException
+   */
+  private boolean processMeta(final MasterProcedureEnv env) throws IOException {
+    if (LOG.isDebugEnabled()) LOG.debug("Processing hbase:meta that was on " + this.serverName);
+
+    MasterServices services = env.getMasterServices();
+    MasterFileSystem mfs = services.getMasterFileSystem();
+    AssignmentManager am = services.getAssignmentManager();
+    
+    RegionStates regionStates = am.getRegionStates();
+    Set<HRegionInfo> regionsFromServer = regionStates.getServerRegions(serverName);
+    if (regionsFromServer == null) {
+      regionsFromServer = Collections.emptySet();
+    }
+    metaRegionsCrashedOnServer = Sets.newHashSet();
+    for (HRegionInfo regionInfo : regionsFromServer) {
+      if (regionInfo.isMetaRegion()) {
+        metaRegionsCrashedOnServer.add(regionInfo);
+      }
+    }
+
+    if (this.shouldSplitWal) {
+      if (this.distributedLogReplay) {
+        prepareLogReplay(env, metaRegionsCrashedOnServer);
+      } else {
+        // TODO: Matteo. We BLOCK here but most important thing to be doing at this moment.
+        mfs.splitMetaLog(serverName);
+        for (HRegionInfo regionInfo : metaRegionsCrashedOnServer) {
+          am.getRegionStates().logSplit(regionInfo);
+        }
+      }
+    }    
+    
+    List<HRegionInfo> regionsToAssign = calcRegionsToAssign(env, true);
+    
+    boolean processed = true;
+    for (HRegionInfo regionInfo : regionsToAssign) {
+      // TODO: May block here if hard time figuring state of meta.
+      verifyAndAssignMetaWithRetries(env, regionInfo);
+      if (this.shouldSplitWal && distributedLogReplay) {
+        int timeout = env.getMasterConfiguration().getInt(KEY_WAIT_ON_RIT, DEFAULT_WAIT_ON_RIT);
+        if (!waitOnRegionToClearRegionsInTransition(am, regionInfo, timeout)) {
+          processed = false;
+        }
+      }
+    }
+    if (!processed) {
+      // TODO: Matteo. We BLOCK here but most important thing to be doing at this moment.
+      mfs.splitMetaLog(serverName);
     }
     return processed;
   }
@@ -451,40 +552,56 @@ implements ServerProcedureInterface {
   /**
    * Figure out what we need to assign. Should be idempotent.
    * @param env
+   * @param metaOnly process only meta regions only
    * @return List of calculated regions to assign; may be empty or null.
    * @throws IOException
    */
-  private List<HRegionInfo> calcRegionsToAssign(final MasterProcedureEnv env)
+  private List<HRegionInfo> calcRegionsToAssign(final MasterProcedureEnv env, boolean metaOnly)
   throws IOException {
     AssignmentManager am = env.getMasterServices().getAssignmentManager();
     List<HRegionInfo> regionsToAssignAggregator = new ArrayList<HRegionInfo>();
-    int replicaCount = env.getMasterConfiguration().getInt(HConstants.META_REPLICAS_NUM,
-      HConstants.DEFAULT_META_REPLICA_NUM);
-    for (int i = 1; i < replicaCount; i++) {
-      HRegionInfo metaHri =
-          RegionReplicaUtil.getRegionInfoForReplica(HRegionInfo.FIRST_META_REGIONINFO, i);
-      if (am.isCarryingMetaReplica(this.serverName, metaHri) ==
-          AssignmentManager.ServerHostRegion.HOSTING_REGION) {
-        if (LOG.isDebugEnabled()) {
-          LOG.debug("Reassigning meta replica" + metaHri + " that was on " + this.serverName);
+    
+    if (!metaOnly) {
+      int replicaCount = env.getMasterConfiguration().getInt(HConstants.META_REPLICAS_NUM,
+        HConstants.DEFAULT_META_REPLICA_NUM);
+      for (int i = 1; i < replicaCount; i++) {
+        HRegionInfo rootHri =
+            RegionReplicaUtil.getRegionInfoForReplica(HRegionInfo.ROOT_REGIONINFO, i);
+        if (am.isCarryingRootReplica(this.serverName, rootHri).isHostingOrTransitionHosting()) {
+          if (LOG.isDebugEnabled()) {
+            LOG.debug("Reassigning root replica" + rootHri + " that was on " + this.serverName);
+          }
+          regionsToAssignAggregator.add(rootHri);
         }
-        regionsToAssignAggregator.add(metaHri);
       }
     }
+
     // Clean out anything in regions in transition.
-    List<HRegionInfo> regionsInTransition = am.cleanOutCrashedServerReferences(serverName);
+    List<HRegionInfo> regionsInTransition = am.cleanOutCrashedServerReferences(serverName, metaOnly);
+    Set<HRegionInfo> filteredRegionsOnCrashedServer = metaOnly ? 
+        Objects.firstNonNull(metaRegionsCrashedOnServer, Collections.<HRegionInfo>emptySet()) : 
+          filterNonMeta(regionsOnCrashedServer);
+
     if (LOG.isDebugEnabled()) {
-      LOG.debug("Reassigning " + size(this.regionsOnCrashedServer) +
+      LOG.debug("Reassigning " + filteredRegionsOnCrashedServer +
         " region(s) that " + (serverName == null? "null": serverName)  +
         " was carrying (and " + regionsInTransition.size() +
         " regions(s) that were opening on this server)");
     }
     regionsToAssignAggregator.addAll(regionsInTransition);
 
+    if (metaOnly && regionsInTransition.isEmpty() && filteredRegionsOnCrashedServer.isEmpty()) {
+      if (!deserialized) {
+        LOG.warn("Was expecting to see meta regions, but didn't find any."); 
+      } else {
+        LOG.debug("Was expecting to see meta regions, but didn't find any.  Maybe master startup recovered meta already?"); 
+      }
+    }
+
     // Iterate regions that were on this server and figure which of these we need to reassign
-    if (this.regionsOnCrashedServer != null && !this.regionsOnCrashedServer.isEmpty()) {
+    if (!filteredRegionsOnCrashedServer.isEmpty()) {
       RegionStates regionStates = am.getRegionStates();
-      for (HRegionInfo hri: this.regionsOnCrashedServer) {
+      for (HRegionInfo hri: filteredRegionsOnCrashedServer) {
         if (regionsInTransition.contains(hri)) continue;
         String encodedName = hri.getEncodedName();
         Lock lock = am.acquireRegionLock(encodedName);
@@ -519,10 +636,13 @@ implements ServerProcedureInterface {
               regionStates.updateRegionState(hri, RegionState.State.OFFLINE);
             } else if (regionStates.isRegionInState(
                 hri, RegionState.State.SPLITTING_NEW, RegionState.State.MERGING_NEW)) {
+              // RIT != null branch should always be taken if it were SPLITTING/MERGING NEW
+              LOG.warn("This is presumed dead code, bug if it happens!");
               regionStates.updateRegionState(hri, RegionState.State.OFFLINE);
             }
             regionsToAssignAggregator.add(hri);
           // TODO: The below else if is different in branch-1 from master branch.
+          // TODO: Note that the below else was not present in y0.98
           } else if (rit != null) {
             if ((rit.isPendingCloseOrClosing() || rit.isOffline())
                 && am.getTableStateManager().isTableState(hri.getTable(),
@@ -547,6 +667,19 @@ implements ServerProcedureInterface {
       }
     }
     return regionsToAssignAggregator;
+  }
+
+  private Set<HRegionInfo> filterNonMeta(Set<HRegionInfo> regions) {
+    if (regions == null) {
+      return Collections.emptySet();
+    }
+    Set<HRegionInfo> nonMetaRegions = Sets.newHashSet();
+    for (HRegionInfo region : regions) {
+      if (!region.isMetaTable()) {
+        nonMetaRegions.add(region);
+      }
+    }
+    return nonMetaRegions;
   }
 
   private boolean assign(final MasterProcedureEnv env, final List<HRegionInfo> hris)
@@ -643,6 +776,8 @@ implements ServerProcedureInterface {
     sb.append(this.serverName);
     sb.append(", shouldSplitWal=");
     sb.append(shouldSplitWal);
+    sb.append(", carryingRoot=");
+    sb.append(carryingRoot);
     sb.append(", carryingMeta=");
     sb.append(carryingMeta);
   }
@@ -655,6 +790,7 @@ implements ServerProcedureInterface {
       MasterProcedureProtos.ServerCrashStateData.newBuilder().
       setServerName(ProtobufUtil.toServerName(this.serverName)).
       setDistributedLogReplay(this.distributedLogReplay).
+      setCarryingRoot(this.carryingRoot).
       setCarryingMeta(this.carryingMeta).
       setShouldSplitWal(this.shouldSplitWal);
     if (this.regionsOnCrashedServer != null && !this.regionsOnCrashedServer.isEmpty()) {
@@ -676,9 +812,11 @@ implements ServerProcedureInterface {
 
     MasterProcedureProtos.ServerCrashStateData state =
       MasterProcedureProtos.ServerCrashStateData.parseDelimitedFrom(stream);
+    this.deserialized = true;
     this.serverName = ProtobufUtil.toServerName(state.getServerName());
     this.distributedLogReplay = state.hasDistributedLogReplay()?
       state.getDistributedLogReplay(): false;
+    this.carryingRoot = state.hasCarryingRoot()? state.getCarryingRoot(): false;
     this.carryingMeta = state.hasCarryingMeta()? state.getCarryingMeta(): false;
     // shouldSplitWAL has a default over in pb so this invocation will always work.
     this.shouldSplitWal = state.getShouldSplitWal();
@@ -740,7 +878,7 @@ implements ServerProcedureInterface {
    * If hbase:meta is not assigned already, assign.
    * @throws IOException
    */
-  private void verifyAndAssignMetaWithRetries(final MasterProcedureEnv env) throws IOException {
+  private void verifyAndAssignRootWithRetries(final MasterProcedureEnv env) throws IOException {
     MasterServices services = env.getMasterServices();
     int iTimes = services.getConfiguration().getInt(KEY_RETRIES_ON_META, DEFAULT_RETRIES_ON_META);
     // Just reuse same time as we have for short wait on meta. Adding another config is overkill.
@@ -749,7 +887,7 @@ implements ServerProcedureInterface {
     int iFlag = 0;
     while (true) {
       try {
-        verifyAndAssignMeta(env);
+        verifyAndAssignRoot(env);
         break;
       } catch (KeeperException e) {
         services.abort("In server shutdown processing, assigning meta", e);
@@ -773,23 +911,56 @@ implements ServerProcedureInterface {
 
   /**
    * If hbase:meta is not assigned already, assign.
+   * @throws IOException
+   */
+  private void verifyAndAssignMetaWithRetries(
+      final MasterProcedureEnv env, HRegionInfo regionInfo) throws IOException {
+    MasterServices services = env.getMasterServices();
+    int iTimes = services.getConfiguration().getInt(KEY_RETRIES_ON_META, DEFAULT_RETRIES_ON_META);
+    // Just reuse same time as we have for short wait on meta. Adding another config is overkill.
+    long waitTime =
+      services.getConfiguration().getLong(KEY_SHORT_WAIT_ON_META, DEFAULT_SHORT_WAIT_ON_META);
+    int iFlag = 0;
+    while (true) {
+      try {
+        verifyAndAssignMeta(env, regionInfo);
+        break;
+      } catch (Exception e) {
+        if (iFlag >= iTimes) {
+          services.abort("verifyAndAssignMeta failed after" + iTimes + " retries, aborting", e);
+          throw new IOException("Aborting", e);
+        }
+        try {
+          Thread.sleep(waitTime);
+        } catch (InterruptedException e1) {
+          LOG.warn("Interrupted when is the thread sleep", e1);
+          Thread.currentThread().interrupt();
+          throw (InterruptedIOException)new InterruptedIOException().initCause(e1);
+        }
+        iFlag++;
+      }
+    }
+  }
+
+  /**
+   * If hbase:meta is not assigned already, assign.
    * @throws InterruptedException
    * @throws IOException
    * @throws KeeperException
    */
-  private void verifyAndAssignMeta(final MasterProcedureEnv env)
+  private void verifyAndAssignRoot(final MasterProcedureEnv env)
       throws InterruptedException, IOException, KeeperException {
     MasterServices services = env.getMasterServices();
-    if (!isMetaAssignedQuickTest(env)) {
-      services.getAssignmentManager().assignMeta(HRegionInfo.FIRST_META_REGIONINFO);
-    } else if (serverName.equals(services.getMetaTableLocator().
-        getMetaRegionLocation(services.getZooKeeper()))) {
+    if (!isRootAssignedQuickTest(env)) {
+      services.getAssignmentManager().assignRoot(HRegionInfo.ROOT_REGIONINFO);
+    } else if (serverName.equals(services.getRootTableLocator().
+        getRootRegionLocation(services.getZooKeeper()))) {
       // hbase:meta seems to be still alive on the server whom master is expiring
       // and thinks is dying. Let's re-assign the hbase:meta anyway.
-      services.getAssignmentManager().assignMeta(HRegionInfo.FIRST_META_REGIONINFO);
+      services.getAssignmentManager().assignRoot(HRegionInfo.ROOT_REGIONINFO);
     } else {
-      LOG.info("Skip assigning hbase:meta because it is online at "
-          + services.getMetaTableLocator().getMetaRegionLocation(services.getZooKeeper()));
+      LOG.info("Skip assigning hbase:root because it is online at "
+          + services.getRootTableLocator().getRootRegionLocation(services.getZooKeeper()));
     }
   }
 
@@ -799,22 +970,74 @@ implements ServerProcedureInterface {
    * @throws InterruptedException
    * @throws IOException
    */
-  private boolean isMetaAssignedQuickTest(final MasterProcedureEnv env)
-  throws InterruptedException, IOException {
+  private boolean isRootAssignedQuickTest(final MasterProcedureEnv env)
+      throws InterruptedException, IOException {
     ZooKeeperWatcher zkw = env.getMasterServices().getZooKeeper();
-    MetaTableLocator mtl = env.getMasterServices().getMetaTableLocator();
-    boolean metaAssigned = false;
-    // Is hbase:meta location available yet?
-    if (mtl.isLocationAvailable(zkw)) {
+    RootTableLocator rtl = env.getMasterServices().getRootTableLocator();
+    boolean assigned = false;
+    // Is hbase:root location available yet?
+    if (rtl.isLocationAvailable(zkw)) {
       ClusterConnection connection = env.getMasterServices().getConnection();
-      // Is hbase:meta location good yet?
+      // Is hbase:root location good yet?
       long timeout =
         env.getMasterConfiguration().getLong(KEY_SHORT_WAIT_ON_META, DEFAULT_SHORT_WAIT_ON_META);
-      if (mtl.verifyMetaRegionLocation(connection, zkw, timeout)) {
-        metaAssigned = true;
+      if (rtl.verifyRootRegionLocation(connection, zkw, timeout)) {
+        assigned = true;
       }
     }
-    return metaAssigned;
+    return assigned;
+  }
+
+  private void verifyAndAssignMeta(final MasterProcedureEnv env, HRegionInfo regionInfo)
+      throws InterruptedException, IOException {
+    MasterServices services = env.getMasterServices();
+    ServerName currServerName =
+        isAssignedQuickTest(env, regionInfo, HRegionInfo.DEFAULT_REPLICA_ID);
+    if (currServerName == null || serverName.equals(currServerName)) {
+      services.getAssignmentManager().assign(regionInfo, true);
+    } else {
+      LOG.info("Skip assigning " + regionInfo.getRegionNameAsString() + " because it is online at "
+          + currServerName);
+    }
+  }
+
+  private boolean isMetaAssignedQuickTest(MasterProcedureEnv env)
+      throws IOException, InterruptedException {
+    RegionStates regionStates = env.getMasterServices().getAssignmentManager().getRegionStates();
+    for (Map.Entry<State, List<HRegionInfo>>  entry :
+        regionStates.getRegionByStateOfTable(TableName.META_TABLE_NAME).entrySet()) {
+      for (HRegionInfo regionInfo : entry.getValue()) {
+        if (entry.getKey() != State.OPEN &&
+            //TODO this should be handled in regionstates....ideally it should not contain
+            //split or merged regions as those region are no longer part of the table
+            entry.getKey() != State.SPLIT &&
+            entry.getKey() != State.MERGED &&
+            regionInfo.getRegionId() == 0) {
+          LOG.info("Waiting on meta regions to be OPEN: " + entry.getKey() + " : " + entry.getValue());
+          return false;
+        }
+      }
+    }
+    for (HRegionInfo regionInfo :
+        regionStates.getRegionByStateOfTable(TableName.META_TABLE_NAME).get(State.OPEN)) {
+      if (isAssignedQuickTest(env, regionInfo, HRegionInfo.DEFAULT_REPLICA_ID) == null) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  private ServerName isAssignedQuickTest(
+      final MasterProcedureEnv env, HRegionInfo regionInfo, int replicaId)
+          throws InterruptedException, IOException {
+    ClusterConnection connection = env.getMasterServices().getConnection();
+    RegionStates regionStates = env.getMasterServices().getAssignmentManager().getRegionStates();
+    ServerName currServerName = regionStates.getRegionServerOfRegion(regionInfo);
+    if (currServerName != null &&
+        CatalogAccessor.verifyRegionLocation(connection, regionInfo, currServerName, replicaId)) {
+      return currServerName;
+    }
+    return null;
   }
 
   @Override

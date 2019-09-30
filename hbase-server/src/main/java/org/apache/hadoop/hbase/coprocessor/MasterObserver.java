@@ -39,6 +39,8 @@ import org.apache.hadoop.hbase.master.procedure.MasterProcedureEnv;
 import org.apache.hadoop.hbase.procedure2.ProcedureExecutor;
 import org.apache.hadoop.hbase.protobuf.generated.HBaseProtos.SnapshotDescription;
 import org.apache.hadoop.hbase.protobuf.generated.QuotaProtos.Quotas;
+import org.apache.hadoop.hbase.protobuf.generated.RegionServerStatusProtos.RegionStateTransition
+    .TransitionCode;
 
 /**
  * Defines coprocessor hooks for interacting with operations on the
@@ -1044,4 +1046,14 @@ public interface MasterObserver extends Coprocessor {
    */
   void postDispatchMerge(final ObserverContext<MasterCoprocessorEnvironment> c,
       final HRegionInfo regionA, final HRegionInfo regionB) throws IOException;
+
+  /**
+   * Called before the onRegionTransition request from region server is processed by the master.
+   * @param ctx The environment to interact with the framework and master
+   * @param hri An instance of HRegionInfo
+   * @param code TransitionCode
+   * @throws IOException Signals that an I/O exception has occurred.
+   */
+  void preOnRegionTransition(final ObserverContext<MasterCoprocessorEnvironment> ctx,
+      HRegionInfo hri, TransitionCode code) throws IOException;
 }

@@ -42,8 +42,8 @@ import org.apache.hadoop.hbase.testclassification.MediumTests;
 import org.apache.hadoop.hbase.RegionLocations;
 import org.apache.hadoop.hbase.ServerName;
 import org.apache.hadoop.hbase.TableName;
-import org.apache.hadoop.hbase.MetaTableAccessor;
-import org.apache.hadoop.hbase.MetaTableAccessor.Visitor;
+import org.apache.hadoop.hbase.CatalogAccessor;
+import org.apache.hadoop.hbase.CatalogAccessor.Visitor;
 import org.apache.hadoop.hbase.client.Admin;
 import org.apache.hadoop.hbase.client.Connection;
 import org.apache.hadoop.hbase.client.ConnectionFactory;
@@ -98,7 +98,7 @@ public class TestMasterOperationsForRegionReplicas {
       ADMIN.createTable(desc, Bytes.toBytes("A"), Bytes.toBytes("Z"), numRegions);
 
       validateNumberOfRowsInMeta(table, numRegions, ADMIN.getConnection());
-      List<HRegionInfo> hris = MetaTableAccessor.getTableRegions(TEST_UTIL.getZooKeeperWatcher(),
+      List<HRegionInfo> hris = CatalogAccessor.getTableRegions(TEST_UTIL.getZooKeeperWatcher(),
         ADMIN.getConnection(), table);
       assert(hris.size() == numRegions * numReplica);
     } finally {
@@ -120,7 +120,7 @@ public class TestMasterOperationsForRegionReplicas {
       TEST_UTIL.waitTableEnabled(table);
       validateNumberOfRowsInMeta(table, numRegions, ADMIN.getConnection());
 
-      List<HRegionInfo> hris = MetaTableAccessor.getTableRegions(
+      List<HRegionInfo> hris = CatalogAccessor.getTableRegions(
         TEST_UTIL.getZooKeeperWatcher(), ADMIN.getConnection(), table);
       assert(hris.size() == numRegions * numReplica);
       // check that the master created expected number of RegionState objects
@@ -133,10 +133,10 @@ public class TestMasterOperationsForRegionReplicas {
         }
       }
 
-      List<Result> metaRows = MetaTableAccessor.fullScanOfMeta(ADMIN.getConnection());
+      List<Result> metaRows = CatalogAccessor.fullScanOfMeta(ADMIN.getConnection());
       int numRows = 0;
       for (Result result : metaRows) {
-        RegionLocations locations = MetaTableAccessor.getRegionLocations(result);
+        RegionLocations locations = CatalogAccessor.getRegionLocations(result);
         HRegionInfo hri = locations.getRegionLocation().getRegionInfo();
         if (!hri.getTable().equals(table)) continue;
         numRows += 1;
@@ -210,7 +210,7 @@ public class TestMasterOperationsForRegionReplicas {
           .getAssignmentManager().getRegionStates().getRegionsOfTable(table);
       assert(regions.size() == numRegions * numReplica);
       //also make sure the meta table has the replica locations removed
-      hris = MetaTableAccessor.getTableRegions(TEST_UTIL.getZooKeeperWatcher(),
+      hris = CatalogAccessor.getTableRegions(TEST_UTIL.getZooKeeperWatcher(),
         ADMIN.getConnection(), table);
       assert(hris.size() == numRegions * numReplica);
       //just check that the number of default replica regions in the meta table are the same
@@ -246,7 +246,7 @@ public class TestMasterOperationsForRegionReplicas {
       ADMIN.createTable(desc, Bytes.toBytes("A"), Bytes.toBytes("Z"), numRegions);
       TEST_UTIL.waitTableEnabled(table);
       Set<byte[]> tableRows = new HashSet<byte[]>();
-      List<HRegionInfo> hris = MetaTableAccessor.getTableRegions(TEST_UTIL.getZooKeeperWatcher(),
+      List<HRegionInfo> hris = CatalogAccessor.getTableRegions(TEST_UTIL.getZooKeeperWatcher(),
         ADMIN.getConnection(), table);
       for (HRegionInfo hri : hris) {
         tableRows.add(hri.getRegionName());
@@ -258,11 +258,11 @@ public class TestMasterOperationsForRegionReplicas {
       for (byte[] row : tableRows) {
         Delete deleteOneReplicaLocation = new Delete(row);
         deleteOneReplicaLocation.deleteColumns(HConstants.CATALOG_FAMILY,
-          MetaTableAccessor.getServerColumn(1));
+          CatalogAccessor.getServerColumn(1));
         deleteOneReplicaLocation.deleteColumns(HConstants.CATALOG_FAMILY,
-          MetaTableAccessor.getSeqNumColumn(1));
+          CatalogAccessor.getSeqNumColumn(1));
         deleteOneReplicaLocation.deleteColumns(HConstants.CATALOG_FAMILY,
-          MetaTableAccessor.getStartCodeColumn(1));
+          CatalogAccessor.getStartCodeColumn(1));
         metaTable.delete(deleteOneReplicaLocation);
       }
       metaTable.close();
@@ -298,7 +298,7 @@ public class TestMasterOperationsForRegionReplicas {
         return true;
       }
     };
-    MetaTableAccessor.fullScan(connection, visitor);
+    CatalogAccessor.fullScan(connection, visitor);
     assert(count.get() == numRegions);
   }
 

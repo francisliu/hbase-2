@@ -27,7 +27,7 @@ import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hbase.HBaseTestingUtility;
 import org.apache.hadoop.hbase.HConstants;
 import org.apache.hadoop.hbase.testclassification.LargeTests;
-import org.apache.hadoop.hbase.MetaTableAccessor;
+import org.apache.hadoop.hbase.CatalogAccessor;
 import org.apache.hadoop.hbase.TableName;
 import org.apache.hadoop.hbase.regionserver.HRegionServer;
 import org.apache.hadoop.hbase.util.Bytes;
@@ -135,7 +135,7 @@ public class TestScannerTimeout {
     Scan scan = new Scan();
     scan.setCaching(SCANNER_CACHING);
     LOG.info("************ TEST3686A");
-    MetaTableAccessor.fullScanMetaAndPrint(TEST_UTIL.getHBaseAdmin().getConnection());
+    CatalogAccessor.fullScanMetaAndPrint(TEST_UTIL.getHBaseAdmin().getConnection());
     // Set a very high timeout, we want to test what happens when a RS
     // fails but the region is recovered before the lease times out.
     // Since the RS is already created, this conf is client-side only for

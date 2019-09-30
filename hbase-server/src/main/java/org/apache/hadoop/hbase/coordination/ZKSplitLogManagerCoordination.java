@@ -289,14 +289,16 @@ public class ZKSplitLogManagerCoordination extends ZooKeeperListener implements
    * It removes recovering regions under /hbase/recovering-regions/[encoded region name] so that the
    * region server hosting the region can allow reads to the recovered region
    * @param recoveredServerNameSet servers which are just recovered
-   * @param isMetaRecovery whether current recovery is for the meta region on
+   * @param isRootRecovery whether current recovery is for the meta region on
    *          <code>serverNames</code>
    */
+  //TODO this is broken we need to support meta and root recovery
+  //but doesn't really matter since distributed log replay is dead
   @Override
   public void removeRecoveringRegions(final Set<String> recoveredServerNameSet,
-      Boolean isMetaRecovery)
+      Boolean isRootRecovery)
   throws IOException {
-    final String metaEncodeRegionName = HRegionInfo.FIRST_META_REGIONINFO.getEncodedName();
+    final String rootEncodeRegionName = HRegionInfo.ROOT_REGIONINFO.getEncodedName();
     int count = 0;
     try {
       List<String> tasks = ZKUtil.listChildrenNoWatch(watcher, watcher.splitLogZNode);
@@ -322,13 +324,13 @@ public class ZKSplitLogManagerCoordination extends ZooKeeperListener implements
           int listSize = regions.size();
           if (LOG.isDebugEnabled()) {
             LOG.debug("Processing recovering " + regions + " and servers "  +
-                recoveredServerNameSet + ", isMetaRecovery=" + isMetaRecovery);
+                recoveredServerNameSet + ", isRootRecovery=" + isRootRecovery);
           }
           for (int i = 0; i < listSize; i++) {
             String region = regions.get(i);
-            if (isMetaRecovery != null) {
-              if ((isMetaRecovery && !region.equalsIgnoreCase(metaEncodeRegionName))
-                  || (!isMetaRecovery && region.equalsIgnoreCase(metaEncodeRegionName))) {
+            if (isRootRecovery != null) {
+              if ((isRootRecovery && !region.equalsIgnoreCase(rootEncodeRegionName))
+                  || (!isRootRecovery && region.equalsIgnoreCase(rootEncodeRegionName))) {
                 // skip non-meta regions when recovering the meta region or
                 // skip the meta region when recovering user regions
                 continue;

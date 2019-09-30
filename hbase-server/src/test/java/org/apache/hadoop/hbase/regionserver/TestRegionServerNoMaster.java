@@ -30,7 +30,7 @@ import org.apache.hadoop.hbase.HTableDescriptor;
 import org.apache.hadoop.hbase.testclassification.MediumTests;
 import org.apache.hadoop.hbase.NotServingRegionException;
 import org.apache.hadoop.hbase.ServerName;
-import org.apache.hadoop.hbase.MetaTableAccessor;
+import org.apache.hadoop.hbase.CatalogAccessor;
 import org.apache.hadoop.hbase.TableName;
 import org.apache.hadoop.hbase.client.HTable;
 import org.apache.hadoop.hbase.client.Put;
@@ -299,7 +299,7 @@ public class TestRegionServerNoMaster {
     try {
       // we re-opened meta so some of its data is lost
       ServerName sn = getRS().getServerName();
-      MetaTableAccessor.updateRegionLocation(getRS().getConnection(),
+      CatalogAccessor.updateRegionLocation(getRS().getConnection(),
         hri, sn, getRS().getRegion(regionName).getOpenSeqNum(), -1);
       // fake region to be closing now, need to clear state afterwards
       getRS().regionsInTransitionInRS.put(hri.getEncodedNameAsBytes(), Boolean.FALSE);

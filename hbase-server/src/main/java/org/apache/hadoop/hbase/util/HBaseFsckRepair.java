@@ -30,7 +30,7 @@ import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.hbase.HRegionInfo;
 import org.apache.hadoop.hbase.HTableDescriptor;
-import org.apache.hadoop.hbase.MetaTableAccessor;
+import org.apache.hadoop.hbase.CatalogAccessor;
 import org.apache.hadoop.hbase.ServerName;
 import org.apache.hadoop.hbase.TableName;
 import org.apache.hadoop.hbase.ZooKeeperConnectionException;
@@ -46,12 +46,6 @@ import org.apache.hadoop.hbase.master.RegionState;
 import org.apache.hadoop.hbase.master.ServerManager;
 import org.apache.hadoop.hbase.regionserver.HRegion;
 import org.apache.zookeeper.KeeperException;
-
-import java.io.IOException;
-import java.util.Collection;
-import java.util.List;
-import java.util.Map;
-import java.util.Random;
 
 /**
  * This class contains helper methods that repair parts of hbase's filesystem
@@ -170,7 +164,7 @@ public class HBaseFsckRepair {
       HRegionInfo hri, Collection<ServerName> servers, int numReplicas) throws IOException {
     Connection conn = ConnectionFactory.createConnection(conf);
     Table meta = conn.getTable(TableName.META_TABLE_NAME);
-    Put put = MetaTableAccessor.makePutFromRegionInfo(hri);
+    Put put = CatalogAccessor.makePutFromRegionInfo(hri);
     if (numReplicas > 1) {
       Random r = new Random();
       ServerName[] serversArr = servers.toArray(new ServerName[servers.size()]);
@@ -180,7 +174,7 @@ public class HBaseFsckRepair {
         // see the additional replicas when it is asked to assign. The
         // final value of these columns will be different and will be updated
         // by the actual regionservers that start hosting the respective replicas
-        MetaTableAccessor.addLocation(put, sn, sn.getStartcode(), -1, i);
+        CatalogAccessor.addLocation(put, sn, sn.getStartcode(), -1, i);
       }
     }
     meta.put(put);
@@ -207,6 +201,6 @@ public class HBaseFsckRepair {
    */
   public static void removeParentInMeta(Configuration conf, HRegionInfo hri) throws IOException {
     Connection conn = ConnectionFactory.createConnection(conf);
-    MetaTableAccessor.deleteRegion(conn, hri);
+    CatalogAccessor.deleteRegion(conn, hri);
   }
 }

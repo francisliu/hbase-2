@@ -27,7 +27,7 @@ import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hbase.CoordinatedStateException;
 import org.apache.hadoop.hbase.HRegionInfo;
-import org.apache.hadoop.hbase.MetaTableAccessor;
+import org.apache.hadoop.hbase.CatalogAccessor;
 import org.apache.hadoop.hbase.NotAllMetaRegionsOnlineException;
 import org.apache.hadoop.hbase.ProcedureInfo;
 import org.apache.hadoop.hbase.ServerName;
@@ -45,7 +45,7 @@ import org.apache.hadoop.hbase.procedure2.RemoteProcedureException;
 import org.apache.hadoop.hbase.quotas.MasterQuotaManager;
 import org.apache.hadoop.hbase.util.EnvironmentEdgeManager;
 import org.apache.hadoop.hbase.util.Threads;
-import org.apache.hadoop.hbase.zookeeper.MetaTableLocator;
+import org.apache.hadoop.hbase.zookeeper.RootTableLocator;
 
 /**
  * Helper to synchronously wait on conditions.
@@ -126,7 +126,7 @@ public final class ProcedureSyncWait {
   protected static void waitMetaRegions(final MasterProcedureEnv env) throws IOException {
     int timeout = env.getMasterConfiguration().getInt("hbase.client.catalog.timeout", 10000);
     try {
-      if (env.getMasterServices().getMetaTableLocator().waitMetaRegionLocation(
+      if (env.getMasterServices().getRootTableLocator().waitRootRegionLocation(
             env.getMasterServices().getZooKeeper(), timeout) == null) {
         throw new NotAllMetaRegionsOnlineException();
       }
@@ -156,17 +156,17 @@ public final class ProcedureSyncWait {
       final TableName tableName, final boolean excludeOfflinedSplitParents,
       final boolean excludeReplicaRegions) throws IOException {
     return ProcedureSyncWait.waitFor(env, "regions of table=" + tableName + " from meta",
-      new ProcedureSyncWait.Predicate<List<HRegionInfo>>() {
-        @Override
-        public List<HRegionInfo> evaluate() throws IOException {
-          if (TableName.META_TABLE_NAME.equals(tableName)) {
-            return new MetaTableLocator().getMetaRegions(env.getMasterServices().getZooKeeper());
-          }
-          return MetaTableAccessor.getTableRegions(env.getMasterServices().getZooKeeper(),
+        new ProcedureSyncWait.Predicate<List<HRegionInfo>>() {
+      @Override
+      public List<HRegionInfo> evaluate() throws IOException {
+        if (TableName.ROOT_TABLE_NAME.equals(tableName)) {
+          return new RootTableLocator().getRootRegions(env.getMasterServices().getZooKeeper());
+        }
+        return CatalogAccessor.getTableRegions(env.getMasterServices().getZooKeeper(),
             env.getMasterServices().getConnection(), tableName, excludeOfflinedSplitParents,
             excludeReplicaRegions);
-        }
-      });
+      }
+    });
   }
 
   protected static void waitRegionInTransition(final MasterProcedureEnv env,

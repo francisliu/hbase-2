@@ -119,13 +119,13 @@ public class GeneralBulkAssigner extends BulkAssigner {
     assignmentManager.waitForAssignment(regionSet, waitTillAllAssigned,
       reassigningRegions, Math.max(System.currentTimeMillis(), rpcWaitTime));
 
-    if (LOG.isDebugEnabled()) {
+    if (LOG.isInfoEnabled()) {
       long elapsedTime = System.currentTimeMillis() - startTime;
       String status = "successfully";
       if (!regionSet.isEmpty()) {
         status = "with " + regionSet.size() + " regions still in transition";
       }
-      LOG.debug("bulk assigning total " + regionCount + " regions to "
+      LOG.info("bulk assigning total " + regionCount + " regions to "
         + serverCount + " servers, took " + elapsedTime + "ms, " + status);
     }
     return regionSet.isEmpty();
@@ -149,7 +149,7 @@ public class GeneralBulkAssigner extends BulkAssigner {
       + conf.getLong("hbase.regionserver.rpc.startup.waittime", 60000)
       + conf.getLong("hbase.bulk.assignment.perregionserver.rpc.waittime",
         30000) * bulkPlan.size();
-    LOG.debug("Timeout-on-RIT=" + timeout);
+    LOG.info("Timeout-on-RIT=" + timeout);
     return timeout;
   }
 

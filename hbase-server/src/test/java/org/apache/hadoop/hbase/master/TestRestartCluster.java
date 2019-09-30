@@ -47,6 +47,7 @@ import org.apache.hadoop.hbase.zookeeper.ZKAssign;
 import org.apache.hadoop.hbase.zookeeper.ZKUtil;
 import org.apache.hadoop.hbase.zookeeper.ZooKeeperWatcher;
 import org.junit.After;
+import org.junit.Ignore;
 import org.junit.Test;
 import org.junit.experimental.categories.Category;
 
@@ -68,7 +69,10 @@ public class TestRestartCluster {
     UTIL.shutdownMiniCluster();
   }
 
-  @Test (timeout=300000) public void testRestartClusterAfterKill()
+  //This test wont work for split meta and zk  assignment
+  // Look at isCarryingMeta() in AssignmentManager, we no longer check for unassigned znode 
+  @Ignore 
+  public void testRestartClusterAfterKill()
   throws Exception {
     UTIL.getConfiguration().setBoolean("hbase.assignment.usezk", true);
     UTIL.startMiniZKCluster();
@@ -230,7 +234,8 @@ public class TestRestartCluster {
 
     // Wait till master is initialized and all regions are assigned
     RegionStates regionStates = master.getAssignmentManager().getRegionStates();
-    int expectedRegions = regionToRegionServerMap.size() + 1;
+    // 2 = root + meta
+    int expectedRegions = regionToRegionServerMap.size() + 2;
     while (!master.isInitialized()
         || regionStates.getRegionAssignments().size() != expectedRegions) {
       Threads.sleep(100);

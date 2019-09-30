@@ -30,6 +30,7 @@ import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ConcurrentNavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -128,12 +129,13 @@ public class ServerManager {
   /**
    * The last flushed sequence id for a region.
    */
-  private final ConcurrentNavigableMap<byte[], Long> flushedSequenceIdByRegion =
-    new ConcurrentSkipListMap<byte[], Long>(Bytes.BYTES_COMPARATOR);
+  private final ConcurrentMap<String, Long> flushedSequenceIdByRegion =
+    new ConcurrentHashMap<>();
 
   /**
    * The last flushed sequence id for a store in a region.
    */
+  //TODO francis change this to use concurrenthashmap...less cpu intensive than skiplist?
   private final ConcurrentNavigableMap<byte[], ConcurrentNavigableMap<byte[], Long>>
     storeFlushedSequenceIdsByRegion =
     new ConcurrentSkipListMap<byte[], ConcurrentNavigableMap<byte[], Long>>(Bytes.BYTES_COMPARATOR);
@@ -164,6 +166,12 @@ public class ServerManager {
 
   private final long maxSkew;
   private final long warningSkew;
+  
+  /**
+   * Flag to enable SSH for ROOT region server. It's used in master initialization to enable SSH for
+   * ROOT before META assignment.
+   */
+  private boolean isSSHForRootEnabled = false;
 
   private final RetryCounterFactory pingRetryCounterFactory;
   private final RpcControllerFactory rpcControllerFactory;
@@ -302,29 +310,30 @@ public class ServerManager {
   private void updateLastFlushedSequenceIds(ServerName sn, ServerLoad hsl) {
     Map<byte[], RegionLoad> regionsLoad = hsl.getRegionsLoad();
     for (Entry<byte[], RegionLoad> entry : regionsLoad.entrySet()) {
-      byte[] encodedRegionName = Bytes.toBytes(HRegionInfo.encodeRegionName(entry.getKey()));
-      Long existingValue = flushedSequenceIdByRegion.get(encodedRegionName);
+      String encodedRegionNameAsString = HRegionInfo.encodeRegionName(entry.getKey());
+      byte[] encodedRegionNameAsBytes = Bytes.toBytes(encodedRegionNameAsString);
+      Long existingValue = flushedSequenceIdByRegion.get(encodedRegionNameAsString);
       long l = entry.getValue().getCompleteSequenceId();
       // Don't let smaller sequence ids override greater sequence ids.
       if (LOG.isTraceEnabled()) {
-        LOG.trace(Bytes.toString(encodedRegionName) + ", existingValue=" + existingValue +
+        LOG.trace(encodedRegionNameAsString + ", existingValue=" + existingValue +
           ", completeSequenceId=" + l);
       }
       if (existingValue == null || (l != HConstants.NO_SEQNUM && l > existingValue)) {
-        flushedSequenceIdByRegion.put(encodedRegionName, l);
+        flushedSequenceIdByRegion.put(encodedRegionNameAsString, l);
       } else if (l != HConstants.NO_SEQNUM && l < existingValue) {
         LOG.warn("RegionServer " + sn + " indicates a last flushed sequence id ("
             + l + ") that is less than the previous last flushed sequence id ("
             + existingValue + ") for region " + Bytes.toString(entry.getKey()) + " Ignoring.");
       }
       ConcurrentNavigableMap<byte[], Long> storeFlushedSequenceId =
-          getOrCreateStoreFlushedSequenceId(encodedRegionName);
+          getOrCreateStoreFlushedSequenceId(encodedRegionNameAsBytes);
       for (StoreSequenceId storeSeqId : entry.getValue().getStoreCompleteSequenceId()) {
         byte[] family = storeSeqId.getFamilyName().toByteArray();
         existingValue = storeFlushedSequenceId.get(family);
         l = storeSeqId.getSequenceId();
         if (LOG.isTraceEnabled()) {
-          LOG.trace(Bytes.toString(encodedRegionName) + ", family=" + Bytes.toString(family) +
+          LOG.trace(encodedRegionNameAsString + ", family=" + Bytes.toString(family) +
             ", existingValue=" + existingValue + ", completeSequenceId=" + l);
         }
         // Don't let smaller sequence ids override greater sequence ids.
@@ -357,7 +366,7 @@ public class ServerManager {
    * Check is a server of same host and port already exists,
    * if not, or the existed one got a smaller start code, record it.
    *
-   * @param sn the server to check and record
+   * @param serverName the server to check and record
    * @param sl the server load on the server
    * @return true if the server is recorded, otherwise, false
    */
@@ -472,7 +481,7 @@ public class ServerManager {
 
   public RegionStoreSequenceIds getLastFlushedSequenceId(byte[] encodedRegionName) {
     RegionStoreSequenceIds.Builder builder = RegionStoreSequenceIds.newBuilder();
-    Long seqId = flushedSequenceIdByRegion.get(encodedRegionName);
+    Long seqId = flushedSequenceIdByRegion.get(Bytes.toString(encodedRegionName));
     builder.setLastFlushedSequenceId(seqId != null ? seqId.longValue() : HConstants.NO_SEQNUM);
     Map<byte[], Long> storeFlushedSequenceId =
         storeFlushedSequenceIdsByRegion.get(encodedRegionName);
@@ -625,11 +634,13 @@ public class ServerManager {
       return;
     }
 
-    boolean carryingMeta = services.getAssignmentManager().isCarryingMeta(serverName) ==
-        AssignmentManager.ServerHostRegion.HOSTING_REGION;
+    boolean carryingRoot = services.getAssignmentManager().isCarryingRoot(serverName)
+        .isHostingOrTransitionHosting();
+    boolean carryingMeta = services.getAssignmentManager().isCarryingMeta(serverName)
+        .isHostingOrTransitionHosting();
     ProcedureExecutor<MasterProcedureEnv> procExec = this.services.getMasterProcedureExecutor();
     procExec.submitProcedure(new ServerCrashProcedure(
-      procExec.getEnvironment(), serverName, true, carryingMeta));
+      procExec.getEnvironment(), serverName, true, carryingRoot, carryingMeta));
     LOG.debug("Added=" + serverName +
       " to dead servers, submitted shutdown handler to be executed meta=" + carryingMeta);
 
@@ -674,12 +685,12 @@ public class ServerManager {
     this.deadservers.add(serverName);
     ProcedureExecutor<MasterProcedureEnv> procExec = this.services.getMasterProcedureExecutor();
     procExec.submitProcedure(new ServerCrashProcedure(
-      procExec.getEnvironment(), serverName, shouldSplitWal, false));
+      procExec.getEnvironment(), serverName, shouldSplitWal, false, false));
   }
 
   /**
    * Process the servers which died during master's initialization. It will be
-   * called after HMaster#assignMeta and AssignmentManager#joinCluster.
+   * called after HMaster#assignRoot and AssignmentManager#joinCluster.
    * */
   synchronized void processQueuedDeadServers() {
     if (!services.isServerCrashProcessingEnabled()) {
@@ -1220,7 +1231,7 @@ public class ServerManager {
   public void removeRegion(final HRegionInfo regionInfo) {
     final byte[] encodedName = regionInfo.getEncodedNameAsBytes();
     storeFlushedSequenceIdsByRegion.remove(encodedName);
-    flushedSequenceIdByRegion.remove(encodedName);
+    flushedSequenceIdByRegion.remove(regionInfo.getEncodedName());
   }
 
   @VisibleForTesting

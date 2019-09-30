@@ -478,7 +478,7 @@ public class ZooKeeperWatcher implements Watcher, Abortable, Closeable {
    * @return list of znodes
    * @throws KeeperException
    */
-  public List<String> getMetaReplicaNodes() throws KeeperException {
+  public List<String> getRootReplicaNodes() throws KeeperException {
     List<String> childrenOfBaseNode = ZKUtil.listChildrenNoWatch(this, baseZNode);
     List<String> metaReplicaNodes = new ArrayList<String>(2);
     if (childrenOfBaseNode != null) {

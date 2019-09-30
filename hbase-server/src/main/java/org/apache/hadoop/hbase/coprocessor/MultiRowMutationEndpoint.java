@@ -98,7 +98,7 @@ CoprocessorService, Coprocessor {
         // check whether rows are in range for this region
         if (!HRegion.rowIsInRange(regionInfo, m.getRow())) {
           String msg = "Requested row out of range '"
-              + Bytes.toStringBinary(m.getRow()) + "'";
+              + Bytes.toStringBinary(m.getRow()) + "' for region: "+regionInfo;
           if (rowsToLock.isEmpty()) {
             // if this is the first row, region might have moved,
             // allow client to retry

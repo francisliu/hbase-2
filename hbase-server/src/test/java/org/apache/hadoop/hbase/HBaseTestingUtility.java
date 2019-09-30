@@ -447,6 +447,17 @@ public class HBaseTestingUtility extends HBaseCommonTestingUtility {
   /**
    * @return META table descriptor
    */
+  public HTableDescriptor getRootTableDescriptor() {
+    try {
+      return new FSTableDescriptors(conf).get(TableName.ROOT_TABLE_NAME);
+    } catch (IOException e) {
+      throw new RuntimeException("Unable to create META table descriptor", e);
+    }
+  }
+
+  /**
+   * @return META table descriptor
+   */
   public HTableDescriptor getMetaTableDescriptor() {
     try {
       return new FSTableDescriptors(conf).get(TableName.META_TABLE_NAME);
@@ -2602,7 +2613,7 @@ public class HBaseTestingUtility extends HBaseCommonTestingUtility {
       int j = (i + 1) % startKeys.length;
       HRegionInfo hri = new HRegionInfo(htd.getTableName(), startKeys[i],
           startKeys[j]);
-      MetaTableAccessor.addRegionToMeta(meta, hri);
+      CatalogAccessor.addRegionToMeta(meta, hri);
       newRegions.add(hri);
     }
 
@@ -3212,7 +3223,7 @@ public class HBaseTestingUtility extends HBaseCommonTestingUtility {
           getHBaseCluster().getMaster().getAssignmentManager().getRegionStates()
               .getRegionAssignments();
       final List<Pair<HRegionInfo, ServerName>> metaLocations =
-          MetaTableAccessor
+          CatalogAccessor
               .getTableRegionsAndLocations(getZooKeeperWatcher(), connection, tableName);
       for (Pair<HRegionInfo, ServerName> metaLocation : metaLocations) {
         HRegionInfo hri = metaLocation.getFirst();

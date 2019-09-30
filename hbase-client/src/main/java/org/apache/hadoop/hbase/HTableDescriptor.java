@@ -1549,6 +1549,35 @@ public class HTableDescriptor implements WritableComparable<HTableDescriptor> {
               new Path(name.getNamespaceAsString(), new Path(name.getQualifierAsString()))));
   }
 
+  /** Table descriptor for <core>-ROOT-</code> catalog table */
+  @Deprecated
+  public static final HTableDescriptor ROOT_TABLEDESC = new HTableDescriptor(
+      TableName.ROOT_TABLE_NAME,
+      new HColumnDescriptor[] {
+          new HColumnDescriptor(HConstants.CATALOG_FAMILY)
+              // Ten is arbitrary number.  Keep versions to help debugging.
+              .setMaxVersions(10)
+              .setInMemory(true)
+              .setBlocksize(8 * 1024)
+              .setTimeToLive(HConstants.FOREVER)
+              .setScope(HConstants.REPLICATION_SCOPE_LOCAL)
+              // Disable blooms for root.
+              // Since it does not work for meta as well.
+              .setBloomFilterType(BloomType.NONE)
+      });
+
+  // need for meta splitting
+  static {
+    try {
+      ROOT_TABLEDESC.addCoprocessor( "org.apache.hadoop.hbase.coprocessor.MultiRowMutationEndpoint",
+        null, Coprocessor.PRIORITY_SYSTEM, null);
+    } catch (IOException ex) {
+      //LOG.warn("exception in loading coprocessor for the hbase:meta table");
+      throw new RuntimeException(ex);
+    }
+  }
+
+
   /**
    * Table descriptor for <code>hbase:meta</code> catalog table
    * @deprecated Use TableDescriptors#get(TableName.META_TABLE_NAME) or
@@ -1777,6 +1806,28 @@ public class HTableDescriptor implements WritableComparable<HTableDescriptor> {
       "org.apache.hadoop.hbase.coprocessor.MultiRowMutationEndpoint",
       null, Coprocessor.PRIORITY_SYSTEM, null);
     return metaDescriptor;
+  }
+
+  public static HTableDescriptor rootTableDescriptor(final Configuration conf)
+      throws IOException {
+    HTableDescriptor rootDescriptor = new HTableDescriptor(
+      TableName.ROOT_TABLE_NAME,
+      new HColumnDescriptor[] {
+        new HColumnDescriptor(HConstants.CATALOG_FAMILY)
+          .setMaxVersions(conf.getInt(HConstants.HBASE_META_VERSIONS,
+            HConstants.DEFAULT_HBASE_META_VERSIONS))
+          .setInMemory(true)
+          .setBlocksize(conf.getInt(HConstants.HBASE_META_BLOCK_SIZE,
+            HConstants.DEFAULT_HBASE_META_BLOCK_SIZE))
+          .setScope(HConstants.REPLICATION_SCOPE_LOCAL)
+          // Disable blooms for meta.  Needs work.  Seems to mess w/ getClosestOrBefore.
+          .setBloomFilterType(BloomType.NONE)
+            .setCacheDataInL1(true),
+      });
+    rootDescriptor.addCoprocessor(
+      "org.apache.hadoop.hbase.coprocessor.MultiRowMutationEndpoint",
+      null, Coprocessor.PRIORITY_SYSTEM, null);
+    return rootDescriptor;
   }
 
 }

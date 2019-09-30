@@ -35,7 +35,7 @@ import org.apache.hadoop.hbase.HTableDescriptor;
 import org.apache.hadoop.hbase.testclassification.MediumTests;
 import org.apache.hadoop.hbase.MiniHBaseCluster;
 import org.apache.hadoop.hbase.TableName;
-import org.apache.hadoop.hbase.MetaTableAccessor;
+import org.apache.hadoop.hbase.CatalogAccessor;
 import org.apache.hadoop.hbase.client.Admin;
 import org.apache.hadoop.hbase.client.HBaseAdmin;
 import org.apache.hadoop.hbase.client.Mutation;
@@ -157,7 +157,7 @@ public class TestRegionServerObserver {
       rmt.prepareMutationsForMerge(mergedRegion.getRegionInfo(), regionA.getRegionInfo(),
         regionB.getRegionInfo(), rs.getServerName(), metaEntries,
         regionA.getTableDesc().getRegionReplication());
-      MetaTableAccessor.mutateMetaTable(rs.getConnection(), metaEntries);
+      CatalogAccessor.mutateMetaTable(rs.getConnection(), metaEntries);
     }
 
     @Override

@@ -35,7 +35,7 @@ import org.apache.hadoop.hbase.HColumnDescriptor;
 import org.apache.hadoop.hbase.HConstants;
 import org.apache.hadoop.hbase.HRegionInfo;
 import org.apache.hadoop.hbase.HTableDescriptor;
-import org.apache.hadoop.hbase.MetaTableAccessor;
+import org.apache.hadoop.hbase.CatalogAccessor;
 import org.apache.hadoop.hbase.ScheduledChore;
 import org.apache.hadoop.hbase.Server;
 import org.apache.hadoop.hbase.TableName;
@@ -183,6 +183,9 @@ public class CatalogJanitor extends ScheduledChore {
     // Run full scan of hbase:meta catalog table passing in our custom visitor with
     // the start row
     MetaScanner.metaScan(this.connection, visitor, tableName);
+    if (tableName == null || tableName.equals(TableName.META_TABLE_NAME)) {
+      MetaScanner.metaScan(this.connection, visitor, null, null, -1, TableName.ROOT_TABLE_NAME);
+    }
 
     return new Triple<Integer, Map<HRegionInfo, Result>, Map<HRegionInfo, Result>>(
         count.get(), mergedRegions, splitParents);
@@ -217,7 +220,7 @@ public class CatalogJanitor extends ScheduledChore {
           + " from fs because merged region no longer holds references");
       HFileArchiver.archiveRegion(this.services.getConfiguration(), fs, regionA);
       HFileArchiver.archiveRegion(this.services.getConfiguration(), fs, regionB);
-      MetaTableAccessor.deleteMergeQualifiers(services.getConnection(), mergedRegion);
+      CatalogAccessor.deleteMergeQualifiers(services.getConnection(), mergedRegion);
       services.getAssignmentManager().getRegionStates().deleteRegion(regionA);
       services.getAssignmentManager().getRegionStates().deleteRegion(regionB);
       services.getServerManager().removeRegion(regionA);
@@ -353,7 +356,7 @@ public class CatalogJanitor extends ScheduledChore {
       FileSystem fs = this.services.getMasterFileSystem().getFileSystem();
       if (LOG.isTraceEnabled()) LOG.trace("Archiving parent region: " + parent);
       HFileArchiver.archiveRegion(this.services.getConfiguration(), fs, parent);
-      MetaTableAccessor.deleteRegion(this.connection, parent);
+      CatalogAccessor.deleteRegion(this.connection, parent);
       if (services.getAssignmentManager().getRegionStates() != null)
         services.getAssignmentManager().getRegionStates().deleteRegion(parent);
       services.getServerManager().removeRegion(parent);
@@ -441,7 +444,7 @@ public class CatalogJanitor extends ScheduledChore {
       throws IOException {
     // Get merge regions if it is a merged region and already has merge
     // qualifier
-    Pair<HRegionInfo, HRegionInfo> mergeRegions = MetaTableAccessor
+    Pair<HRegionInfo, HRegionInfo> mergeRegions = CatalogAccessor
         .getRegionsFromMergeQualifier(this.services.getConnection(),
           region.getRegionName());
     if (mergeRegions == null

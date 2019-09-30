@@ -28,6 +28,9 @@ import java.util.TreeSet;
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
+import org.apache.hadoop.hbase.KeyValue;
+import org.apache.hadoop.hbase.KeyValue.KVComparator;
+import org.apache.hadoop.hbase.TableName;
 import org.apache.hadoop.hbase.classification.InterfaceAudience;
 import org.apache.hadoop.hbase.util.Bytes.ByteArrayComparator;
 
@@ -56,13 +59,16 @@ public class RegionSplitCalculator<R extends KeyRange> {
   private static final Log LOG = LogFactory.getLog(RegionSplitCalculator.class);
 
   private final Comparator<R> rangeCmp;
+
+  public Comparator<byte[]> rowComparator;
+
   /**
    * This contains a sorted set of all the possible split points
    * 
    * Invariant: once populated this has 0 entries if empty or at most n+1 values
    * where n == number of added ranges.
    */
-  private final TreeSet<byte[]> splits = new TreeSet<byte[]>(BYTES_COMPARATOR);
+  private TreeSet<byte[]> splits;
 
   /**
    * This is a map from start key to regions with the same start key.
@@ -76,22 +82,11 @@ public class RegionSplitCalculator<R extends KeyRange> {
    */
   private final static byte[] ENDKEY = null;
 
-  public RegionSplitCalculator(Comparator<R> cmp) {
-    rangeCmp = cmp;
+  public RegionSplitCalculator(TableName tableName, Comparator<R> keyRangeComparator) {
+    rowComparator = getRowComparator(tableName);
+    rangeCmp = keyRangeComparator;
+    splits  = new TreeSet<byte[]>(rowComparator);
   }
-
-  public final static Comparator<byte[]> BYTES_COMPARATOR = new ByteArrayComparator() {
-    @Override
-    public int compare(byte[] l, byte[] r) {
-      if (l == null && r == null)
-        return 0;
-      if (l == null)
-        return 1;
-      if (r == null)
-        return -1;
-      return super.compare(l, r);
-    }
-  };
 
   /**
    * SPECIAL CASE wrapper for empty end key
@@ -115,7 +110,7 @@ public class RegionSplitCalculator<R extends KeyRange> {
     byte[] start = range.getStartKey();
     byte[] end = specialEndKey(range);
 
-    if (end != ENDKEY && Bytes.compareTo(start, end) > 0) {
+    if (end != ENDKEY && rowComparator.compare(start, end) > 0) {
       // don't allow backwards edges
       LOG.debug("attempted to add backwards edge: " + Bytes.toString(start)
           + " " + Bytes.toString(end));
@@ -137,8 +132,7 @@ public class RegionSplitCalculator<R extends KeyRange> {
   public Multimap<byte[], R> calcCoverage() {
     // This needs to be sorted to force the use of the comparator on the values,
     // otherwise byte array comparison isn't used
-    Multimap<byte[], R> regions = TreeMultimap.create(BYTES_COMPARATOR,
-        rangeCmp);
+    Multimap<byte[], R> regions = TreeMultimap.create(rowComparator, rangeCmp);
 
     // march through all splits from the start points
     for (Entry<byte[], Collection<R>> start : starts.asMap().entrySet()) {
@@ -174,7 +168,7 @@ public class RegionSplitCalculator<R extends KeyRange> {
    * @param count the max number of ranges to find
    * @return a list of ranges that overlap with most others
    */
-  public static <R extends KeyRange> List<R>
+  public  <R extends KeyRange> List<R>
       findBigRanges(Collection<R> bigOverlap, int count) {
     List<R> bigRanges = new ArrayList<R>();
 
@@ -192,8 +186,8 @@ public class RegionSplitCalculator<R extends KeyRange> {
         byte[] start = rr.getStartKey();
         byte[] end = specialEndKey(rr);
 
-        if (BYTES_COMPARATOR.compare(startKey, end) < 0
-            && BYTES_COMPARATOR.compare(endKey, start) > 0) {
+        if (rowComparator.compare(startKey, end) < 0
+            && rowComparator.compare(endKey, start) > 0) {
           overlappedRegions++;
         }
       }
@@ -233,5 +227,30 @@ public class RegionSplitCalculator<R extends KeyRange> {
       break;
     }
     return bigRanges;
+  }
+
+  public static Comparator<byte[]> getRowComparator(TableName tableName) {
+    final KVComparator kvComparator;
+    if (tableName.equals(TableName.ROOT_TABLE_NAME)) {
+      kvComparator = KeyValue.ROOT_COMPARATOR;
+    } else if (tableName.equals(TableName.META_TABLE_NAME)) {
+      kvComparator = KeyValue.META_COMPARATOR;
+    } else {
+      kvComparator = KeyValue.COMPARATOR;
+    }
+    return  new Comparator<byte[]>() {
+              @Override
+              public int compare(byte[] l, byte[] r) {
+                if (l == null && r == null)
+                  return 0;
+                if (l == null)
+                  return 1;
+                if (r == null)
+                  return -1;
+                return kvComparator.compareRows(
+                    l, 0, l.length,
+                    r, 0, r.length);
+              }
+            };
   }
 }

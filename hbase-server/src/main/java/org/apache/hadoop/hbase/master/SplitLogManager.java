@@ -258,7 +258,7 @@ public class SplitLogManager {
     long t = EnvironmentEdgeManager.currentTime();
     long totalSize = 0;
     TaskBatch batch = new TaskBatch();
-    Boolean isMetaRecovery = (filter == null) ? null : false;
+    Boolean isRootRecovery = (filter == null) ? null : false;
     for (FileStatus lf : logfiles) {
       // TODO If the log file is still being written to - which is most likely
       // the case for the last log file - then its length will show up here
@@ -273,12 +273,12 @@ public class SplitLogManager {
     }
     waitForSplittingCompletion(batch, status);
     // remove recovering regions
-    if (filter == MasterFileSystem.META_FILTER /* reference comparison */) {
-      // we split meta regions and user regions separately therefore logfiles are either all for
+    if (filter == MasterFileSystem.ROOT_FILTER /* reference comparison */) {
+      // we split root regions and user regions separately therefore logfiles are either all for
       // meta or user regions but won't for both( we could have mixed situations in tests)
-      isMetaRecovery = true;
+      isRootRecovery = true;
     }
-    removeRecoveringRegions(serverNames, isMetaRecovery);
+    removeRecoveringRegions(serverNames, isRootRecovery);
 
     if (batch.done != batch.installed) {
       batch.isDead = true;
@@ -398,10 +398,10 @@ public class SplitLogManager {
    * It removes recovering regions under /hbase/recovering-regions/[encoded region name] so that the
    * region server hosting the region can allow reads to the recovered region
    * @param serverNames servers which are just recovered
-   * @param isMetaRecovery whether current recovery is for the meta region on
+   * @param isRootRecovery whether current recovery is for the meta region on
    *          <code>serverNames<code>
    */
-  private void removeRecoveringRegions(final Set<ServerName> serverNames, Boolean isMetaRecovery) {
+  private void removeRecoveringRegions(final Set<ServerName> serverNames, Boolean isRootRecovery) {
     if (!isLogReplaying()) {
       // the function is only used in WALEdit direct replay mode
       return;
@@ -417,12 +417,12 @@ public class SplitLogManager {
     try {
       ((BaseCoordinatedStateManager) server.getCoordinatedStateManager())
           .getSplitLogManagerCoordination().removeRecoveringRegions(recoveredServerNameSet,
-            isMetaRecovery);
+          isRootRecovery);
     } catch (IOException e) {
       LOG.warn("removeRecoveringRegions got exception. Will retry", e);
       if (serverNames != null && !serverNames.isEmpty()) {
         this.failedRecoveringRegionDeletions.add(new Pair<Set<ServerName>, Boolean>(serverNames,
-            isMetaRecovery));
+            isRootRecovery));
       }
     } finally {
       this.recoveringRegionLock.unlock();

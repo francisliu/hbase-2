@@ -43,9 +43,10 @@ public class OpenedRegionHandler extends EventHandler implements TotesHRegionInf
   private OpenRegionCoordination.OpenRegionDetails ord;
 
   private enum OpenedPriority {
-    META (1),
-    SYSTEM (2),
-    USER (3);
+    ROOT (1),
+    META (2),
+    SYSTEM (3),
+    USER (4);
 
     private final int value;
     OpenedPriority(int value) {
@@ -65,7 +66,9 @@ public class OpenedRegionHandler extends EventHandler implements TotesHRegionInf
     this.regionInfo = regionInfo;
     this.coordination = coordination;
     this.ord = ord;
-    if(regionInfo.isMetaRegion()) {
+    if(regionInfo.isRootRegion()) {
+      priority = OpenedPriority.ROOT;
+    } else if(regionInfo.isMetaRegion()) {
       priority = OpenedPriority.META;
     } else if(regionInfo.getTable()
         .getNamespaceAsString().equals(NamespaceDescriptor.SYSTEM_NAMESPACE_NAME_STR)) {

@@ -639,7 +639,8 @@ EOF
 
     # Checks if current table is one of the 'meta' tables
     def is_meta_table?
-      org.apache.hadoop.hbase.TableName::META_TABLE_NAME.equals(@table.getName())
+      org.apache.hadoop.hbase.TableName::META_TABLE_NAME.equals(@table.getName()) ||
+          org.apache.hadoop.hbase.TableName::ROOT_TABLE_NAME.equals(@table.getName())
     end
 
     # Returns family and (when has it) qualifier for a column name

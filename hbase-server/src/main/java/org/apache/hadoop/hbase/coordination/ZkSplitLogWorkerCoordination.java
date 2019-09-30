@@ -397,12 +397,24 @@ public class ZkSplitLogWorkerCoordination extends ZooKeeperListener implements
       }
       // pick meta wal firstly
       int offset = (int) (Math.random() * paths.size());
+      int rootOffset = -1;
+      int metaOffset = -1;
       for (int i = 0; i < paths.size(); i++) {
-        if (DefaultWALProvider.isMetaFile(paths.get(i))) {
-          offset = i;
+        if (DefaultWALProvider.isRootFile(paths.get(i))) {
+          rootOffset = i;
           break;
         }
+        if (DefaultWALProvider.isMetaFile(paths.get(i))
+            && metaOffset == -1) {
+          metaOffset = i;
+        }
       }
+      if (rootOffset != -1) {
+        offset = rootOffset;
+      } else if (metaOffset != -1) {
+        offset = metaOffset;
+      }
+
       int numTasks = paths.size();
       boolean taskGrabbed = false;
       for (int i = 0; i < numTasks; i++) {

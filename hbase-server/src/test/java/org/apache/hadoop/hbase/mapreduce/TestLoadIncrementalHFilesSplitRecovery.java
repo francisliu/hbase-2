@@ -42,7 +42,7 @@ import org.apache.hadoop.hbase.HConstants;
 import org.apache.hadoop.hbase.HRegionInfo;
 import org.apache.hadoop.hbase.HRegionLocation;
 import org.apache.hadoop.hbase.HTableDescriptor;
-import org.apache.hadoop.hbase.MetaTableAccessor;
+import org.apache.hadoop.hbase.CatalogAccessor;
 import org.apache.hadoop.hbase.ServerName;
 import org.apache.hadoop.hbase.TableExistsException;
 import org.apache.hadoop.hbase.TableName;
@@ -530,11 +530,11 @@ public class TestLoadIncrementalHFilesSplitRecovery {
     dir = buildBulkFiles(tableName, 3);
 
     // Mess it up by leaving a hole in the hbase:meta
-    List<HRegionInfo> regionInfos = MetaTableAccessor.getTableRegions(util.getZooKeeperWatcher(),
+    List<HRegionInfo> regionInfos = CatalogAccessor.getTableRegions(util.getZooKeeperWatcher(),
       connection, tableName);
     for (HRegionInfo regionInfo : regionInfos) {
       if (Bytes.equals(regionInfo.getStartKey(), HConstants.EMPTY_BYTE_ARRAY)) {
-        MetaTableAccessor.deleteRegion(connection, regionInfo);
+        CatalogAccessor.deleteRegion(connection, regionInfo);
         break;
       }
     }
@@ -549,7 +549,7 @@ public class TestLoadIncrementalHFilesSplitRecovery {
     table.close();
 
     // Make sure at least the one region that still exists can be found.
-    regionInfos = MetaTableAccessor.getTableRegions(util.getZooKeeperWatcher(),
+    regionInfos = CatalogAccessor.getTableRegions(util.getZooKeeperWatcher(),
       connection, tableName);
     assertTrue(regionInfos.size() >= 1);
 

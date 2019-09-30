@@ -18,11 +18,21 @@
  */
 package org.apache.hadoop.hbase.regionserver;
 
+import static org.junit.Assert.fail;
+
+import org.apache.commons.logging.Log;
+import org.apache.commons.logging.LogFactory;
+import org.apache.hadoop.hbase.HRegionInfo;
+import org.apache.hadoop.hbase.TableName;
+import org.apache.hadoop.hbase.Waiter;
 import org.apache.hadoop.hbase.testclassification.LargeTests;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
 import org.junit.Test;
 import org.junit.experimental.categories.Category;
+
+import java.io.IOException;
+import java.util.List;
 
 /**
  * Like {@link TestSplitTransaction} in that we're testing {@link SplitTransaction}
@@ -31,6 +41,9 @@ import org.junit.experimental.categories.Category;
  */
 @Category(LargeTests.class)
 public class TestZKLessSplitOnCluster extends TestSplitTransactionOnCluster {
+
+  private static final Log LOG = LogFactory.getLog(TestZKLessSplitOnCluster.class);
+
   @BeforeClass
   public static void before() throws Exception {
     // Don't use ZK for region assignment
@@ -42,9 +55,9 @@ public class TestZKLessSplitOnCluster extends TestSplitTransactionOnCluster {
   public static void after() throws Exception {
     TestSplitTransactionOnCluster.after();
   }
-  
+
   @Override
-  @Test (timeout = 60000)
+  @Test(timeout = 60000)
   public void testSplitIsRolledBackOnSplitFailure() throws Exception {
     // TODO: This test will be added later 
   }

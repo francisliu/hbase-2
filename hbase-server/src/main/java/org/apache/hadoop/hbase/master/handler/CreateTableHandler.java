@@ -26,6 +26,7 @@ import java.util.List;
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
+import org.apache.hadoop.hbase.ServerName;
 import org.apache.hadoop.hbase.classification.InterfaceAudience;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
@@ -38,7 +39,7 @@ import org.apache.hadoop.hbase.NotAllMetaRegionsOnlineException;
 import org.apache.hadoop.hbase.Server;
 import org.apache.hadoop.hbase.TableExistsException;
 import org.apache.hadoop.hbase.client.RegionReplicaUtil;
-import org.apache.hadoop.hbase.MetaTableAccessor;
+import org.apache.hadoop.hbase.CatalogAccessor;
 import org.apache.hadoop.hbase.executor.EventHandler;
 import org.apache.hadoop.hbase.executor.EventType;
 import org.apache.hadoop.hbase.ipc.RpcServer;
@@ -55,6 +56,7 @@ import org.apache.hadoop.hbase.security.UserProvider;
 import org.apache.hadoop.hbase.util.FSTableDescriptors;
 import org.apache.hadoop.hbase.util.FSUtils;
 import org.apache.hadoop.hbase.util.ModifyRegionUtils;
+import org.apache.hadoop.hbase.util.Pair;
 import org.apache.hadoop.hbase.util.ServerRegionReplicaUtil;
 
 /**
@@ -94,9 +96,16 @@ public class CreateTableHandler extends EventHandler {
     int timeout = conf.getInt("hbase.client.catalog.timeout", 10000);
     // Need hbase:meta availability to create a table
     try {
-      if (server.getMetaTableLocator().waitMetaRegionLocation(
-          server.getZooKeeper(), timeout) == null) {
-        throw new NotAllMetaRegionsOnlineException();
+      List<Pair<HRegionInfo, ServerName>> metaRegions =
+          CatalogAccessor.getTableRegionsAndLocations(
+                  server.getZooKeeper(), server.getConnection(), TableName.META_TABLE_NAME, true);
+      for (Pair<HRegionInfo, ServerName> entry : metaRegions) {
+        if (!CatalogAccessor.verifyRegionLocation(server.getConnection(),
+            entry.getFirst(),
+             entry.getSecond(),
+             HRegionInfo.DEFAULT_REPLICA_ID)) {
+          throw new NotAllMetaRegionsOnlineException();
+        }
       }
       // If we are creating the table in service to an RPC request, record the
       // active user for later, so proper permissions will be applied to the
@@ -117,7 +126,7 @@ public class CreateTableHandler extends EventHandler {
     boolean success = false;
     try {
       TableName tableName = this.hTableDescriptor.getTableName();
-      if (MetaTableAccessor.tableExists(this.server.getConnection(), tableName)) {
+      if (CatalogAccessor.tableExists(this.server.getConnection(), tableName)) {
         throw new TableExistsException(tableName);
       }
 
@@ -353,6 +362,6 @@ public class CreateTableHandler extends EventHandler {
    */
   protected void addRegionsToMeta(final List<HRegionInfo> regionInfos, int regionReplication)
       throws IOException {
-    MetaTableAccessor.addRegionsToMeta(this.server.getConnection(), regionInfos, regionReplication);
+    CatalogAccessor.addRegionsToCatalog(this.server.getConnection(), regionInfos, regionReplication);
   }
 }

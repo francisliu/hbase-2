@@ -31,7 +31,7 @@ import org.apache.hadoop.hbase.HColumnDescriptor;
 import org.apache.hadoop.hbase.HRegionInfo;
 import org.apache.hadoop.hbase.HRegionLocation;
 import org.apache.hadoop.hbase.HTableDescriptor;
-import org.apache.hadoop.hbase.MetaTableAccessor;
+import org.apache.hadoop.hbase.CatalogAccessor;
 import org.apache.hadoop.hbase.RegionLocations;
 import org.apache.hadoop.hbase.ServerName;
 import org.apache.hadoop.hbase.TableName;
@@ -122,7 +122,7 @@ public class MasterProcedureTestingUtility {
     assertTrue("found extraneous regions: " + allRegionDirs, allRegionDirs.isEmpty());
 
     // check meta
-    assertTrue(MetaTableAccessor.tableExists(master.getConnection(), tableName));
+    assertTrue(CatalogAccessor.tableExists(master.getConnection(), tableName));
     assertEquals(regions.length, countMetaRegions(master, tableName));
 
     // check htd
@@ -142,7 +142,7 @@ public class MasterProcedureTestingUtility {
     assertFalse(fs.exists(tableDir));
 
     // check meta
-    assertFalse(MetaTableAccessor.tableExists(master.getConnection(), tableName));
+    assertFalse(CatalogAccessor.tableExists(master.getConnection(), tableName));
     assertEquals(0, countMetaRegions(master, tableName));
 
     // check htd
@@ -156,7 +156,7 @@ public class MasterProcedureTestingUtility {
     final MetaScannerVisitor visitor = new MetaScannerVisitorBase() {
       @Override
       public boolean processRow(Result rowResult) throws IOException {
-        RegionLocations list = MetaTableAccessor.getRegionLocations(rowResult);
+        RegionLocations list = CatalogAccessor.getRegionLocations(rowResult);
         if (list == null) {
           LOG.warn("No serialized HRegionInfo in " + rowResult);
           return true;

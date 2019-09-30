@@ -104,6 +104,8 @@ public class TestServerCrashProcedure {
       master.setServerCrashProcessingEnabled(false);
       // Kill a server. Master will notice but do nothing other than add it to list of dead servers.
       HRegionServer hrs = this.util.getHBaseCluster().getRegionServer(0);
+      boolean carryingRoot = (master.getAssignmentManager().isCarryingRoot(hrs.getServerName()) ==
+          AssignmentManager.ServerHostRegion.HOSTING_REGION);
       boolean carryingMeta = (master.getAssignmentManager().isCarryingMeta(hrs.getServerName()) ==
           AssignmentManager.ServerHostRegion.HOSTING_REGION);
       this.util.getHBaseCluster().killRegionServer(hrs.getServerName());
@@ -121,7 +123,7 @@ public class TestServerCrashProcedure {
       ProcedureTestingUtility.setKillAndToggleBeforeStoreUpdate(procExec, true);
       long procId =
         procExec.submitProcedure(new ServerCrashProcedure(
-          procExec.getEnvironment(), hrs.getServerName(), true, carryingMeta));
+          procExec.getEnvironment(), hrs.getServerName(), true, carryingRoot, carryingMeta));
       // Now run through the procedure twice crashing the executor on each step...
       MasterProcedureTestingUtility.testRecoveryAndDoubleExecution(procExec, procId);
       // Assert all data came back.

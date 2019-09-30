@@ -25,7 +25,7 @@ import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.hbase.client.HConnection;
 import org.apache.hadoop.hbase.exceptions.DeserializationException;
-import org.apache.hadoop.hbase.MetaTableAccessor.Visitor;
+import org.apache.hadoop.hbase.CatalogAccessor.Visitor;
 import org.apache.hadoop.hbase.client.Put;
 import org.apache.hadoop.hbase.client.Result;
 import org.apache.hadoop.hbase.master.MasterServices;
@@ -68,13 +68,13 @@ public class MetaMigrationConvertingToPB {
       HRegionInfo hri = parseFrom(hriBytes);
 
       // Now make a put to write back to meta.
-      Put p =  MetaTableAccessor.makePutFromRegionInfo(hri);
+      Put p =  CatalogAccessor.makePutFromRegionInfo(hri);
 
       // Now migrate info:splitA and info:splitB if they are not null
       migrateSplitIfNecessary(r, p, HConstants.SPLITA_QUALIFIER);
       migrateSplitIfNecessary(r, p, HConstants.SPLITB_QUALIFIER);
 
-      MetaTableAccessor.putToMetaTable(this.services.getConnection(), p);
+      CatalogAccessor.putToMetaTable(this.services.getConnection(), p);
       if (LOG.isDebugEnabled()) {
         LOG.debug("Migrated " + Bytes.toString(p.getRow()));
       }
@@ -149,7 +149,7 @@ public class MetaMigrationConvertingToPB {
   static long updateMeta(final MasterServices masterServices) throws IOException {
     LOG.info("Starting update of META");
     ConvertToPBMetaVisitor v = new ConvertToPBMetaVisitor(masterServices);
-    MetaTableAccessor.fullScan(masterServices.getConnection(), v);
+    CatalogAccessor.fullScan(masterServices.getConnection(), v);
     LOG.info("Finished update of META. Total rows updated:" + v.numMigratedRows);
     return v.numMigratedRows;
   }
@@ -160,7 +160,7 @@ public class MetaMigrationConvertingToPB {
    * @throws IOException
    */
   static boolean isMetaTableUpdated(final HConnection hConnection) throws IOException {
-    List<Result> results = MetaTableAccessor.fullScanOfMeta(hConnection);
+    List<Result> results = CatalogAccessor.fullScanOfMeta(hConnection);
     if (results == null || results.isEmpty()) {
       LOG.info("hbase:meta doesn't have any entries to update.");
       return true;

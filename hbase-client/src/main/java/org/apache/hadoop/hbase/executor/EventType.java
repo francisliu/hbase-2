@@ -230,10 +230,18 @@ public enum EventType {
    * Master is processing shutdown of a RS
    */
   M_SERVER_SHUTDOWN         (70, ExecutorType.MASTER_SERVER_OPERATIONS),
+  
+  /**
+   * Master controlled events to be executed on the master.<br>
+   * M_ROOT_SERVER_SHUTDOWN <br>
+   * Master is processing shutdown of RS hosting a root region.
+   */
+  M_ROOT_SERVER_SHUTDOWN    (71, ExecutorType.MASTER_ROOT_SERVER_OPERATIONS),
+  
   /**
    * Master controlled events to be executed on the master.<br>
    * M_META_SERVER_SHUTDOWN <br>
-   * Master is processing shutdown of RS hosting a meta region (-ROOT- or hbase:meta).
+   * Master is processing shutdown of RS hosting a meta region.
    */
   M_META_SERVER_SHUTDOWN    (72, ExecutorType.MASTER_META_SERVER_OPERATIONS),
   /**

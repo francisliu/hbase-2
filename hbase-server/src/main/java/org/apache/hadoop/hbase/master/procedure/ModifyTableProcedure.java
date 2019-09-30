@@ -33,7 +33,7 @@ import org.apache.hadoop.hbase.DoNotRetryIOException;
 import org.apache.hadoop.hbase.HConstants;
 import org.apache.hadoop.hbase.HRegionInfo;
 import org.apache.hadoop.hbase.HTableDescriptor;
-import org.apache.hadoop.hbase.MetaTableAccessor;
+import org.apache.hadoop.hbase.CatalogAccessor;
 import org.apache.hadoop.hbase.TableName;
 import org.apache.hadoop.hbase.TableNotDisabledException;
 import org.apache.hadoop.hbase.TableNotFoundException;
@@ -43,7 +43,6 @@ import org.apache.hadoop.hbase.client.Result;
 import org.apache.hadoop.hbase.client.ResultScanner;
 import org.apache.hadoop.hbase.client.Scan;
 import org.apache.hadoop.hbase.client.Table;
-import org.apache.hadoop.hbase.executor.EventType;
 import org.apache.hadoop.hbase.master.MasterCoprocessorHost;
 import org.apache.hadoop.hbase.procedure2.StateMachineProcedure;
 import org.apache.hadoop.hbase.protobuf.generated.MasterProcedureProtos;
@@ -281,7 +280,7 @@ public class ModifyTableProcedure
    */
   private void prepareModify(final MasterProcedureEnv env) throws IOException {
     // Checks whether the table exists
-    if (!MetaTableAccessor.tableExists(env.getMasterServices().getConnection(), getTableName())) {
+    if (!CatalogAccessor.tableExists(env.getMasterServices().getConnection(), getTableName())) {
       throw new TableNotFoundException(getTableName());
     }
 
@@ -392,7 +391,7 @@ public class ModifyTableProcedure
     if (newReplicaCount < oldReplicaCount) {
       Set<byte[]> tableRows = new HashSet<byte[]>();
       Connection connection = env.getMasterServices().getConnection();
-      Scan scan = MetaTableAccessor.getScanForTableName(getTableName());
+      Scan scan = CatalogAccessor.getScanForTableName(getTableName());
       scan.addColumn(HConstants.CATALOG_FAMILY, HConstants.REGIONINFO_QUALIFIER);
 
       try (Table metaTable = connection.getTable(TableName.META_TABLE_NAME)) {
@@ -400,7 +399,7 @@ public class ModifyTableProcedure
         for (Result result : resScanner) {
           tableRows.add(result.getRow());
         }
-        MetaTableAccessor.removeRegionReplicasFromMeta(
+        CatalogAccessor.removeRegionReplicasFromMeta(
           tableRows,
           newReplicaCount,
           oldReplicaCount - newReplicaCount,

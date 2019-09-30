@@ -20,7 +20,6 @@ package org.apache.hadoop.hbase.client;
 
 import java.io.IOException;
 import java.io.InterruptedIOException;
-import java.net.SocketTimeoutException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -49,18 +48,16 @@ import org.apache.hadoop.hbase.HRegionInfo;
 import org.apache.hadoop.hbase.HRegionLocation;
 import org.apache.hadoop.hbase.HTableDescriptor;
 import org.apache.hadoop.hbase.MasterNotRunningException;
-import org.apache.hadoop.hbase.MetaTableAccessor;
+import org.apache.hadoop.hbase.CatalogAccessor;
 import org.apache.hadoop.hbase.NamespaceDescriptor;
 import org.apache.hadoop.hbase.NamespaceNotFoundException;
 import org.apache.hadoop.hbase.NotServingRegionException;
 import org.apache.hadoop.hbase.ProcedureInfo;
-import org.apache.hadoop.hbase.RegionException;
 import org.apache.hadoop.hbase.RegionLocations;
 import org.apache.hadoop.hbase.ServerName;
 import org.apache.hadoop.hbase.TableExistsException;
 import org.apache.hadoop.hbase.TableName;
 import org.apache.hadoop.hbase.TableNotDisabledException;
-import org.apache.hadoop.hbase.TableNotEnabledException;
 import org.apache.hadoop.hbase.TableNotFoundException;
 import org.apache.hadoop.hbase.UnknownRegionException;
 import org.apache.hadoop.hbase.ZooKeeperConnectionException;
@@ -405,7 +402,7 @@ public class HBaseAdmin implements Admin {
    */
   @Override
   public boolean tableExists(final TableName tableName) throws IOException {
-    return MetaTableAccessor.tableExists(connection, tableName);
+    return CatalogAccessor.tableExists(connection, tableName);
   }
 
   public boolean tableExists(final byte[] tableName)
@@ -828,7 +825,7 @@ public class HBaseAdmin implements Admin {
       final MetaScannerVisitor visitor = new MetaScannerVisitorBase() {
         @Override
         public boolean processRow(Result rowResult) throws IOException {
-          RegionLocations list = MetaTableAccessor.getRegionLocations(rowResult);
+          RegionLocations list = CatalogAccessor.getRegionLocations(rowResult);
           if (list == null) {
             LOG.warn("No serialized HRegionInfo in " + rowResult);
             return true;
@@ -1803,14 +1800,14 @@ public class HBaseAdmin implements Admin {
   public void closeRegion(final byte [] regionname, final String serverName)
       throws IOException {
     if (serverName != null) {
-      Pair<HRegionInfo, ServerName> pair = MetaTableAccessor.getRegion(connection, regionname);
+      Pair<HRegionInfo, ServerName> pair = CatalogAccessor.getRegion(connection, regionname);
       if (pair == null || pair.getFirst() == null) {
         throw new UnknownRegionException(Bytes.toStringBinary(regionname));
       } else {
         closeRegion(ServerName.valueOf(serverName), pair.getFirst());
       }
     } else {
-      Pair<HRegionInfo, ServerName> pair = MetaTableAccessor.getRegion(connection, regionname);
+      Pair<HRegionInfo, ServerName> pair = CatalogAccessor.getRegion(connection, regionname);
       if (pair == null) {
         throw new UnknownRegionException(Bytes.toStringBinary(regionname));
       } else if (pair.getSecond() == null) {
@@ -2163,7 +2160,7 @@ public class HBaseAdmin implements Admin {
       zookeeper = new ZooKeeperWatcher(conf, ZK_IDENTIFIER_PREFIX + connection.toString(),
           new ThrowableAbortable());
       List<Pair<HRegionInfo, ServerName>> pairs =
-        MetaTableAccessor.getTableRegionsAndLocations(zookeeper, connection, tableName);
+        CatalogAccessor.getTableRegionsAndLocations(zookeeper, connection, tableName);
       for (Pair<HRegionInfo, ServerName> pair: pairs) {
         if (pair.getFirst().isOffline()) continue;
         if (pair.getSecond() == null) continue;
@@ -2243,7 +2240,9 @@ public class HBaseAdmin implements Admin {
       public Void call(int callTimeout) throws ServiceException {
         PayloadCarryingRpcController controller = rpcControllerFactory.newController();
         controller.setCallTimeout(callTimeout);
-        // Hard to know the table name, at least check if meta
+        if (isRootRegion(encodedRegionName)) {
+          controller.setPriority(TableName.ROOT_TABLE_NAME);
+        }
         if (isMetaRegion(encodedRegionName)) {
           controller.setPriority(TableName.META_TABLE_NAME);
         }
@@ -2261,9 +2260,15 @@ public class HBaseAdmin implements Admin {
     });
   }
 
+  private boolean isRootRegion(final byte[] regionName) {
+    return Bytes.equals(regionName, HRegionInfo.ROOT_REGIONINFO.getRegionName())
+        || Bytes.equals(regionName, HRegionInfo.ROOT_REGIONINFO.getEncodedNameAsBytes());
+  }
+
   private boolean isMetaRegion(final byte[] regionName) {
     return Bytes.equals(regionName, HRegionInfo.FIRST_META_REGIONINFO.getRegionName())
-        || Bytes.equals(regionName, HRegionInfo.FIRST_META_REGIONINFO.getEncodedNameAsBytes());
+        || Bytes.equals(regionName, HRegionInfo.FIRST_META_REGIONINFO.getEncodedNameAsBytes())
+        || CatalogAccessor.isMetaRegion(regionName);
   }
 
   /**
@@ -2282,7 +2287,9 @@ public class HBaseAdmin implements Admin {
       public Void call(int callTimeout) throws ServiceException {
         PayloadCarryingRpcController controller = rpcControllerFactory.newController();
         controller.setCallTimeout(callTimeout);
-        // Hard to know the table name, at least check if meta
+        if (isRootRegion(regionName)) {
+          controller.setPriority(TableName.ROOT_TABLE_NAME);
+        }
         if (isMetaRegion(regionName)) {
           controller.setPriority(TableName.META_TABLE_NAME);
         }
@@ -2318,7 +2325,9 @@ public class HBaseAdmin implements Admin {
       public Void call(int callTimeout) throws ServiceException {
         PayloadCarryingRpcController controller = rpcControllerFactory.newController();
         controller.setCallTimeout(callTimeout);
-        // Hard to know the table name, at least check if meta
+        if (isRootRegion(regionName)) {
+          controller.setPriority(TableName.ROOT_TABLE_NAME);
+        }
         if (isMetaRegion(regionName)) {
           controller.setPriority(TableName.META_TABLE_NAME);
         }
@@ -2350,7 +2359,9 @@ public class HBaseAdmin implements Admin {
       public Void call(int callTimeout) throws ServiceException {
         PayloadCarryingRpcController controller = rpcControllerFactory.newController();
         controller.setCallTimeout(callTimeout);
-        // Hard to know the table name, at least check if meta
+        if (isRootRegion(regionName)) {
+          controller.setPriority(TableName.ROOT_TABLE_NAME);
+        }
         if (isMetaRegion(regionName)) {
           controller.setPriority(TableName.META_TABLE_NAME);
         }
@@ -2655,7 +2666,7 @@ public class HBaseAdmin implements Admin {
       zookeeper = new ZooKeeperWatcher(conf, ZK_IDENTIFIER_PREFIX + connection.toString(),
         new ThrowableAbortable());
       List<Pair<HRegionInfo, ServerName>> pairs =
-        MetaTableAccessor.getTableRegionsAndLocations(zookeeper, connection, tableName);
+        CatalogAccessor.getTableRegionsAndLocations(zookeeper, connection, tableName);
       for (Pair<HRegionInfo, ServerName> pair: pairs) {
         // May not be a server for a particular row
         if (pair.getSecond() == null) continue;
@@ -2717,7 +2728,11 @@ public class HBaseAdmin implements Admin {
       splitRegion(tableNameOrRegionName, splitPoint);
     } catch (IllegalArgumentException e) {
       // Bad region, try table
-      split(TableName.valueOf(tableNameOrRegionName), splitPoint);
+      if (Bytes.equals(TableName.META_TABLE_NAME.getName(), tableNameOrRegionName)) {
+        split(TableName.META_TABLE_NAME, splitPoint);
+      } else {
+        split(TableName.valueOf(tableNameOrRegionName), splitPoint);
+      }
     }
   }
 
@@ -2781,7 +2796,7 @@ public class HBaseAdmin implements Admin {
    * @param regionName Name of a region.
    * @return a pair of HRegionInfo and ServerName if <code>regionName</code> is
    *  a verified region name (we call {@link
-   *  MetaTableAccessor#getRegion(HConnection, byte[])}
+   *  CatalogAccessor#getRegion(Connection, byte[])}
    *  else null.
    * Throw IllegalArgumentException if <code>regionName</code> is null.
    * @throws IOException
@@ -2791,11 +2806,11 @@ public class HBaseAdmin implements Admin {
       throw new IllegalArgumentException("Pass a table name or region name");
     }
     Pair<HRegionInfo, ServerName> pair =
-      MetaTableAccessor.getRegion(connection, regionName);
+      CatalogAccessor.getRegion(connection, regionName);
     if (pair == null) {
       final AtomicReference<Pair<HRegionInfo, ServerName>> result =
         new AtomicReference<Pair<HRegionInfo, ServerName>>(null);
-      final String encodedName = Bytes.toString(regionName);
+      final String encodedName = Bytes.toStringBinary(regionName);
       MetaScannerVisitor visitor = new MetaScannerVisitorBase() {
         @Override
         public boolean processRow(Result data) throws IOException {
@@ -2804,11 +2819,13 @@ public class HBaseAdmin implements Admin {
             LOG.warn("No serialized HRegionInfo in " + data);
             return true;
           }
-          RegionLocations rl = MetaTableAccessor.getRegionLocations(data);
+          RegionLocations rl = CatalogAccessor.getRegionLocations(data);
           boolean matched = false;
           ServerName sn = null;
           for (HRegionLocation h : rl.getRegionLocations()) {
-            if (h != null && encodedName.equals(h.getRegionInfo().getEncodedName())) {
+            if (h != null
+                && (encodedName.equals(h.getRegionInfo().getEncodedName())
+                      || Bytes.equals(regionName, h.getRegionInfo().getRegionName()))) {
               sn = h.getServerName();
               info = h.getRegionInfo();
               matched = true;
@@ -2820,8 +2837,16 @@ public class HBaseAdmin implements Admin {
         }
       };
 
-      MetaScanner.metaScan(connection, visitor, null);
+
+      //We scan root first because region might be a meta region and meta might still be unassigned
+      //root should be small so should be a non-issue scanning it first
+      //also CatalogAccessor.getRegion should be able to catch most of the regioname requests
+      MetaScanner.metaScan(connection, visitor, null, null, -1, TableName.ROOT_TABLE_NAME);
       pair = result.get();
+      if (pair == null) {
+        MetaScanner.metaScan(connection, visitor, null);
+        pair = result.get();
+      }
     }
     return pair;
   }
@@ -2837,10 +2862,10 @@ public class HBaseAdmin implements Admin {
   private byte[] getRegionName(
       final byte[] regionNameOrEncodedRegionName) throws IOException {
     if (Bytes.equals(regionNameOrEncodedRegionName,
-        HRegionInfo.FIRST_META_REGIONINFO.getRegionName())
+        HRegionInfo.ROOT_REGIONINFO.getRegionName())
           || Bytes.equals(regionNameOrEncodedRegionName,
-            HRegionInfo.FIRST_META_REGIONINFO.getEncodedNameAsBytes())) {
-      return HRegionInfo.FIRST_META_REGIONINFO.getRegionName();
+            HRegionInfo.ROOT_REGIONINFO.getEncodedNameAsBytes())) {
+      return HRegionInfo.ROOT_REGIONINFO.getRegionName();
     }
     byte[] tmp = regionNameOrEncodedRegionName;
     Pair<HRegionInfo, ServerName> regionServerPair = getRegion(regionNameOrEncodedRegionName);
@@ -2859,7 +2884,7 @@ public class HBaseAdmin implements Admin {
    */
   private TableName checkTableExists(final TableName tableName)
       throws IOException {
-    if (!MetaTableAccessor.tableExists(connection, tableName)) {
+    if (!CatalogAccessor.tableExists(connection, tableName)) {
       throw new TableNotFoundException(tableName);
     }
     return tableName;
@@ -3197,7 +3222,7 @@ public class HBaseAdmin implements Admin {
         new ThrowableAbortable());
     List<HRegionInfo> Regions = null;
     try {
-      Regions = MetaTableAccessor.getTableRegions(zookeeper, connection, tableName, true);
+      Regions = CatalogAccessor.getTableRegions(zookeeper, connection, tableName, true);
     } finally {
       zookeeper.close();
     }
@@ -3357,7 +3382,7 @@ public class HBaseAdmin implements Admin {
     try {
       checkTableExists(tableName);
       List<Pair<HRegionInfo, ServerName>> pairs =
-        MetaTableAccessor.getTableRegionsAndLocations(zookeeper, connection, tableName);
+        CatalogAccessor.getTableRegionsAndLocations(zookeeper, connection, tableName);
       for (Pair<HRegionInfo, ServerName> pair: pairs) {
         if (pair.getFirst().isOffline()) continue;
         if (pair.getSecond() == null) continue;

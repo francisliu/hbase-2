@@ -62,6 +62,8 @@ import org.apache.hadoop.hbase.protobuf.generated.HBaseProtos.SnapshotDescriptio
 import org.apache.hadoop.hbase.protobuf.generated.MasterProtos.GetTableDescriptorsRequest;
 import org.apache.hadoop.hbase.protobuf.generated.MasterProtos.GetTableNamesRequest;
 import org.apache.hadoop.hbase.protobuf.generated.QuotaProtos.Quotas;
+import org.apache.hadoop.hbase.protobuf.generated.RegionServerStatusProtos.RegionStateTransition
+    .TransitionCode;
 import org.apache.hadoop.hbase.regionserver.HRegionServer;
 import org.apache.hadoop.hbase.testclassification.MediumTests;
 import org.apache.hadoop.hbase.util.Bytes;
@@ -1249,6 +1251,10 @@ public class TestMasterObserver {
     public void postSetNamespaceQuota(final ObserverContext<MasterCoprocessorEnvironment> ctx,
         final String namespace, final Quotas quotas) throws IOException {
     }
+
+    public void preOnRegionTransition(ObserverContext<MasterCoprocessorEnvironment> ctx,
+        HRegionInfo hri, TransitionCode code) throws IOException {
+    }
   }
 
   private static HBaseTestingUtility UTIL = new HBaseTestingUtility();
@@ -1689,7 +1695,7 @@ public class TestMasterObserver {
       int moveCnt = openRegions.size()/2;
       for (int i=0; i<moveCnt; i++) {
         HRegionInfo info = openRegions.get(i);
-        if (!info.isMetaTable()) {
+        if (!info.isMetaTable() && !info.isRootRegion()) {
           master.getMasterRpcServices().moveRegion(null, RequestConverter.buildMoveRegionRequest(
               openRegions.get(i).getEncodedNameAsBytes(), destRS));
         }

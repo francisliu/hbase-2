@@ -22,16 +22,19 @@ import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertTrue;
 import java.io.IOException;
 import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.hbase.CatalogAccessor;
 import org.apache.hadoop.hbase.CoordinatedStateManager;
 import org.apache.hadoop.hbase.HBaseTestingUtility;
 import org.apache.hadoop.hbase.HRegionInfo;
+import org.apache.hadoop.hbase.client.RegionReplicaUtil;
+import org.apache.hadoop.hbase.client.Result;
 import org.apache.hadoop.hbase.testclassification.MediumTests;
 import org.apache.hadoop.hbase.MiniHBaseCluster;
 import org.apache.hadoop.hbase.MiniHBaseCluster.MiniHBaseClusterRegionServer;
 import org.apache.hadoop.hbase.ServerName;
 import org.apache.hadoop.hbase.Waiter;
 import org.apache.hadoop.hbase.util.Bytes;
-import org.apache.hadoop.hbase.zookeeper.MetaTableLocator;
+import org.apache.hadoop.hbase.zookeeper.RootTableLocator;
 import org.apache.hadoop.hbase.zookeeper.ZKUtil;
 import org.apache.zookeeper.KeeperException;
 import org.junit.AfterClass;
@@ -73,32 +76,32 @@ public class TestMetaShutdownHandler {
 
     HMaster master = cluster.getMaster();
     RegionStates regionStates = master.getAssignmentManager().getRegionStates();
-    ServerName metaServerName = regionStates.getRegionServerOfRegion(
+    ServerName origMetaServerName = regionStates.getRegionServerOfRegion(
       HRegionInfo.FIRST_META_REGIONINFO);
-    if (master.getServerName().equals(metaServerName) || metaServerName == null
-        || !metaServerName.equals(cluster.getServerHoldingMeta())) {
+    if (master.getServerName().equals(origMetaServerName) || origMetaServerName == null
+        || !origMetaServerName.equals(cluster.getServerHoldingMeta())) {
       // Move meta off master
-      metaServerName = cluster.getLiveRegionServerThreads()
+      origMetaServerName = cluster.getLiveRegionServerThreads()
           .get(0).getRegionServer().getServerName();
       master.move(HRegionInfo.FIRST_META_REGIONINFO.getEncodedNameAsBytes(),
-        Bytes.toBytes(metaServerName.getServerName()));
+        Bytes.toBytes(origMetaServerName.getServerName()));
       TEST_UTIL.waitUntilNoRegionsInTransition(60000);
     }
     RegionState metaState =
-        MetaTableLocator.getMetaRegionState(master.getZooKeeper());
+        regionStates.getRegionState(HRegionInfo.FIRST_META_REGIONINFO);
     assertEquals("Meta should be not in transition",
       metaState.getState(), RegionState.State.OPEN);
     assertNotEquals("Meta should be moved off master",
-      metaServerName, master.getServerName());
+        origMetaServerName, master.getServerName());
 
     // Delete the ephemeral node of the meta-carrying region server.
     // This is trigger the expire of this region server on the master.
     String rsEphemeralNodePath =
-        ZKUtil.joinZNode(master.getZooKeeper().rsZNode, metaServerName.toString());
+        ZKUtil.joinZNode(master.getZooKeeper().rsZNode, origMetaServerName.toString());
     ZKUtil.deleteNode(master.getZooKeeper(), rsEphemeralNodePath);
     // Wait for SSH to finish
     final ServerManager serverManager = master.getServerManager();
-    final ServerName priorMetaServerName = metaServerName;
+    final ServerName priorMetaServerName = origMetaServerName;
     TEST_UTIL.waitFor(120000, 200, new Waiter.Predicate<Exception>() {
       @Override
       public boolean evaluate() throws Exception {
@@ -112,13 +115,18 @@ public class TestMetaShutdownHandler {
     assertTrue("Meta should be assigned",
       regionStates.isRegionOnline(HRegionInfo.FIRST_META_REGIONINFO));
     // Now, make sure meta is registered in zk
-    metaState = MetaTableLocator.getMetaRegionState(master.getZooKeeper());
+    Result metaResult =  CatalogAccessor.getRegionResult(TEST_UTIL.getConnection(),
+        HRegionInfo.FIRST_META_REGIONINFO.getRegionName());
+    RegionState.State storedState  =
+        RegionStateStore.getRegionState(metaResult, RegionReplicaUtil.DEFAULT_REPLICA_ID);
+    ServerName storedServer =
+        RegionStateStore.getRegionServer(metaResult, RegionReplicaUtil.DEFAULT_REPLICA_ID);
     assertEquals("Meta should be not in transition",
-      metaState.getState(), RegionState.State.OPEN);
-    assertEquals("Meta should be assigned", metaState.getServerName(),
+        storedState, RegionState.State.OPEN);
+    assertEquals("Meta should be assigned", storedServer,
       regionStates.getRegionServerOfRegion(HRegionInfo.FIRST_META_REGIONINFO));
     assertNotEquals("Meta should be assigned on a different server",
-      metaState.getServerName(), metaServerName);
+      storedServer, origMetaServerName);
   }
 
   public static class MyRegionServer extends MiniHBaseClusterRegionServer {

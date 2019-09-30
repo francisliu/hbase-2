@@ -107,7 +107,7 @@ import org.apache.hadoop.hbase.regionserver.ServerNonceManager;
 import org.apache.hadoop.hbase.regionserver.throttle.ThroughputController;
 import org.apache.hadoop.hbase.util.Bytes;
 import org.apache.hadoop.hbase.wal.WAL;
-import org.apache.hadoop.hbase.zookeeper.MetaTableLocator;
+import org.apache.hadoop.hbase.zookeeper.RootTableLocator;
 import org.apache.hadoop.hbase.zookeeper.ZooKeeperWatcher;
 import org.apache.zookeeper.KeeperException;
 
@@ -295,8 +295,7 @@ ClientProtos.ClientService.BlockingInterface, RegionServerServices {
     return null;
   }
 
-  @Override
-  public MetaTableLocator getMetaTableLocator() {
+  public RootTableLocator getRootTableLocator() {
     return null;
   }
 
@@ -445,7 +444,7 @@ ClientProtos.ClientService.BlockingInterface, RegionServerServices {
   public GetRegionInfoResponse getRegionInfo(RpcController controller,
       GetRegionInfoRequest request) throws ServiceException {
     GetRegionInfoResponse.Builder builder = GetRegionInfoResponse.newBuilder();
-    builder.setRegionInfo(HRegionInfo.convert(HRegionInfo.FIRST_META_REGIONINFO));
+    builder.setRegionInfo(HRegionInfo.convert(HRegionInfo.ROOT_REGIONINFO));
     return builder.build();
   }
 

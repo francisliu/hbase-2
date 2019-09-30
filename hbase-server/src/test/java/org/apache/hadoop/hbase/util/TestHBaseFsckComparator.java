@@ -54,48 +54,48 @@ public class TestHBaseFsckComparator {
   public void testEquals() {
     HbckInfo hi1 = genHbckInfo(table, keyA, keyB, 0);
     HbckInfo hi2 = genHbckInfo(table, keyA, keyB, 0);
-    assertEquals(0, HBaseFsck.cmp.compare(hi1, hi2));
-    assertEquals(0, HBaseFsck.cmp.compare(hi2, hi1));
+    assertEquals(0, HBaseFsck.KEYRANGE_COMPARATOR.compare(hi1, hi2));
+    assertEquals(0, HBaseFsck.KEYRANGE_COMPARATOR.compare(hi2, hi1));
   }
 
   @Test
   public void testEqualsInstance() {
     HbckInfo hi1 = genHbckInfo(table, keyA, keyB, 0);
     HbckInfo hi2 = hi1;
-    assertEquals(0, HBaseFsck.cmp.compare(hi1, hi2));
-    assertEquals(0, HBaseFsck.cmp.compare(hi2, hi1));
+    assertEquals(0, HBaseFsck.KEYRANGE_COMPARATOR.compare(hi1, hi2));
+    assertEquals(0, HBaseFsck.KEYRANGE_COMPARATOR.compare(hi2, hi1));
   }
 
   @Test
   public void testDiffTable() {
     HbckInfo hi1 = genHbckInfo(table, keyA, keyC, 0);
     HbckInfo hi2 = genHbckInfo(table2, keyA, keyC, 0);
-    assertTrue(HBaseFsck.cmp.compare(hi1, hi2) < 0);
-    assertTrue(HBaseFsck.cmp.compare(hi2, hi1) > 0);
+    assertTrue(HBaseFsck.KEYRANGE_COMPARATOR.compare(hi1, hi2) < 0);
+    assertTrue(HBaseFsck.KEYRANGE_COMPARATOR.compare(hi2, hi1) > 0);
   }
 
   @Test
   public void testDiffStartKey() {
     HbckInfo hi1 = genHbckInfo(table, keyStart, keyC, 0);
     HbckInfo hi2 = genHbckInfo(table, keyA, keyC, 0);
-    assertTrue(HBaseFsck.cmp.compare(hi1, hi2) < 0);
-    assertTrue(HBaseFsck.cmp.compare(hi2, hi1) > 0);
+    assertTrue(HBaseFsck.KEYRANGE_COMPARATOR.compare(hi1, hi2) < 0);
+    assertTrue(HBaseFsck.KEYRANGE_COMPARATOR.compare(hi2, hi1) > 0);
   }
 
   @Test
   public void testDiffEndKey() {
     HbckInfo hi1 = genHbckInfo(table, keyA, keyB, 0);
     HbckInfo hi2 = genHbckInfo(table, keyA, keyC, 0);
-    assertTrue(HBaseFsck.cmp.compare(hi1, hi2) < 0);
-    assertTrue(HBaseFsck.cmp.compare(hi2, hi1) > 0);
+    assertTrue(HBaseFsck.KEYRANGE_COMPARATOR.compare(hi1, hi2) < 0);
+    assertTrue(HBaseFsck.KEYRANGE_COMPARATOR.compare(hi2, hi1) > 0);
   }
 
   @Test
   public void testAbsEndKey() {
     HbckInfo hi1 = genHbckInfo(table, keyA, keyC, 0);
     HbckInfo hi2 = genHbckInfo(table, keyA, keyEnd, 0);
-    assertTrue(HBaseFsck.cmp.compare(hi1, hi2) < 0);
-    assertTrue(HBaseFsck.cmp.compare(hi2, hi1) > 0);
+    assertTrue(HBaseFsck.KEYRANGE_COMPARATOR.compare(hi1, hi2) < 0);
+    assertTrue(HBaseFsck.KEYRANGE_COMPARATOR.compare(hi2, hi1) > 0);
   }
 
 }

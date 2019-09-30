@@ -39,7 +39,7 @@ import org.apache.hadoop.hbase.testclassification.LargeTests;
 import org.apache.hadoop.hbase.NamespaceDescriptor;
 import org.apache.hadoop.hbase.ServerName;
 import org.apache.hadoop.hbase.TableName;
-import org.apache.hadoop.hbase.MetaTableAccessor;
+import org.apache.hadoop.hbase.CatalogAccessor;
 import org.apache.hadoop.hbase.client.Admin;
 import org.apache.hadoop.hbase.client.Connection;
 import org.apache.hadoop.hbase.client.ConnectionFactory;
@@ -230,7 +230,7 @@ public class OfflineMetaRebuildTestCore {
     out.close();
 
     // add to meta.
-    MetaTableAccessor.addRegionToMeta(meta, hri);
+    CatalogAccessor.addRegionToMeta(meta, hri);
     meta.close();
     return hri;
   }

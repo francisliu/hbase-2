@@ -106,7 +106,7 @@ public class TestMergeTable {
 
     // Now create the root and meta regions and insert the data regions
     // created above into hbase:meta
-    setupMeta(rootdir, regions);
+    setupROOTAndMeta(rootdir, regions);
     try {
       LOG.info("Starting mini zk cluster");
       UTIL.startMiniZKCluster();
@@ -116,7 +116,7 @@ public class TestMergeTable {
       Connection connection = HConnectionManager.getConnection(c);
 
       List<HRegionInfo> originalTableRegions =
-        MetaTableAccessor.getTableRegions(UTIL.getZooKeeperWatcher(), connection,
+        CatalogAccessor.getTableRegions(UTIL.getZooKeeperWatcher(), connection,
           desc.getTableName());
       LOG.info("originalTableRegions size=" + originalTableRegions.size() +
         "; " + originalTableRegions);
@@ -124,7 +124,7 @@ public class TestMergeTable {
       admin.disableTable(desc.getTableName());
       HMerge.merge(c, FileSystem.get(c), desc.getTableName());
       List<HRegionInfo> postMergeTableRegions =
-        MetaTableAccessor.getTableRegions(UTIL.getZooKeeperWatcher(), connection,
+        CatalogAccessor.getTableRegions(UTIL.getZooKeeperWatcher(), connection,
           desc.getTableName());
       LOG.info("postMergeTableRegions size=" + postMergeTableRegions.size() +
         "; " + postMergeTableRegions);
@@ -158,15 +158,20 @@ public class TestMergeTable {
     return region;
   }
 
-  protected void setupMeta(Path rootdir, final HRegion [] regions)
+  protected void setupROOTAndMeta(Path rootdir, final HRegion [] regions)
   throws IOException {
+    HRegion root =
+      HRegion.createHRegion(HRegionInfo.ROOT_REGIONINFO, rootdir,
+      UTIL.getConfiguration(), UTIL.getMetaTableDescriptor());
     HRegion meta =
       HRegion.createHRegion(HRegionInfo.FIRST_META_REGIONINFO, rootdir,
       UTIL.getConfiguration(), UTIL.getMetaTableDescriptor());
+    HRegion.addRegionToMETA(root, meta);
     for (HRegion r: regions) {
       HRegion.addRegionToMETA(meta, r);
     }
     HRegion.closeHRegion(meta);
+    HRegion.closeHRegion(root);
   }
 
 }

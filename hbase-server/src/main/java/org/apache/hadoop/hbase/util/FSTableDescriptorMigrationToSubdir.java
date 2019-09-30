@@ -59,7 +59,7 @@ public class FSTableDescriptorMigrationToSubdir {
       FSTableDescriptors.getTableInfoPath(fs, metaTableDir);
     return metaTableInfoStatus == null;
   }
-  
+
   /**
    * Migrates all snapshots, user tables and system tables that require migration.
    * First migrates snapshots.
@@ -88,6 +88,7 @@ public class FSTableDescriptorMigrationToSubdir {
     LOG.info("Migrating system tables");
     // migrate meta last because that's what we check to see if migration is complete
     migrateTableIfExists(fs, rootDir, TableName.META_TABLE_NAME);
+    migrateTableIfExists(fs, rootDir, TableName.ROOT_TABLE_NAME);
   }
 
   private static void migrateTableIfExists(FileSystem fs, Path rootDir, TableName tableName)

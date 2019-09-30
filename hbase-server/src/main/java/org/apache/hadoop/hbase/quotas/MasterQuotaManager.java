@@ -18,7 +18,7 @@ import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.hbase.DoNotRetryIOException;
 import org.apache.hadoop.hbase.HRegionInfo;
-import org.apache.hadoop.hbase.MetaTableAccessor;
+import org.apache.hadoop.hbase.CatalogAccessor;
 import org.apache.hadoop.hbase.NamespaceDescriptor;
 import org.apache.hadoop.hbase.RegionStateListener;
 import org.apache.hadoop.hbase.TableName;
@@ -26,7 +26,6 @@ import org.apache.hadoop.hbase.classification.InterfaceAudience;
 import org.apache.hadoop.hbase.classification.InterfaceStability;
 import org.apache.hadoop.hbase.master.MasterServices;
 import org.apache.hadoop.hbase.namespace.NamespaceAuditor;
-import org.apache.hadoop.hbase.master.procedure.CreateTableProcedure;
 import org.apache.hadoop.hbase.protobuf.ProtobufUtil;
 import org.apache.hadoop.hbase.protobuf.generated.MasterProtos.SetQuotaRequest;
 import org.apache.hadoop.hbase.protobuf.generated.MasterProtos.SetQuotaResponse;
@@ -66,7 +65,7 @@ public class MasterQuotaManager implements RegionStateListener {
     }
 
     // Create the quota table if missing
-    if (!MetaTableAccessor.tableExists(masterServices.getConnection(),
+    if (!CatalogAccessor.tableExists(masterServices.getConnection(),
         QuotaUtil.QUOTA_TABLE_NAME)) {
       LOG.info("Quota table not found. Creating...");
       createQuotaTable();
@@ -344,13 +343,21 @@ public class MasterQuotaManager implements RegionStateListener {
     return -1;
   }
 
+  @Override
   public void onRegionMerged(HRegionInfo hri) throws IOException {
+    if (hri.getTable().isSystemTable()) {
+      return;
+    }
     if (initialized) {
       namespaceQuotaManager.updateQuotaForRegionMerge(hri);
     }
   }
 
+  @Override
   public void onRegionSplit(HRegionInfo hri) throws IOException {
+    if (hri.getTable().isSystemTable()) {
+      return;
+    }
     if (initialized) {
       namespaceQuotaManager.checkQuotaToSplitRegion(hri);
     }
@@ -519,6 +526,9 @@ public class MasterQuotaManager implements RegionStateListener {
 
   @Override
   public void onRegionSplitReverted(HRegionInfo hri) throws IOException {
+    if (hri.getTable().isSystemTable()) {
+      return;
+    }
     if (initialized) {
       this.namespaceQuotaManager.removeRegionFromNamespaceUsage(hri);
     }

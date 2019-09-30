@@ -35,7 +35,7 @@ import org.apache.hadoop.hbase.TableName;
 import org.apache.hadoop.hbase.HRegionInfo;
 import org.apache.hadoop.hbase.HTableDescriptor;
 import org.apache.hadoop.hbase.ServerName;
-import org.apache.hadoop.hbase.MetaTableAccessor;
+import org.apache.hadoop.hbase.CatalogAccessor;
 import org.apache.hadoop.hbase.errorhandling.ForeignException;
 import org.apache.hadoop.hbase.errorhandling.ForeignExceptionDispatcher;
 import org.apache.hadoop.hbase.errorhandling.ForeignExceptionSnare;
@@ -55,7 +55,7 @@ import org.apache.hadoop.hbase.snapshot.SnapshotDescriptionUtils;
 import org.apache.hadoop.hbase.snapshot.SnapshotManifest;
 import org.apache.hadoop.hbase.util.FSUtils;
 import org.apache.hadoop.hbase.util.Pair;
-import org.apache.hadoop.hbase.zookeeper.MetaTableLocator;
+import org.apache.hadoop.hbase.zookeeper.RootTableLocator;
 import org.apache.zookeeper.KeeperException;
 
 /**
@@ -175,11 +175,11 @@ public abstract class TakeSnapshotHandler extends EventHandler implements Snapsh
       monitor.rethrowException();
 
       List<Pair<HRegionInfo, ServerName>> regionsAndLocations;
-      if (TableName.META_TABLE_NAME.equals(snapshotTable)) {
-        regionsAndLocations = new MetaTableLocator().getMetaRegionsAndLocations(
+      if (TableName.ROOT_TABLE_NAME.equals(snapshotTable)) {
+        regionsAndLocations = new RootTableLocator().getRootRegionsAndLocations(
           server.getZooKeeper());
       } else {
-        regionsAndLocations = MetaTableAccessor.getTableRegionsAndLocations(
+        regionsAndLocations = CatalogAccessor.getTableRegionsAndLocations(
           server.getZooKeeper(), server.getConnection(), snapshotTable, false);
       }
 

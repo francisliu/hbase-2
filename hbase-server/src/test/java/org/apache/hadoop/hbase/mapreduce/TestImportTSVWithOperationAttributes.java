@@ -248,8 +248,7 @@ public class TestImportTSVWithOperationAttributes implements Configurable {
     public void prePut(ObserverContext<RegionCoprocessorEnvironment> e, Put put, WALEdit edit,
         Durability durability) throws IOException {
       Region region = e.getEnvironment().getRegion();
-      if (!region.getRegionInfo().isMetaTable()
-          && !region.getRegionInfo().getTable().isSystemTable()) {
+      if (!region.getRegionInfo().getTable().isSystemTable()) {
         if (put.getAttribute(TEST_ATR_KEY) != null) {
           LOG.debug("allow any put to happen " + region.getRegionInfo().getRegionNameAsString());
         } else {

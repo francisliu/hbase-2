@@ -291,14 +291,16 @@ public class TestFSTableDescriptors {
       assertTrue(chtds.get(TableName.valueOf(name + i)) != null);
     }
 
-    assertTrue(nonchtds.getAll().size() == chtds.getAll().size());
+    assertEquals(nonchtds.getAll().size(), chtds.getAll().size());
 
     // add a new entry for hbase:meta
     HTableDescriptor htd = new HTableDescriptor(HTableDescriptor.META_TABLEDESC.getTableName());
     nonchtds.createTableDescriptor(htd);
+    htd = new HTableDescriptor(HTableDescriptor.ROOT_TABLEDESC.getTableName());
+    nonchtds.createTableDescriptor(htd);
 
     // hbase:meta will only increase the cachehit by 1
-    assertTrue(nonchtds.getAll().size() == chtds.getAll().size());
+    assertEquals(nonchtds.getAll().size(), chtds.getAll().size());
 
     for (Map.Entry entry : nonchtds.getAll().entrySet()) {
       String t = (String) entry.getKey();

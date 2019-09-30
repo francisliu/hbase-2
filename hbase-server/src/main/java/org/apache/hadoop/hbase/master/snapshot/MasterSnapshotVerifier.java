@@ -32,7 +32,7 @@ import org.apache.hadoop.hbase.TableName;
 import org.apache.hadoop.hbase.HRegionInfo;
 import org.apache.hadoop.hbase.HTableDescriptor;
 import org.apache.hadoop.hbase.client.RegionReplicaUtil;
-import org.apache.hadoop.hbase.MetaTableAccessor;
+import org.apache.hadoop.hbase.CatalogAccessor;
 import org.apache.hadoop.hbase.master.MasterServices;
 import org.apache.hadoop.hbase.protobuf.generated.HBaseProtos.SnapshotDescription;
 import org.apache.hadoop.hbase.protobuf.generated.SnapshotProtos.SnapshotRegionManifest;
@@ -41,7 +41,7 @@ import org.apache.hadoop.hbase.snapshot.CorruptedSnapshotException;
 import org.apache.hadoop.hbase.snapshot.SnapshotDescriptionUtils;
 import org.apache.hadoop.hbase.snapshot.SnapshotManifest;
 import org.apache.hadoop.hbase.snapshot.SnapshotReferenceUtil;
-import org.apache.hadoop.hbase.zookeeper.MetaTableLocator;
+import org.apache.hadoop.hbase.zookeeper.RootTableLocator;
 
 /**
  * General snapshot verification on the master.
@@ -152,10 +152,10 @@ public final class MasterSnapshotVerifier {
    */
   private void verifyRegions(final SnapshotManifest manifest) throws IOException {
     List<HRegionInfo> regions;
-    if (TableName.META_TABLE_NAME.equals(tableName)) {
-      regions = new MetaTableLocator().getMetaRegions(services.getZooKeeper());
+    if (TableName.ROOT_TABLE_NAME.equals(tableName)) {
+      regions = new RootTableLocator().getRootRegions(services.getZooKeeper());
     } else {
-      regions = MetaTableAccessor.getTableRegions(services.getZooKeeper(),
+      regions = CatalogAccessor.getTableRegions(services.getZooKeeper(),
         services.getConnection(), tableName);
     }
     // Remove the non-default regions

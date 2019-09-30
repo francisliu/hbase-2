@@ -33,7 +33,7 @@ import org.apache.hadoop.hbase.HBaseInterfaceAudience;
 import org.apache.hadoop.hbase.HRegionInfo;
 import org.apache.hadoop.hbase.ServerName;
 import org.apache.hadoop.hbase.TableName;
-import org.apache.hadoop.hbase.MetaTableAccessor;
+import org.apache.hadoop.hbase.CatalogAccessor;
 import org.apache.hadoop.hbase.errorhandling.ForeignException;
 import org.apache.hadoop.hbase.errorhandling.ForeignExceptionDispatcher;
 import org.apache.hadoop.hbase.master.MasterCoprocessorHost;
@@ -46,7 +46,7 @@ import org.apache.hadoop.hbase.procedure.ProcedureCoordinatorRpcs;
 import org.apache.hadoop.hbase.procedure.ZKProcedureCoordinatorRpcs;
 import org.apache.hadoop.hbase.protobuf.generated.HBaseProtos.ProcedureDescription;
 import org.apache.hadoop.hbase.util.Pair;
-import org.apache.hadoop.hbase.zookeeper.MetaTableLocator;
+import org.apache.hadoop.hbase.zookeeper.RootTableLocator;
 import org.apache.zookeeper.KeeperException;
 
 import com.google.common.collect.Lists;
@@ -128,11 +128,11 @@ public class MasterFlushTableProcedureManager extends MasterProcedureManager {
     // We may still miss regions that need to be flushed.
     List<Pair<HRegionInfo, ServerName>> regionsAndLocations;
 
-    if (TableName.META_TABLE_NAME.equals(tableName)) {
-      regionsAndLocations = new MetaTableLocator().getMetaRegionsAndLocations(
+    if (TableName.ROOT_TABLE_NAME.equals(tableName)) {
+      regionsAndLocations = new RootTableLocator().getRootRegionsAndLocations(
         master.getZooKeeper());
     } else {
-      regionsAndLocations = MetaTableAccessor.getTableRegionsAndLocations(
+      regionsAndLocations = CatalogAccessor.getTableRegionsAndLocations(
         master.getZooKeeper(), master.getConnection(), tableName, false);
     }
 

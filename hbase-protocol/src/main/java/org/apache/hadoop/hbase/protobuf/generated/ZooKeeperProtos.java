@@ -79,6 +79,42 @@ public final class ZooKeeperProtos {
      * </pre>
      */
     org.apache.hadoop.hbase.protobuf.generated.ClusterStatusProtos.RegionState.State getState();
+
+    // optional bool is_root = 101;
+    /**
+     * <code>optional bool is_root = 101;</code>
+     *
+     * <pre>
+     * Whether the znode acts as meta or root. By default it will act as root
+     * </pre>
+     */
+    boolean hasIsRoot();
+    /**
+     * <code>optional bool is_root = 101;</code>
+     *
+     * <pre>
+     * Whether the znode acts as meta or root. By default it will act as root
+     * </pre>
+     */
+    boolean getIsRoot();
+
+    // optional uint32 root_version = 102;
+    /**
+     * <code>optional uint32 root_version = 102;</code>
+     *
+     * <pre>
+     * The comparator version. Set to 0 for original comparator
+     * </pre>
+     */
+    boolean hasRootVersion();
+    /**
+     * <code>optional uint32 root_version = 102;</code>
+     *
+     * <pre>
+     * The comparator version. Set to 0 for original comparator
+     * </pre>
+     */
+    int getRootVersion();
   }
   /**
    * Protobuf type {@code hbase.pb.MetaRegionServer}
@@ -163,6 +199,16 @@ public final class ZooKeeperProtos {
                 bitField0_ |= 0x00000004;
                 state_ = value;
               }
+                break;
+            }
+            case 808: {
+              bitField0_ |= 0x00000008;
+              isRoot_ = input.readBool();
+              break;
+            }
+            case 816: {
+              bitField0_ |= 0x00000010;
+              rootVersion_ = input.readUInt32();
               break;
             }
           }
@@ -294,10 +340,60 @@ public final class ZooKeeperProtos {
       return state_;
     }
 
+    // optional bool is_root = 101;
+    public static final int IS_ROOT_FIELD_NUMBER = 101;
+    private boolean isRoot_;
+    /**
+     * <code>optional bool is_root = 101;</code>
+     *
+     * <pre>
+     * Whether the znode acts as meta or root. By default it will act as root
+     * </pre>
+     */
+    public boolean hasIsRoot() {
+      return ((bitField0_ & 0x00000008) == 0x00000008);
+    }
+    /**
+     * <code>optional bool is_root = 101;</code>
+     *
+     * <pre>
+     * Whether the znode acts as meta or root. By default it will act as root
+     * </pre>
+     */
+    public boolean getIsRoot() {
+      return isRoot_;
+    }
+
+    // optional uint32 root_version = 102;
+    public static final int ROOT_VERSION_FIELD_NUMBER = 102;
+    private int rootVersion_;
+    /**
+     * <code>optional uint32 root_version = 102;</code>
+     *
+     * <pre>
+     * The comparator version. Set to 0 for original comparator
+     * </pre>
+     */
+    public boolean hasRootVersion() {
+      return ((bitField0_ & 0x00000010) == 0x00000010);
+    }
+    /**
+     * <code>optional uint32 root_version = 102;</code>
+     *
+     * <pre>
+     * The comparator version. Set to 0 for original comparator
+     * </pre>
+     */
+    public int getRootVersion() {
+      return rootVersion_;
+    }
+
     private void initFields() {
       server_ = org.apache.hadoop.hbase.protobuf.generated.HBaseProtos.ServerName.getDefaultInstance();
       rpcVersion_ = 0;
       state_ = org.apache.hadoop.hbase.protobuf.generated.ClusterStatusProtos.RegionState.State.OFFLINE;
+      isRoot_ = false;
+      rootVersion_ = 0;
     }
     private byte memoizedIsInitialized = -1;
     public final boolean isInitialized() {
@@ -328,6 +424,12 @@ public final class ZooKeeperProtos {
       if (((bitField0_ & 0x00000004) == 0x00000004)) {
         output.writeEnum(3, state_.getNumber());
       }
+      if (((bitField0_ & 0x00000008) == 0x00000008)) {
+        output.writeBool(101, isRoot_);
+      }
+      if (((bitField0_ & 0x00000010) == 0x00000010)) {
+        output.writeUInt32(102, rootVersion_);
+      }
       getUnknownFields().writeTo(output);
     }
 
@@ -348,6 +450,14 @@ public final class ZooKeeperProtos {
       if (((bitField0_ & 0x00000004) == 0x00000004)) {
         size += com.google.protobuf.CodedOutputStream
           .computeEnumSize(3, state_.getNumber());
+      }
+      if (((bitField0_ & 0x00000008) == 0x00000008)) {
+        size += com.google.protobuf.CodedOutputStream
+          .computeBoolSize(101, isRoot_);
+      }
+      if (((bitField0_ & 0x00000010) == 0x00000010)) {
+        size += com.google.protobuf.CodedOutputStream
+          .computeUInt32Size(102, rootVersion_);
       }
       size += getUnknownFields().getSerializedSize();
       memoizedSerializedSize = size;
@@ -387,6 +497,16 @@ public final class ZooKeeperProtos {
         result = result &&
             (getState() == other.getState());
       }
+      result = result && (hasIsRoot() == other.hasIsRoot());
+      if (hasIsRoot()) {
+        result = result && (getIsRoot()
+            == other.getIsRoot());
+      }
+      result = result && (hasRootVersion() == other.hasRootVersion());
+      if (hasRootVersion()) {
+        result = result && (getRootVersion()
+            == other.getRootVersion());
+      }
       result = result &&
           getUnknownFields().equals(other.getUnknownFields());
       return result;
@@ -411,6 +531,14 @@ public final class ZooKeeperProtos {
       if (hasState()) {
         hash = (37 * hash) + STATE_FIELD_NUMBER;
         hash = (53 * hash) + hashEnum(getState());
+      }
+      if (hasIsRoot()) {
+        hash = (37 * hash) + IS_ROOT_FIELD_NUMBER;
+        hash = (53 * hash) + hashBoolean(getIsRoot());
+      }
+      if (hasRootVersion()) {
+        hash = (37 * hash) + ROOT_VERSION_FIELD_NUMBER;
+        hash = (53 * hash) + getRootVersion();
       }
       hash = (29 * hash) + getUnknownFields().hashCode();
       memoizedHashCode = hash;
@@ -537,6 +665,10 @@ public final class ZooKeeperProtos {
         bitField0_ = (bitField0_ & ~0x00000002);
         state_ = org.apache.hadoop.hbase.protobuf.generated.ClusterStatusProtos.RegionState.State.OFFLINE;
         bitField0_ = (bitField0_ & ~0x00000004);
+        isRoot_ = false;
+        bitField0_ = (bitField0_ & ~0x00000008);
+        rootVersion_ = 0;
+        bitField0_ = (bitField0_ & ~0x00000010);
         return this;
       }
 
@@ -581,6 +713,14 @@ public final class ZooKeeperProtos {
           to_bitField0_ |= 0x00000004;
         }
         result.state_ = state_;
+        if (((from_bitField0_ & 0x00000008) == 0x00000008)) {
+          to_bitField0_ |= 0x00000008;
+        }
+        result.isRoot_ = isRoot_;
+        if (((from_bitField0_ & 0x00000010) == 0x00000010)) {
+          to_bitField0_ |= 0x00000010;
+        }
+        result.rootVersion_ = rootVersion_;
         result.bitField0_ = to_bitField0_;
         onBuilt();
         return result;
@@ -605,6 +745,12 @@ public final class ZooKeeperProtos {
         }
         if (other.hasState()) {
           setState(other.getState());
+        }
+        if (other.hasIsRoot()) {
+          setIsRoot(other.getIsRoot());
+        }
+        if (other.hasRootVersion()) {
+          setRootVersion(other.getRootVersion());
         }
         this.mergeUnknownFields(other.getUnknownFields());
         return this;
@@ -908,6 +1054,104 @@ public final class ZooKeeperProtos {
       public Builder clearState() {
         bitField0_ = (bitField0_ & ~0x00000004);
         state_ = org.apache.hadoop.hbase.protobuf.generated.ClusterStatusProtos.RegionState.State.OFFLINE;
+        onChanged();
+        return this;
+      }
+
+      // optional bool is_root = 101;
+      private boolean isRoot_ ;
+      /**
+       * <code>optional bool is_root = 101;</code>
+       *
+       * <pre>
+       * Whether the znode acts as meta or root. By default it will act as root
+       * </pre>
+       */
+      public boolean hasIsRoot() {
+        return ((bitField0_ & 0x00000008) == 0x00000008);
+      }
+      /**
+       * <code>optional bool is_root = 101;</code>
+       *
+       * <pre>
+       * Whether the znode acts as meta or root. By default it will act as root
+       * </pre>
+       */
+      public boolean getIsRoot() {
+        return isRoot_;
+      }
+      /**
+       * <code>optional bool is_root = 101;</code>
+       *
+       * <pre>
+       * Whether the znode acts as meta or root. By default it will act as root
+       * </pre>
+       */
+      public Builder setIsRoot(boolean value) {
+        bitField0_ |= 0x00000008;
+        isRoot_ = value;
+        onChanged();
+        return this;
+      }
+      /**
+       * <code>optional bool is_root = 101;</code>
+       *
+       * <pre>
+       * Whether the znode acts as meta or root. By default it will act as root
+       * </pre>
+       */
+      public Builder clearIsRoot() {
+        bitField0_ = (bitField0_ & ~0x00000008);
+        isRoot_ = false;
+        onChanged();
+        return this;
+      }
+
+      // optional uint32 root_version = 102;
+      private int rootVersion_ ;
+      /**
+       * <code>optional uint32 root_version = 102;</code>
+       *
+       * <pre>
+       * The comparator version. Set to 0 for original comparator
+       * </pre>
+       */
+      public boolean hasRootVersion() {
+        return ((bitField0_ & 0x00000010) == 0x00000010);
+      }
+      /**
+       * <code>optional uint32 root_version = 102;</code>
+       *
+       * <pre>
+       * The comparator version. Set to 0 for original comparator
+       * </pre>
+       */
+      public int getRootVersion() {
+        return rootVersion_;
+      }
+      /**
+       * <code>optional uint32 root_version = 102;</code>
+       *
+       * <pre>
+       * The comparator version. Set to 0 for original comparator
+       * </pre>
+       */
+      public Builder setRootVersion(int value) {
+        bitField0_ |= 0x00000010;
+        rootVersion_ = value;
+        onChanged();
+        return this;
+      }
+      /**
+       * <code>optional uint32 root_version = 102;</code>
+       *
+       * <pre>
+       * The comparator version. Set to 0 for original comparator
+       * </pre>
+       */
+      public Builder clearRootVersion() {
+        bitField0_ = (bitField0_ & ~0x00000010);
+        rootVersion_ = 0;
         onChanged();
         return this;
       }
@@ -9795,15 +10039,16 @@ public final class ZooKeeperProtos {
   static {
     java.lang.String[] descriptorData = {
       "\n\017ZooKeeper.proto\022\010hbase.pb\032\013HBase.proto" +
-      "\032\023ClusterStatus.proto\"y\n\020MetaRegionServe" +
-      "r\022$\n\006server\030\001 \002(\0132\024.hbase.pb.ServerName\022" +
-      "\023\n\013rpc_version\030\002 \001(\r\022*\n\005state\030\003 \001(\0162\033.hb" +
-      "ase.pb.RegionState.State\"V\n\006Master\022$\n\006ma" +
+      "\032\023ClusterStatus.proto\"\240\001\n\020MetaRegionServ" +
+      "er\022$\n\006server\030\001 \002(\0132\024.hbase.pb.ServerName" +
+      "\022\023\n\013rpc_version\030\002 \001(\r\022*\n\005state\030\003 \001(\0162\033.h" +
+      "base.pb.RegionState.State\022\017\n\007is_root\030e \001" +
+      "(\010\022\024\n\014root_version\030f \001(\r\"V\n\006Master\022$\n\006ma" +
       "ster\030\001 \002(\0132\024.hbase.pb.ServerName\022\023\n\013rpc_" +
       "version\030\002 \001(\r\022\021\n\tinfo_port\030\003 \001(\r\"\037\n\tClus" +
       "terUp\022\022\n\nstart_date\030\001 \002(\t\"\221\001\n\020RegionTran" +
-      "sition\022\027\n\017event_type_code\030\001 \002(\r\022\023\n\013regio" +
-      "n_name\030\002 \002(\014\022\023\n\013create_time\030\003 \002(\004\022)\n\013ser",
+      "sition\022\027\n\017event_type_code\030\001 \002(\r\022\023\n\013regio",
+      "n_name\030\002 \002(\014\022\023\n\013create_time\030\003 \002(\004\022)\n\013ser" +
       "ver_name\030\004 \002(\0132\024.hbase.pb.ServerName\022\017\n\007" +
       "payload\030\005 \001(\014\"\247\002\n\014SplitLogTask\022+\n\005state\030" +
       "\001 \002(\0162\034.hbase.pb.SplitLogTask.State\022)\n\013s" +
@@ -9812,8 +10057,8 @@ public final class ZooKeeperProtos {
       "overyMode:\007UNKNOWN\"C\n\005State\022\016\n\nUNASSIGNE" +
       "D\020\000\022\t\n\005OWNED\020\001\022\014\n\010RESIGNED\020\002\022\010\n\004DONE\020\003\022\007" +
       "\n\003ERR\020\004\">\n\014RecoveryMode\022\013\n\007UNKNOWN\020\000\022\021\n\r" +
-      "LOG_SPLITTING\020\001\022\016\n\nLOG_REPLAY\020\002\"w\n\005Table" +
-      "\022-\n\005state\030\001 \002(\0162\025.hbase.pb.Table.State:\007",
+      "LOG_SPLITTING\020\001\022\016\n\nLOG_REPLAY\020\002\"w\n\005Table",
+      "\022-\n\005state\030\001 \002(\0162\025.hbase.pb.Table.State:\007" +
       "ENABLED\"?\n\005State\022\013\n\007ENABLED\020\000\022\014\n\010DISABLE" +
       "D\020\001\022\r\n\tDISABLING\020\002\022\014\n\010ENABLING\020\003\"\237\001\n\017Rep" +
       "licationPeer\022\022\n\nclusterkey\030\001 \002(\t\022\037\n\027repl" +
@@ -9822,8 +10067,8 @@ public final class ZooKeeperProtos {
       "on\030\004 \003(\0132\030.hbase.pb.NameStringPair\"g\n\020Re" +
       "plicationState\022/\n\005state\030\001 \002(\0162 .hbase.pb" +
       ".ReplicationState.State\"\"\n\005State\022\013\n\007ENAB" +
-      "LED\020\000\022\014\n\010DISABLED\020\001\"+\n\027ReplicationHLogPo" +
-      "sition\022\020\n\010position\030\001 \002(\003\"%\n\017ReplicationL",
+      "LED\020\000\022\014\n\010DISABLED\020\001\"+\n\027ReplicationHLogPo",
+      "sition\022\020\n\010position\030\001 \002(\003\"%\n\017ReplicationL" +
       "ock\022\022\n\nlock_owner\030\001 \002(\t\"\252\001\n\tTableLock\022\'\n" +
       "\ntable_name\030\001 \001(\0132\023.hbase.pb.TableName\022(" +
       "\n\nlock_owner\030\002 \001(\0132\024.hbase.pb.ServerName" +
@@ -9843,7 +10088,7 @@ public final class ZooKeeperProtos {
           internal_static_hbase_pb_MetaRegionServer_fieldAccessorTable = new
             com.google.protobuf.GeneratedMessage.FieldAccessorTable(
               internal_static_hbase_pb_MetaRegionServer_descriptor,
-              new java.lang.String[] { "Server", "RpcVersion", "State", });
+              new java.lang.String[] { "Server", "RpcVersion", "State", "IsRoot", "RootVersion", });
           internal_static_hbase_pb_Master_descriptor =
             getDescriptor().getMessageTypes().get(1);
           internal_static_hbase_pb_Master_fieldAccessorTable = new

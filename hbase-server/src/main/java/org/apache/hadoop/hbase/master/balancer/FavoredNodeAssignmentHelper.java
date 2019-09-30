@@ -34,7 +34,7 @@ import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hbase.HConstants;
 import org.apache.hadoop.hbase.HRegionInfo;
-import org.apache.hadoop.hbase.MetaTableAccessor;
+import org.apache.hadoop.hbase.CatalogAccessor;
 import org.apache.hadoop.hbase.ServerName;
 import org.apache.hadoop.hbase.TableName;
 import org.apache.hadoop.hbase.classification.InterfaceAudience;
@@ -100,7 +100,7 @@ public class FavoredNodeAssignmentHelper {
         puts.add(put);
       }
     }
-    MetaTableAccessor.putsToMetaTable(connection, puts);
+    CatalogAccessor.putsToMetaTable(connection, puts);
     LOG.info("Added " + puts.size() + " regions in META");
   }
 
@@ -144,7 +144,7 @@ public class FavoredNodeAssignmentHelper {
   throws IOException {
     Put put = null;
     if (favoredNodeList != null) {
-      put = MetaTableAccessor.makePutFromRegionInfo(regionInfo);
+      put = CatalogAccessor.makePutFromRegionInfo(regionInfo);
       byte[] favoredNodes = getFavoredNodes(favoredNodeList);
       put.addImmutable(HConstants.CATALOG_FAMILY, FAVOREDNODES_QUALIFIER,
           EnvironmentEdgeManager.currentTime(), favoredNodes);

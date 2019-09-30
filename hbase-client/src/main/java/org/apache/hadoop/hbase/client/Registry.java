@@ -39,7 +39,7 @@ interface Registry {
    * @return Meta region location
    * @throws IOException
    */
-  RegionLocations getMetaRegionLocation() throws IOException;
+  RegionLocations getRootRegionLocation() throws IOException;
 
   /**
    * @return Cluster id.

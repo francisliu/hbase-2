@@ -51,9 +51,11 @@ import org.apache.hadoop.hbase.client.Result;
 import org.apache.hadoop.hbase.monitoring.MonitoredTask;
 import org.apache.hadoop.hbase.protobuf.ProtobufUtil;
 import org.apache.hadoop.hbase.protobuf.generated.RegionServerStatusProtos.RegionServerReportRequest;
+
+
 import org.apache.hadoop.hbase.util.FSUtils;
 import org.apache.hadoop.hbase.util.Threads;
-import org.apache.hadoop.hbase.zookeeper.MetaTableLocator;
+import org.apache.hadoop.hbase.zookeeper.RootTableLocator;
 import org.apache.hadoop.hbase.zookeeper.ZKAssign;
 import org.apache.hadoop.hbase.zookeeper.ZKUtil;
 import org.apache.hadoop.hbase.zookeeper.ZooKeeperWatcher;
@@ -158,8 +160,14 @@ public class TestMasterNoCluster {
     final MockRegionServer rs2 = new MockRegionServer(conf, sn2);
     // Put some data into the servers.  Make it look like sn0 has the metaH
     // Put data into sn2 so it looks like it has a few regions for a table named 't'.
-    MetaTableLocator.setMetaLocation(rs0.getZooKeeper(),
+    RootTableLocator.setRootLocation(rs0.getZooKeeper(),
       rs0.getServerName(), RegionState.State.OPEN);
+    rs0.setNextResults(HRegionInfo.ROOT_REGIONINFO.getRegionName(),
+        new Result[]{
+            MetaMockingUtil.getMetaTableRowResult(HRegionInfo.FIRST_META_REGIONINFO,
+                rs1.getServerName())});
+
+
     final TableName tableName = TableName.valueOf("t");
     Result [] results = new Result [] {
       MetaMockingUtil.getMetaTableRowResult(
@@ -185,7 +193,7 @@ public class TestMasterNoCluster {
     // associate so the below mocking of a connection will fail.
     final ClusterConnection mockedConnection = HConnectionTestingUtility.getMockedConnectionAndDecorate(
         TESTUTIL.getConfiguration(), rs0, rs0, rs0.getServerName(),
-        HRegionInfo.FIRST_META_REGIONINFO);
+        HRegionInfo.ROOT_REGIONINFO);
     HMaster master = new HMaster(conf, cp) {
       InetAddress getRemoteInetAddress(final int port, final long serverStartCode)
       throws UnknownHostException {
@@ -237,7 +245,8 @@ public class TestMasterNoCluster {
       // Master should now come up.
       while (!master.isInitialized()) {
         // Fake meta is closed on rs0, try several times in case the event is lost
-        // due to race with HMaster#assignMeta
+        // due to race with HMaster#assignRoot
+        //TODO fix this
         ZKAssign.transitionNodeClosed(zkw,
           HRegionInfo.FIRST_META_REGIONINFO, sn0, -1);
         Threads.sleep(100);
@@ -252,7 +261,7 @@ public class TestMasterNoCluster {
     }
   }
 
-  @Test
+  @Test(timeout=30000)
   public void testNotPullingDeadRegionServerFromZK()
       throws IOException, KeeperException, InterruptedException {
     final Configuration conf = TESTUTIL.getConfiguration();
@@ -265,6 +274,10 @@ public class TestMasterNoCluster {
     HMaster master = new HMaster(conf, cp) {
       @Override
       void assignMeta(MonitoredTask status, Set<ServerName> previouslyFailedMeatRSs, int replicaId)
+      { }
+
+      @Override
+      void assignRoot(MonitoredTask status, Set<ServerName> previouslyFailedMeatRSs, int replicaId)
       { }
 
       @Override
@@ -291,7 +304,7 @@ public class TestMasterNoCluster {
         try {
           return HConnectionTestingUtility.getMockedConnectionAndDecorate(
             TESTUTIL.getConfiguration(), rs0, rs0, rs0.getServerName(),
-            HRegionInfo.FIRST_META_REGIONINFO);
+            HRegionInfo.ROOT_REGIONINFO);
         } catch (IOException e) {
           return null;
         }

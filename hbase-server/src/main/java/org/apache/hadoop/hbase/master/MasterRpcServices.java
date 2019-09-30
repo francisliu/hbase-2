@@ -40,7 +40,7 @@ import org.apache.hadoop.hbase.ServerLoad;
 import org.apache.hadoop.hbase.ServerName;
 import org.apache.hadoop.hbase.TableName;
 import org.apache.hadoop.hbase.UnknownRegionException;
-import org.apache.hadoop.hbase.MetaTableAccessor;
+import org.apache.hadoop.hbase.CatalogAccessor;
 import org.apache.hadoop.hbase.client.Admin;
 import org.apache.hadoop.hbase.errorhandling.ForeignException;
 import org.apache.hadoop.hbase.exceptions.MergeRegionException;
@@ -179,7 +179,6 @@ import org.apache.hadoop.hbase.protobuf.generated.RegionServerStatusProtos.Repor
 import org.apache.hadoop.hbase.protobuf.generated.RegionServerStatusProtos.ReportRegionStateTransitionRequest;
 import org.apache.hadoop.hbase.protobuf.generated.RegionServerStatusProtos.ReportRegionStateTransitionResponse;
 import org.apache.hadoop.hbase.regionserver.RSRpcServices;
-import org.apache.hadoop.hbase.security.AccessDeniedException;
 import org.apache.hadoop.hbase.security.User;
 import org.apache.hadoop.hbase.security.access.AccessController;
 import org.apache.hadoop.hbase.security.visibility.VisibilityController;
@@ -1240,7 +1239,7 @@ public class MasterRpcServices extends RSRpcServices
     try {
       master.checkInitialized();
       Pair<HRegionInfo, ServerName> pair =
-        MetaTableAccessor.getRegion(master.getConnection(), regionName);
+        CatalogAccessor.getRegion(master.getConnection(), regionName);
       if (pair == null) throw new UnknownRegionException(Bytes.toStringBinary(regionName));
       HRegionInfo hri = pair.getFirst();
       if (master.cpHost != null) {
@@ -1384,8 +1383,13 @@ public class MasterRpcServices extends RSRpcServices
         LOG.warn("unassignRegion specifier type: expected: " + RegionSpecifierType.REGION_NAME
           + " actual: " + type);
       }
+      //TODO francis add support to unassign region replicas
       Pair<HRegionInfo, ServerName> pair =
-        MetaTableAccessor.getRegion(master.getConnection(), regionName);
+          CatalogAccessor.getRegion(master.getConnection(), regionName);
+      if (Bytes.equals(HRegionInfo.ROOT_REGIONINFO.getRegionName(),regionName)) {
+        pair = new Pair<HRegionInfo, ServerName>(HRegionInfo.ROOT_REGIONINFO,
+            master.getRootTableLocator().getRootRegionLocation(master.getZooKeeper()));
+      }
       if (pair == null) throw new UnknownRegionException(Bytes.toString(regionName));
       HRegionInfo hri = pair.getFirst();
       if (master.cpHost != null) {
@@ -1419,9 +1423,12 @@ public class MasterRpcServices extends RSRpcServices
       RegionStateTransition rt = req.getTransition(0);
       TableName tableName = ProtobufUtil.toTableName(
         rt.getRegionInfo(0).getTableName());
+      HRegionInfo hri = HRegionInfo.convert(rt.getRegionInfo(0));
       RegionStates regionStates = master.assignmentManager.getRegionStates();
-      if (!(TableName.META_TABLE_NAME.equals(tableName)
-          && regionStates.getRegionState(HRegionInfo.FIRST_META_REGIONINFO) != null)
+      if (!(TableName.ROOT_TABLE_NAME.equals(tableName)
+                && regionStates.getRegionState(HRegionInfo.ROOT_REGIONINFO) != null)
+            && !(TableName.META_TABLE_NAME.equals(tableName)
+                && regionStates.getRegionState(hri) != null)
             && !master.assignmentManager.isFailoverCleanupDone()) {
         // Meta region is assigned before master finishes the
         // failover cleanup. So no need this check for it

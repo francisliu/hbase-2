@@ -23,7 +23,7 @@ import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.hbase.HBaseTestingUtility;
 import org.apache.hadoop.hbase.HConstants;
 import org.apache.hadoop.hbase.HTableDescriptor;
-import org.apache.hadoop.hbase.MetaTableAccessor;
+import org.apache.hadoop.hbase.CatalogAccessor;
 import org.apache.hadoop.hbase.MiniHBaseCluster;
 import org.apache.hadoop.hbase.TableName;
 import org.apache.hadoop.hbase.client.Admin;
@@ -119,7 +119,7 @@ public class TestSimpleRegionNormalizerOnCluster {
 
     System.out.println(admin.getTableDescriptor(TABLENAME));
 
-    assertEquals(5, MetaTableAccessor.getRegionCount(TEST_UTIL.getConnection(), TABLENAME));
+    assertEquals(5, CatalogAccessor.getRegionCount(TEST_UTIL.getConnection(), TABLENAME));
 
     // Now trigger a split and stop when the split is in progress
     Thread.sleep(5000); // to let region load to update
@@ -188,18 +188,18 @@ public class TestSimpleRegionNormalizerOnCluster {
 
     admin.flush(TABLENAME);
 
-    assertEquals(5, MetaTableAccessor.getRegionCount(TEST_UTIL.getConnection(), TABLENAME));
+    assertEquals(5, CatalogAccessor.getRegionCount(TEST_UTIL.getConnection(), TABLENAME));
 
     // Now trigger a merge and stop when the merge is in progress
     Thread.sleep(5000); // to let region load to update
     m.normalizeRegions();
 
-    while (MetaTableAccessor.getRegionCount(TEST_UTIL.getConnection(), TABLENAME) > 4) {
+    while (CatalogAccessor.getRegionCount(TEST_UTIL.getConnection(), TABLENAME) > 4) {
       LOG.info("Waiting for normalization merge to complete");
       Thread.sleep(100);
     }
 
-    assertEquals(4, MetaTableAccessor.getRegionCount(TEST_UTIL.getConnection(), TABLENAME));
+    assertEquals(4, CatalogAccessor.getRegionCount(TEST_UTIL.getConnection(), TABLENAME));
 
     admin.disableTable(TABLENAME);
     admin.deleteTable(TABLENAME);

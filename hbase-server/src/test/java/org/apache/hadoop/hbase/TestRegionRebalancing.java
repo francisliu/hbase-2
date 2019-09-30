@@ -27,7 +27,6 @@ import org.apache.hadoop.hbase.client.Admin;
 import org.apache.hadoop.hbase.client.Connection;
 import org.apache.hadoop.hbase.client.ConnectionFactory;
 import org.apache.hadoop.hbase.client.RegionLocator;
-import org.apache.hadoop.hbase.master.RegionStates;
 import org.apache.hadoop.hbase.protobuf.ProtobufUtil;
 import org.apache.hadoop.hbase.regionserver.HRegionServer;
 import org.apache.hadoop.hbase.testclassification.LargeTests;
@@ -103,7 +102,7 @@ public class TestRegionRebalancing {
           1, HBaseTestingUtility.KEYS.length));
       this.regionLocator = connection.getRegionLocator(this.desc.getTableName());
 
-      MetaTableAccessor.fullScanMetaAndPrint(admin.getConnection());
+      CatalogAccessor.fullScanMetaAndPrint(admin.getConnection());
 
       assertEquals("Test table should have right number of regions",
         HBaseTestingUtility.KEYS.length,
@@ -197,7 +196,7 @@ public class TestRegionRebalancing {
             && serverLoad >= avgLoadMinusSlop)) {
           for (HRegionInfo hri :
               ProtobufUtil.getOnlineRegions(server.getRSRpcServices())) {
-            if (hri.isMetaRegion()) serverLoad--;
+            if (hri.isMetaRegion() || hri.isRootRegion()) serverLoad--;
             // LOG.debug(hri.getRegionNameAsString());
           }
           if (!(serverLoad <= avgLoadPlusSlop && serverLoad >= avgLoadMinusSlop)) {

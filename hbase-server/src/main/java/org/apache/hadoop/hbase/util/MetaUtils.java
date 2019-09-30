@@ -33,6 +33,7 @@ import org.apache.hadoop.hbase.HBaseConfiguration;
 import org.apache.hadoop.hbase.HConstants;
 import org.apache.hadoop.hbase.HRegionInfo;
 import org.apache.hadoop.hbase.TableName;
+import org.apache.hadoop.hbase.constraint.ConstraintException;
 import org.apache.hadoop.hbase.regionserver.HRegion;
 import org.apache.hadoop.hbase.wal.WAL;
 import org.apache.hadoop.hbase.wal.WALFactory;
@@ -96,8 +97,13 @@ public class MetaUtils {
     }
     final byte[] region = info.getEncodedNameAsBytes();
     final byte[] namespace = info.getTable().getNamespace();
-    return info.isMetaRegion() ? walFactory.getMetaWAL(region) : walFactory.getWAL(region,
-      namespace);
+    if (info.isRootRegion()) {
+      return walFactory.getRootWAL(region);
+    }
+    if (info.isMetaRegion()) {
+      return walFactory.getMetaWAL(region);
+    }
+    return walFactory.getWAL(region, namespace);
   }
 
   /**
@@ -105,6 +111,9 @@ public class MetaUtils {
    * @throws IOException e
    */
   public synchronized HRegion getMetaRegion() throws IOException {
+    if (ConfigUtil.shouldSplitMeta(conf)) {
+      throw new ConstraintException("This API is not available when split meta is enabled.");
+    }
     return this.metaRegion == null? openMetaRegion(): this.metaRegion;
   }
 

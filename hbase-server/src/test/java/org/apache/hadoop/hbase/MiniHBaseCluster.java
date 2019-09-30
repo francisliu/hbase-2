@@ -776,7 +776,7 @@ public class MiniHBaseCluster extends HBaseCluster {
   }
 
 
-  protected int getRegionServerIndex(ServerName serverName) {
+  public int getRegionServerIndex(ServerName serverName) {
     //we have a small number of region servers, this should be fine for now.
     List<RegionServerThread> servers = getRegionServerThreads();
     for (int i=0; i < servers.size(); i++) {

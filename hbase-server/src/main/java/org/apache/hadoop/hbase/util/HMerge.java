@@ -36,7 +36,7 @@ import org.apache.hadoop.hbase.HRegionInfo;
 import org.apache.hadoop.hbase.HTableDescriptor;
 import org.apache.hadoop.hbase.RemoteExceptionHandler;
 import org.apache.hadoop.hbase.TableNotDisabledException;
-import org.apache.hadoop.hbase.MetaTableAccessor;
+import org.apache.hadoop.hbase.CatalogAccessor;
 import org.apache.hadoop.hbase.client.Admin;
 import org.apache.hadoop.hbase.client.Delete;
 import org.apache.hadoop.hbase.client.HBaseAdmin;
@@ -150,9 +150,15 @@ class HMerge {
     throws IOException {
       this.conf = conf;
       this.fs = fs;
-      this.maxFilesize = conf.getLong(HConstants.HREGION_MAX_FILESIZE,
-          HConstants.DEFAULT_MAX_FILE_SIZE);
-
+      if (tableName.equals(TableName.META_TABLE_NAME)) {
+        this.maxFilesize =
+            conf.getLong(HConstants.META_HREGION_MAX_FILESIZE,
+              HConstants.DEFAULT_MAX_FILE_SIZE_META);
+      } else {
+        this.maxFilesize =
+            conf.getLong(HConstants.HREGION_MAX_FILESIZE, HConstants.DEFAULT_MAX_FILE_SIZE);
+      }
+      
       this.rootDir = FSUtils.getRootDir(conf);
       Path tabledir = FSUtils.getTableDir(this.rootDir, tableName);
       this.htd = FSTableDescriptors.getTableDescriptorFromFs(this.fs, tabledir);
@@ -338,7 +344,7 @@ class HMerge {
       }
       newRegion.getRegionInfo().setOffline(true);
 
-      MetaTableAccessor.addRegionToMeta(table, newRegion.getRegionInfo());
+      CatalogAccessor.addRegionToMeta(table, newRegion.getRegionInfo());
 
       if(LOG.isDebugEnabled()) {
         LOG.debug("updated columns in row: "

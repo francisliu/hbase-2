@@ -30,4 +30,9 @@ public class  ConfigUtil {
     // To change the default, please also update ZooKeeperWatcher.java
     return conf.getBoolean("hbase.assignment.usezk", true);
   }
+  
+  // Disable splitting meta by default
+  public static boolean shouldSplitMeta(Configuration conf) {
+    return conf.getBoolean("hbase.split.meta", false);
+  }
 }

@@ -37,8 +37,8 @@ import org.apache.hadoop.hbase.HRegionLocation;
 import org.apache.hadoop.hbase.RegionLocations;
 import org.apache.hadoop.hbase.ServerName;
 import org.apache.hadoop.hbase.TableName;
-import org.apache.hadoop.hbase.MetaTableAccessor;
-import org.apache.hadoop.hbase.MetaTableAccessor.Visitor;
+import org.apache.hadoop.hbase.CatalogAccessor;
+import org.apache.hadoop.hbase.CatalogAccessor.Visitor;
 import org.apache.hadoop.hbase.client.Connection;
 import org.apache.hadoop.hbase.client.Result;
 import org.apache.hadoop.hbase.master.balancer.FavoredNodeAssignmentHelper;
@@ -101,7 +101,7 @@ public class SnapshotOfRegionAssignmentFromMeta {
       public boolean visit(Result result) throws IOException {
         try {
           if (result ==  null || result.isEmpty()) return true;
-          RegionLocations rl = MetaTableAccessor.getRegionLocations(result);
+          RegionLocations rl = CatalogAccessor.getRegionLocations(result);
           if (rl == null) return true;
           HRegionInfo hri = rl.getRegionLocation(0).getRegionInfo();
           if (hri == null) return true;
@@ -141,7 +141,7 @@ public class SnapshotOfRegionAssignmentFromMeta {
       }
     };
     // Scan hbase:meta to pick up user regions
-    MetaTableAccessor.fullScan(connection, v);
+    CatalogAccessor.fullScan(connection, v);
     //regionToRegionServerMap = regions;
     LOG.info("Finished to scan the hbase:meta for the current region assignment" +
       "snapshot");

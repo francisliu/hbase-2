@@ -33,7 +33,7 @@ import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hbase.HConstants;
 import org.apache.hadoop.hbase.HRegionInfo;
 import org.apache.hadoop.hbase.HRegionLocation;
-import org.apache.hadoop.hbase.MetaTableAccessor;
+import org.apache.hadoop.hbase.CatalogAccessor;
 import org.apache.hadoop.hbase.RegionLocations;
 import org.apache.hadoop.hbase.ServerName;
 import org.apache.hadoop.hbase.TableName;
@@ -86,8 +86,9 @@ public class MetaScanner {
    */
   public static void metaScan(Connection connection,
       MetaScannerVisitor visitor, TableName userTableName) throws IOException {
-    metaScan(connection, visitor, userTableName, null, Integer.MAX_VALUE,
-        TableName.META_TABLE_NAME);
+      metaScan(connection, visitor, userTableName, null, Integer.MAX_VALUE,
+          TableName.META_TABLE_NAME.equals(userTableName) ? TableName.ROOT_TABLE_NAME :
+              TableName.META_TABLE_NAME);
   }
 
   /**
@@ -113,8 +114,9 @@ public class MetaScanner {
       MetaScannerVisitor visitor, TableName userTableName, byte[] row,
       int rowLimit)
   throws IOException {
-    metaScan(connection, visitor, userTableName, row, rowLimit, TableName
-        .META_TABLE_NAME);
+    metaScan(connection, visitor, userTableName, row, rowLimit,
+        TableName.META_TABLE_NAME.equals(userTableName) ? TableName.ROOT_TABLE_NAME :
+            TableName.META_TABLE_NAME);
   }
 
   /**
@@ -133,7 +135,7 @@ public class MetaScanner {
    * @param metaTableName Meta table to scan, root or meta.
    * @throws IOException e
    */
-  static void metaScan(Connection connection,
+  public static void metaScan(Connection connection,
       final MetaScannerVisitor visitor, final TableName tableName,
       final byte[] row, final int rowLimit, final TableName metaTableName)
     throws IOException {
@@ -236,7 +238,7 @@ public class MetaScanner {
    * table Result.
    * @param data a Result object from the catalog table scan
    * @return HRegionInfo or null
-   * @deprecated Use {@link org.apache.hadoop.hbase.MetaTableAccessor#getRegionLocations(Result)}
+   * @deprecated Use {@link CatalogAccessor#getRegionLocations(Result)}
    */
   @Deprecated
   public static HRegionInfo getHRegionInfo(Result data) {
@@ -264,7 +266,7 @@ public class MetaScanner {
             return true;
           }
 
-          RegionLocations locations = MetaTableAccessor.getRegionLocations(result);
+          RegionLocations locations = CatalogAccessor.getRegionLocations(result);
           if (locations == null) return true;
           for (HRegionLocation loc : locations.getRegionLocations()) {
             if (loc != null) {
@@ -310,7 +312,7 @@ public class MetaScanner {
     MetaScannerVisitor visitor = new TableMetaScannerVisitor(tableName) {
       @Override
       public boolean processRowInternal(Result result) throws IOException {
-        RegionLocations locations = MetaTableAccessor.getRegionLocations(result);
+        RegionLocations locations = CatalogAccessor.getRegionLocations(result);
         if (locations == null) return true;
         for (HRegionLocation loc : locations.getRegionLocations()) {
           if (loc != null) {
@@ -334,7 +336,7 @@ public class MetaScanner {
     MetaScannerVisitor visitor = new TableMetaScannerVisitor(tableName) {
       @Override
       public boolean processRowInternal(Result result) throws IOException {
-        RegionLocations locations = MetaTableAccessor.getRegionLocations(result);
+        RegionLocations locations = CatalogAccessor.getRegionLocations(result);
         if (locations == null) return true;
         regions.add(locations);
         return true;

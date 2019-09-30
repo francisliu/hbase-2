@@ -230,10 +230,10 @@ public class TestCatalogJanitorInMemoryStates {
         if (result == null) {
           break;
         }
-        region = MetaTableAccessor.getHRegionInfo(result);
+        region = CatalogAccessor.getHRegionInfo(result);
         if (region.isSplitParent()) {
           LOG.debug(region.toString() + " IS a parent!");
-          pair = MetaTableAccessor.getDaughterRegions(result);
+          pair = CatalogAccessor.getDaughterRegions(result);
           break;
         }
         Threads.sleep(100);

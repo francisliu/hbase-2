@@ -66,6 +66,7 @@ public abstract class HBaseTestCase extends TestCase {
   protected static Path testDir = null;
   protected FileSystem fs = null;
   protected HRegion meta = null;
+  protected HRegion root = null;
   protected static final char FIRST_CHAR = 'a';
   protected static final char LAST_CHAR = 'z';
   protected static final String PUNCTUATION = "~`@#$%^&*()-_+=:;',.<>/?[]{}|";
@@ -642,14 +643,18 @@ public abstract class HBaseTestCase extends TestCase {
    * method. It does cleanup.
    * @throws IOException
    */
-  protected void createMetaRegion() throws IOException {
+  protected void createRootAndMetaRegion() throws IOException {
     FSTableDescriptors fsTableDescriptors = new FSTableDescriptors(conf);
+    root = HRegion.createHRegion(HRegionInfo.ROOT_REGIONINFO, testDir, conf,
+      fsTableDescriptors.get(TableName.ROOT_TABLE_NAME));
     meta = HRegion.createHRegion(HRegionInfo.FIRST_META_REGIONINFO, testDir, conf,
       fsTableDescriptors.get(TableName.META_TABLE_NAME));
+    HRegion.addRegionToMETA(root, meta);
   }
 
   protected void closeRootAndMeta() throws IOException {
     HRegion.closeHRegion(meta);
+    HRegion.closeHRegion(root);
   }
 
   public static void assertByteEquals(byte[] expected,

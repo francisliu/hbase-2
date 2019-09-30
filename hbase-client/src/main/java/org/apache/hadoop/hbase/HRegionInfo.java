@@ -254,6 +254,10 @@ public class HRegionInfo implements Comparable<HRegionInfo> {
   // TODO: How come Meta regions still do not have encoded region names? Fix.
   public static final HRegionInfo FIRST_META_REGIONINFO =
       new HRegionInfo(1L, TableName.META_TABLE_NAME);
+  
+  /** HRegionInfo for root region */
+  public static final HRegionInfo ROOT_REGIONINFO =
+    new HRegionInfo(0L, TableName.ROOT_TABLE_NAME);
 
   private void setHashCode() {
     int result = Arrays.hashCode(this.regionName);
@@ -744,15 +748,22 @@ public class HRegionInfo implements Comparable<HRegionInfo> {
    * @throws IllegalArgumentException if the range passed is invalid (ie. end &lt; start)
    */
   public boolean containsRange(byte[] rangeStartKey, byte[] rangeEndKey) {
-    if (Bytes.compareTo(rangeStartKey, rangeEndKey) > 0) {
+    if (getComparator().compareRows(
+        rangeStartKey, 0, rangeStartKey.length,
+        rangeEndKey, 0, rangeEndKey.length) > 0) {
       throw new IllegalArgumentException(
       "Invalid range: " + Bytes.toStringBinary(rangeStartKey) +
       " > " + Bytes.toStringBinary(rangeEndKey));
     }
 
-    boolean firstKeyInRange = Bytes.compareTo(rangeStartKey, startKey) >= 0;
+    boolean firstKeyInRange =
+        getComparator().compareRows(
+            rangeStartKey, 0, rangeStartKey.length,
+            startKey, 0, startKey.length) >= 0;
     boolean lastKeyInRange =
-      Bytes.compareTo(rangeEndKey, endKey) < 0 ||
+      getComparator().compareRows(
+          rangeEndKey, 0, rangeEndKey.length,
+          endKey, 0, endKey.length) < 0 ||
       Bytes.equals(endKey, HConstants.EMPTY_BYTE_ARRAY);
     return firstKeyInRange && lastKeyInRange;
   }
@@ -761,21 +772,28 @@ public class HRegionInfo implements Comparable<HRegionInfo> {
    * Return true if the given row falls in this region.
    */
   public boolean containsRow(byte[] row) {
-    return Bytes.compareTo(row, startKey) >= 0 &&
-      (Bytes.compareTo(row, endKey) < 0 ||
-       Bytes.equals(endKey, HConstants.EMPTY_BYTE_ARRAY));
-  }
-
-  /**
-   * @return true if this region is from hbase:meta
-   */
-  public boolean isMetaTable() {
-    return isMetaRegion();
+    return getComparator().compareRows(row, 0, row.length, startKey, 0, startKey.length) >= 0 &&
+      (getComparator().compareRows(row, 0, row.length,
+          endKey, 0, endKey.length) < 0 ||
+       getComparator().compareRows(endKey, 0, endKey.length,
+           HConstants.EMPTY_BYTE_ARRAY, 0, HConstants.EMPTY_BYTE_ARRAY.length) == 0);
   }
 
   /** @return true if this region is a meta region */
   public boolean isMetaRegion() {
      return tableName.equals(HRegionInfo.FIRST_META_REGIONINFO.getTable());
+  }
+  
+  /** @return true if this is the root region */
+  public boolean isRootRegion() {
+    return tableName.equals(HRegionInfo.ROOT_REGIONINFO.getTable());
+  }
+  
+  /**
+   * @return true if this region is from hbase:meta
+   */
+  public boolean isMetaTable() {
+    return isMetaRegion();
   }
 
   /**
@@ -970,14 +988,22 @@ public class HRegionInfo implements Comparable<HRegionInfo> {
       return result;
     }
 
+    //Diff regions may have different comparators
+    //which could be bad, but since we compare tables
+    //first then we only compare keys using comparator
+    //within a table, then there should be no problem.
     // Compare start keys.
-    result = Bytes.compareTo(this.startKey, o.startKey);
+    result = getComparator().compareRows(
+        this.startKey, 0, this.startKey.length,
+        o.startKey, 0, o.startKey.length);
     if (result != 0) {
       return result;
     }
 
     // Compare end keys.
-    result = Bytes.compareTo(this.endKey, o.endKey);
+    result = getComparator().compareRows(
+        this.endKey, 0, this.endKey.length,
+        o.endKey, 0, o.endKey.length);
 
     if (result != 0) {
       if (this.getStartKey().length != 0
@@ -1013,10 +1039,10 @@ public class HRegionInfo implements Comparable<HRegionInfo> {
    * @return Comparator to use comparing {@link KeyValue}s.
    */
   public KVComparator getComparator() {
-    return isMetaRegion()?
-      KeyValue.META_COMPARATOR: KeyValue.COMPARATOR;
+    return isRootRegion()? KeyValue.ROOT_COMPARATOR: isMetaRegion()?
+        KeyValue.META_COMPARATOR: KeyValue.COMPARATOR;
   }
-
+  
   /**
    * Convert a HRegionInfo to the protobuf RegionInfo
    *
@@ -1059,9 +1085,24 @@ public class HRegionInfo implements Comparable<HRegionInfo> {
     if (proto == null) return null;
     TableName tableName =
         ProtobufUtil.toTableName(proto.getTableName());
-    if (tableName.equals(TableName.META_TABLE_NAME)) {
-      return RegionReplicaUtil.getRegionInfoForReplica(FIRST_META_REGIONINFO,
-          proto.getReplicaId());
+
+    if (tableName.equals(TableName.ROOT_TABLE_NAME)) {
+      HRegionInfo hri =
+          RegionReplicaUtil.getRegionInfoForReplica(
+              new HRegionInfo(ROOT_REGIONINFO), proto.getReplicaId());
+      return hri;
+    } else if (proto.getRegionId() == RegionReplicaUtil.getRegionInfoForReplica(
+            FIRST_META_REGIONINFO, proto.getReplicaId()).getRegionId() &&
+        FIRST_META_REGIONINFO.getTable().equals(ProtobufUtil.toTableName(proto.getTableName()))) {
+      HRegionInfo hri = new HRegionInfo(FIRST_META_REGIONINFO);
+      if (proto.hasSplit()) {
+        hri.setSplit(proto.getSplit());
+      }
+      if (proto.hasOffline()) {
+        hri.setOffline(proto.getOffline());
+      }
+      hri = RegionReplicaUtil.getRegionInfoForReplica(hri, proto.getReplicaId());
+      return hri;
     }
     long regionId = proto.getRegionId();
     int replicaId = proto.hasReplicaId() ? proto.getReplicaId() : DEFAULT_REPLICA_ID;
@@ -1392,11 +1433,18 @@ public class HRegionInfo implements Comparable<HRegionInfo> {
     }
     HRegionInfo a = regionA;
     HRegionInfo b = regionB;
-    if (Bytes.compareTo(a.getStartKey(), b.getStartKey()) > 0) {
+    if (a.getComparator() != b.getComparator()) {
+      throw new IllegalStateException("Different comparators for regionInfo: "+a+" and "+b);
+    }
+    if (a.getComparator().compareRows(
+          a.getStartKey(), 0, a.getStartKey().length,
+          b.getStartKey(), 0, b.getStartKey().length) > 0) {
       a = regionB;
       b = regionA;
     }
-    if (Bytes.compareTo(a.getEndKey(), b.getStartKey()) == 0) {
+    if (a.getComparator().compareRows(
+          a.getEndKey(), 0, a.getEndKey().length,
+          b.getStartKey(), 0, b.getStartKey().length) == 0) {
       return true;
     }
     return false;

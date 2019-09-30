@@ -373,7 +373,7 @@ public class TestAsyncProcess {
       public void init(Connection connection) {}
 
       @Override
-      public RegionLocations getMetaRegionLocation() throws IOException {
+      public RegionLocations getRootRegionLocation() throws IOException {
         return null;
       }
 
@@ -519,6 +519,7 @@ public class TestAsyncProcess {
     Assert.assertTrue(puts.isEmpty());
   }
 
+  @SuppressWarnings("unchecked")
   @Test
   public void testFail() throws Exception {
     MyAsyncProcess ap = new MyAsyncProcess(createHConnection(), conf, false);

@@ -31,7 +31,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.hbase.HRegionInfo;
-import org.apache.hadoop.hbase.MetaTableAccessor;
+import org.apache.hadoop.hbase.CatalogAccessor;
 import org.apache.hadoop.hbase.ServerName;
 import org.apache.hadoop.hbase.TableName;
 import org.apache.hadoop.hbase.TableNotDisabledException;
@@ -39,7 +39,6 @@ import org.apache.hadoop.hbase.TableNotFoundException;
 import org.apache.hadoop.hbase.TableStateManager;
 import org.apache.hadoop.hbase.classification.InterfaceAudience;
 import org.apache.hadoop.hbase.exceptions.HBaseException;
-import org.apache.hadoop.hbase.executor.EventType;
 import org.apache.hadoop.hbase.master.AssignmentManager;
 import org.apache.hadoop.hbase.master.BulkAssigner;
 import org.apache.hadoop.hbase.master.GeneralBulkAssigner;
@@ -53,7 +52,6 @@ import org.apache.hadoop.hbase.protobuf.generated.MasterProcedureProtos;
 import org.apache.hadoop.hbase.protobuf.generated.MasterProcedureProtos.EnableTableState;
 import org.apache.hadoop.hbase.protobuf.generated.ZooKeeperProtos;
 import org.apache.hadoop.hbase.util.Pair;
-import org.apache.hadoop.hbase.zookeeper.MetaTableLocator;
 import org.apache.hadoop.security.UserGroupInformation;
 
 @InterfaceAudience.Private
@@ -295,7 +293,7 @@ public class EnableTableProcedure
     boolean canTableBeEnabled = true;
 
     // Check whether table exists
-    if (!MetaTableAccessor.tableExists(env.getMasterServices().getConnection(), tableName)) {
+    if (!CatalogAccessor.tableExists(env.getMasterServices().getConnection(), tableName)) {
       setFailure("master-enable-table", new TableNotFoundException(tableName));
       canTableBeEnabled = false;
     } else if (!skipTableStateCheck) {
@@ -407,14 +405,9 @@ public class EnableTableProcedure
     // tables are onlined.
     List<Pair<HRegionInfo, ServerName>> tableRegionsAndLocations;
 
-    if (TableName.META_TABLE_NAME.equals(tableName)) {
-      tableRegionsAndLocations =
-          new MetaTableLocator().getMetaRegionsAndLocations(masterServices.getZooKeeper());
-    } else {
-      tableRegionsAndLocations =
-          MetaTableAccessor.getTableRegionsAndLocations(
-            masterServices.getZooKeeper(), masterServices.getConnection(), tableName, true);
-    }
+    tableRegionsAndLocations =
+        CatalogAccessor.getTableRegionsAndLocations(
+          masterServices.getZooKeeper(), masterServices.getConnection(), tableName, true);
 
     int countOfRegionsInTable = tableRegionsAndLocations.size();
     Map<HRegionInfo, ServerName> regionsToAssign =

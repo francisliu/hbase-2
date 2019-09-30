@@ -129,6 +129,8 @@ public class TestMasterProcedureEvents {
 
     // Kill a server. Master will notice but do nothing other than add it to list of dead servers.
     HRegionServer hrs = getServerWithRegions();
+    boolean carryingRoot = master.getAssignmentManager()
+        .isCarryingRoot(hrs.getServerName()) == AssignmentManager.ServerHostRegion.HOSTING_REGION;
     boolean carryingMeta = master.getAssignmentManager()
         .isCarryingMeta(hrs.getServerName()) == AssignmentManager.ServerHostRegion.HOSTING_REGION;
     UTIL.getHBaseCluster().killRegionServer(hrs.getServerName());
@@ -143,7 +145,11 @@ public class TestMasterProcedureEvents {
     master.getServerManager().moveFromOnelineToDeadServers(hrs.getServerName());
 
     long procId = procExec.submitProcedure(
-      new ServerCrashProcedure(procExec.getEnvironment(), hrs.getServerName(), true, carryingMeta));
+      new ServerCrashProcedure(procExec.getEnvironment(),
+          hrs.getServerName(),
+          true,
+          carryingRoot,
+          carryingMeta));
 
     for (int i = 0; i < 10; ++i) {
       Thread.sleep(100);

@@ -35,7 +35,7 @@ import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.hbase.HBaseTestingUtility;
 import org.apache.hadoop.hbase.HConstants;
 import org.apache.hadoop.hbase.HRegionInfo;
-import org.apache.hadoop.hbase.MetaTableAccessor;
+import org.apache.hadoop.hbase.CatalogAccessor;
 import org.apache.hadoop.hbase.ServerName;
 import org.apache.hadoop.hbase.TableName;
 import org.apache.hadoop.hbase.TableNotFoundException;
@@ -174,8 +174,10 @@ public class TestMetaScanner {
               Bytes.toBytes(midKey),
               end);
 
-            MetaTableAccessor.splitRegion(connection,
-              parent, splita, splitb, ServerName.valueOf("fooserver", 1, 0), 1);
+            CatalogAccessor.splitRegion(connection,
+                parent, splita, splitb,
+                ServerName.valueOf("fooserver", 1, 0),
+                1);
 
             Threads.sleep(random.nextInt(200));
           } catch (Throwable e) {

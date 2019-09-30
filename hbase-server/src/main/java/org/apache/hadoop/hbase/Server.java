@@ -22,7 +22,7 @@ import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hbase.classification.InterfaceAudience;
 import org.apache.hadoop.hbase.classification.InterfaceStability;
 import org.apache.hadoop.hbase.client.ClusterConnection;
-import org.apache.hadoop.hbase.zookeeper.MetaTableLocator;
+import org.apache.hadoop.hbase.zookeeper.RootTableLocator;
 import org.apache.hadoop.hbase.zookeeper.ZooKeeperWatcher;
 
 /**
@@ -51,12 +51,12 @@ public interface Server extends Abortable, Stoppable {
   ClusterConnection getConnection();
 
   /**
-   * Returns instance of {@link org.apache.hadoop.hbase.zookeeper.MetaTableLocator}
+   * Returns instance of {@link RootTableLocator}
    * running inside this server. This MetaServerLocator is started and stopped by server, clients
    * shouldn't manage it's lifecycle.
-   * @return instance of {@link MetaTableLocator} associated with this server.
+   * @return instance of {@link RootTableLocator} associated with this server.
    */
-  MetaTableLocator getMetaTableLocator();
+  RootTableLocator getRootTableLocator();
 
   /**
    * @return The unique server name for this server.

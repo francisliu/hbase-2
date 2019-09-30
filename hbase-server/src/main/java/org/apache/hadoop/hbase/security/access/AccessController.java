@@ -46,7 +46,7 @@ import org.apache.hadoop.hbase.HRegionInfo;
 import org.apache.hadoop.hbase.HTableDescriptor;
 import org.apache.hadoop.hbase.KeyValue;
 import org.apache.hadoop.hbase.KeyValue.Type;
-import org.apache.hadoop.hbase.MetaTableAccessor;
+import org.apache.hadoop.hbase.CatalogAccessor;
 import org.apache.hadoop.hbase.NamespaceDescriptor;
 import org.apache.hadoop.hbase.ProcedureInfo;
 import org.apache.hadoop.hbase.ServerName;
@@ -92,6 +92,8 @@ import org.apache.hadoop.hbase.protobuf.generated.AccessControlProtos.AccessCont
 import org.apache.hadoop.hbase.protobuf.generated.AdminProtos.WALEntry;
 import org.apache.hadoop.hbase.protobuf.generated.HBaseProtos.SnapshotDescription;
 import org.apache.hadoop.hbase.protobuf.generated.QuotaProtos.Quotas;
+import org.apache.hadoop.hbase.protobuf.generated.RegionServerStatusProtos.RegionStateTransition
+    .TransitionCode;
 import org.apache.hadoop.hbase.protobuf.generated.SecureBulkLoadProtos.CleanupBulkLoadRequest;
 import org.apache.hadoop.hbase.protobuf.generated.SecureBulkLoadProtos.PrepareBulkLoadRequest;
 import org.apache.hadoop.hbase.regionserver.InternalScanner;
@@ -304,7 +306,7 @@ public class AccessController extends BaseMasterAndRegionObserver
 
     // 1. All users need read access to hbase:meta table.
     // this is a very common operation, so deal with it quickly.
-    if (hri.isMetaRegion()) {
+    if (hri.isMetaRegion() || hri.isRootRegion()) {
       if (permRequest == Action.READ) {
         return AuthResult.allow(request, "All users allowed", user,
           permRequest, tableName, families);
@@ -1164,7 +1166,7 @@ public class AccessController extends BaseMasterAndRegionObserver
   @Override
   public void postStartMaster(ObserverContext<MasterCoprocessorEnvironment> ctx)
       throws IOException {
-    if (!MetaTableAccessor.tableExists(ctx.getEnvironment().getMasterServices()
+    if (!CatalogAccessor.tableExists(ctx.getEnvironment().getMasterServices()
       .getConnection(), AccessControlLists.ACL_TABLE_NAME)) {
       // initialize the ACL storage table
       AccessControlLists.createACLTable(ctx.getEnvironment().getMasterServices());
@@ -2533,5 +2535,10 @@ public class AccessController extends BaseMasterAndRegionObserver
   public void preSetNamespaceQuota(final ObserverContext<MasterCoprocessorEnvironment> ctx,
       final String namespace, final Quotas quotas) throws IOException {
     requirePermission("setNamespaceQuota", Action.ADMIN);
+  }
+
+  @Override
+  public void preOnRegionTransition(ObserverContext<MasterCoprocessorEnvironment> ctx,
+      HRegionInfo hri, TransitionCode code) throws IOException {
   }
 }

@@ -29,7 +29,7 @@ import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.hbase.HRegionInfo;
 import org.apache.hadoop.hbase.HRegionLocation;
-import org.apache.hadoop.hbase.MetaTableAccessor;
+import org.apache.hadoop.hbase.CatalogAccessor;
 import org.apache.hadoop.hbase.ServerName;
 import org.apache.hadoop.hbase.TableName;
 import org.apache.hadoop.hbase.TableNotDisabledException;
@@ -72,7 +72,7 @@ public final class MasterDDLOperationHelper {
   public static void checkTableModifiable(final MasterProcedureEnv env, final TableName tableName)
       throws IOException {
     // Checks whether the table exists
-    if (!MetaTableAccessor.tableExists(env.getMasterServices().getConnection(), tableName)) {
+    if (!CatalogAccessor.tableExists(env.getMasterServices().getConnection(), tableName)) {
       throw new TableNotFoundException(tableName);
     }
 

@@ -36,7 +36,7 @@ import org.apache.hadoop.hbase.TableNotDisabledException;
 import org.apache.hadoop.hbase.TableNotFoundException;
 import org.apache.hadoop.hbase.HRegionInfo;
 import org.apache.hadoop.hbase.backup.HFileArchiver;
-import org.apache.hadoop.hbase.MetaTableAccessor;
+import org.apache.hadoop.hbase.CatalogAccessor;
 import org.apache.hadoop.hbase.client.ClusterConnection;
 import org.apache.hadoop.hbase.client.Delete;
 import org.apache.hadoop.hbase.client.Result;
@@ -355,7 +355,7 @@ public class DeleteTableProcedure
   private static void cleanAnyRemainingRows(final MasterProcedureEnv env,
       final TableName tableName) throws IOException {
     ClusterConnection connection = env.getMasterServices().getConnection();
-    Scan tableScan = MetaTableAccessor.getScanForTableName(tableName);
+    Scan tableScan = CatalogAccessor.getScanForTableName(tableName);
     try (Table metaTable =
         connection.getTable(TableName.META_TABLE_NAME)) {
       List<Delete> deletes = new ArrayList<Delete>();
@@ -374,7 +374,7 @@ public class DeleteTableProcedure
 
   protected static void deleteFromMeta(final MasterProcedureEnv env,
       final TableName tableName, List<HRegionInfo> regions) throws IOException {
-    MetaTableAccessor.deleteRegions(env.getMasterServices().getConnection(), regions);
+    CatalogAccessor.deleteRegions(env.getMasterServices().getConnection(), regions);
 
     // Clean any remaining rows for this table.
     cleanAnyRemainingRows(env, tableName);

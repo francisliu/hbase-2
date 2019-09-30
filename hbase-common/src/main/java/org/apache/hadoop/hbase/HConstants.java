@@ -63,6 +63,9 @@ public final class HConstants {
    */
   public static final byte[] RPC_HEADER = new byte[] { 'H', 'B', 'a', 's' };
   public static final byte RPC_CURRENT_VERSION = 0;
+  
+  // Increment this when shifting to the new ROOT comparator
+  public static final byte ROOT_SCHEMA_VERSION = 0;
 
   // HFileBlock constants. TODO!!!! THESE DEFINES BELONG IN HFILEBLOCK, NOT UP HERE.
   // Needed down in hbase-common though by encoders but these encoders should not be dealing
@@ -323,9 +326,16 @@ public final class HConstants {
   /** Conf key for the max file size after which we split the region */
   public static final String HREGION_MAX_FILESIZE =
       "hbase.hregion.max.filesize";
+  
+  /** Conf key for the max file size after which we split the meta region */
+  public static final String META_HREGION_MAX_FILESIZE =
+      "hbase.meta.hregion.max.filesize";
 
   /** Default maximum file size */
   public static final long DEFAULT_MAX_FILE_SIZE = 10 * 1024 * 1024 * 1024L;
+  
+  /** Default maximum file size for meta - 128MB */
+  public static final long DEFAULT_MAX_FILE_SIZE_META = 128 * 1024 * 1024L;
 
   /**
    * Max size of single row for Get's or Scan's without in-row scanning flag set.
@@ -1025,6 +1035,10 @@ public final class HConstants {
   public static final int ADMIN_QOS = 100;
   public static final int SYSTEMTABLE_QOS = HIGH_QOS;
 
+  public static final int META_QOS = 101;
+  public static final int ROOT_QOS = 102;
+
+
   /** Directory under /hbase where archived hfiles are stored */
   public static final String HFILE_ARCHIVE_DIRECTORY = "archive";
 
@@ -1054,7 +1068,7 @@ public final class HConstants {
   /** Directories that are not HBase user table directories */
   public static final List<String> HBASE_NON_USER_TABLE_DIRS =
     Collections.unmodifiableList(Arrays.asList((String[])ArrayUtils.addAll(
-      new String[] { TableName.META_TABLE_NAME.getNameAsString() },
+      new String[] { TableName.META_TABLE_NAME.getNameAsString(), TableName.ROOT_TABLE_NAME.getNameAsString() },
       HBASE_NON_TABLE_DIRS.toArray())));
 
   /** Health script related settings. */
@@ -1276,6 +1290,10 @@ public final class HConstants {
   public static final String MASTER_META_SERVER_OPERATIONS_THREADS =
       "hbase.master.executor.meta.serverops.threads";
   public static final int MASTER_META_SERVER_OPERATIONS_THREADS_DEFAULT = 5;
+
+  public static final String MASTER_ROOT_SERVER_OPERATIONS_THREADS =
+      "hbase.master.executor.ROOT.serverops.threads";
+  public static final int MASTER_ROOT_SERVER_OPERATIONS_THREADS_DEFAULT = 5;
 
   public static final String MASTER_LOG_REPLAY_OPS_THREADS =
       "hbase.master.executor.logreplayops.threads";

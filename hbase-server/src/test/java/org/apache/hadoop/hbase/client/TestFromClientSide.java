@@ -4412,12 +4412,13 @@ public class TestFromClientSide {
     // start up a new master
     cluster.startMaster();
     assertTrue(cluster.waitForActiveAndReadyMaster());
+    Thread.sleep(15000);
 
     // test that the same unmanaged connection works with a new
     // HBaseAdmin and can connect to the new master;
     try (HBaseAdmin newAdmin = new HBaseAdmin(conn)) {
       assertTrue(newAdmin.tableExists(tableName));
-      assertTrue(newAdmin.getClusterStatus().getServersSize() == SLAVES);
+      assertEquals(SLAVES, newAdmin.getClusterStatus().getServersSize());
     }
   }
 

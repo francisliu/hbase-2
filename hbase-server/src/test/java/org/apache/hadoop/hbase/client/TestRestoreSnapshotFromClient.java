@@ -26,13 +26,13 @@ import java.util.HashSet;
 import java.util.Set;
 
 import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.hbase.CatalogAccessor;
 import org.apache.hadoop.hbase.CategoryBasedTimeout;
 import org.apache.hadoop.hbase.HBaseTestingUtility;
 import org.apache.hadoop.hbase.HColumnDescriptor;
 import org.apache.hadoop.hbase.HConstants;
 import org.apache.hadoop.hbase.HRegionInfo;
 import org.apache.hadoop.hbase.HTableDescriptor;
-import org.apache.hadoop.hbase.MetaTableAccessor;
 import org.apache.hadoop.hbase.testclassification.LargeTests;
 import org.apache.hadoop.hbase.TableName;
 import org.apache.hadoop.hbase.Waiter;
@@ -295,7 +295,7 @@ public class TestRestoreSnapshotFromClient {
       admin = TEST_UTIL.getHBaseAdmin();
       final int regionReplication = admin.getTableDescriptor(tableName).getRegionReplication();
       // Region count before split
-      final int primaryRegionCountBeforeSplit = MetaTableAccessor
+      final int primaryRegionCountBeforeSplit = CatalogAccessor
           .getTableRegions(TEST_UTIL.getZooKeeperWatcher(), TEST_UTIL.getConnection(), tableName)
           .size() / regionReplication;
 
@@ -310,7 +310,7 @@ public class TestRestoreSnapshotFromClient {
         }
       });
 
-      int regionCountAfterSplit = MetaTableAccessor
+      int regionCountAfterSplit = CatalogAccessor
           .getTableRegions(TEST_UTIL.getZooKeeperWatcher(), TEST_UTIL.getConnection(), tableName)
           .size() / regionReplication;
       // regionCountAfterSplit will contain parent region, so primaryregionCountBeforeSplit + 2
@@ -325,7 +325,7 @@ public class TestRestoreSnapshotFromClient {
       admin.disableTable(tableName);
       admin.restoreSnapshot(snapshotName);
 
-      int regionCountAfterRestoreSnapshot = MetaTableAccessor
+      int regionCountAfterRestoreSnapshot = CatalogAccessor
           .getTableRegions(TEST_UTIL.getZooKeeperWatcher(), TEST_UTIL.getConnection(), tableName)
           .size();
       assertEquals(primaryRegionCountBeforeSplit + 2, regionCountAfterRestoreSnapshot);

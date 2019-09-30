@@ -123,10 +123,16 @@ public class DefaultWALProvider implements WALProvider {
       // creating hlog on fs is time consuming
       synchronized (walCreateLock) {
         if (log == null) {
+          String walSuffix = null;
+          if (ROOT_WAL_PROVIDER_ID.equals(providerId)) {
+            walSuffix = ROOT_WAL_PROVIDER_ID;
+          }
+          if (META_WAL_PROVIDER_ID.equals(providerId)) {
+            walSuffix = META_WAL_PROVIDER_ID;
+          }
           log = new FSHLog(FSUtils.getWALFileSystem(conf), FSUtils.getWALRootDir(conf),
               getWALDirectoryName(factory.factoryId), HConstants.HREGION_OLDLOGDIR_NAME, conf,
-              listeners, true, logPrefix,
-              META_WAL_PROVIDER_ID.equals(providerId) ? META_WAL_PROVIDER_ID : null);
+              listeners, true, logPrefix, walSuffix);
         }
       }
     }
@@ -148,6 +154,7 @@ public class DefaultWALProvider implements WALProvider {
   /** The hbase:meta region's WAL filename extension */
   @VisibleForTesting
   public static final String META_WAL_PROVIDER_ID = ".meta";
+  public static final String ROOT_WAL_PROVIDER_ID = ".root";
   static final String DEFAULT_PROVIDER_ID = "default";
 
   // Implementation details that currently leak in tests or elsewhere follow
@@ -212,14 +219,16 @@ public class DefaultWALProvider implements WALProvider {
       throw new IllegalArgumentException("The WAL path couldn't be null");
     }
     final String[] walPathStrs = walName.toString().split("\\" + WAL_FILE_NAME_DELIMITER);
-    return Long.parseLong(walPathStrs[walPathStrs.length - (isMetaFile(walName) ? 2:1)]);
+    return Long.parseLong(walPathStrs[walPathStrs.length -
+        (isRootFile(walName) || isMetaFile(walName) ? 2:1)]);
   }
 
   /**
    * Pattern used to validate a WAL file name
    * see {@link #validateWALFilename(String)} for description.
    */
-  private static final Pattern pattern = Pattern.compile(".*\\.\\d*("+META_WAL_PROVIDER_ID+")*");
+  private static final Pattern pattern =
+      Pattern.compile(".*\\.\\d*("+META_WAL_PROVIDER_ID+"|"+ROOT_WAL_PROVIDER_ID+")*");
 
   /**
    * A WAL file name is of the format:
@@ -349,8 +358,19 @@ public class DefaultWALProvider implements WALProvider {
     return isMetaFile(p.getName());
   }
 
+  public static boolean isRootFile(Path p) {
+    return isRootFile(p.getName());
+  }
+
   public static boolean isMetaFile(String p) {
     if (p != null && p.endsWith(META_WAL_PROVIDER_ID)) {
+      return true;
+    }
+    return false;
+  }
+
+  public static boolean isRootFile(String p) {
+    if (p != null && p.endsWith(ROOT_WAL_PROVIDER_ID)) {
       return true;
     }
     return false;
@@ -391,7 +411,9 @@ public class DefaultWALProvider implements WALProvider {
    * @return prefix of the log
    */
   public static String getWALPrefixFromWALName(String name) {
-    int endIndex = name.replaceAll(META_WAL_PROVIDER_ID, "").lastIndexOf(".");
+    int endIndex = name.replaceAll(META_WAL_PROVIDER_ID, "")
+        .replaceAll(ROOT_WAL_PROVIDER_ID, "")
+        .lastIndexOf(".");
     return name.substring(0, endIndex);
   }
 

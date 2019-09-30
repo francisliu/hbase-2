@@ -447,6 +447,7 @@ class MemStoreFlusher implements FlushRequester {
   private boolean flushRegion(final FlushRegionEntry fqe) {
     Region region = fqe.region;
     if (!region.getRegionInfo().isMetaRegion() &&
+        !region.getRegionInfo().isRootRegion() &&
         isTooManyStoreFiles(region)) {
       if (fqe.isMaximumWait(this.blockingWaitTime)) {
         LOG.info("Waited " + (EnvironmentEdgeManager.currentTime() - fqe.createTime) +

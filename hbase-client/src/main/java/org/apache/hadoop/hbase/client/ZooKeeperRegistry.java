@@ -28,7 +28,8 @@ import org.apache.hadoop.hbase.HRegionLocation;
 import org.apache.hadoop.hbase.RegionLocations;
 import org.apache.hadoop.hbase.ServerName;
 import org.apache.hadoop.hbase.TableName;
-import org.apache.hadoop.hbase.zookeeper.MetaTableLocator;
+import org.apache.hadoop.hbase.util.Pair;
+import org.apache.hadoop.hbase.zookeeper.RootTableLocator;
 import org.apache.hadoop.hbase.zookeeper.ZKClusterId;
 import org.apache.hadoop.hbase.zookeeper.ZKTableStateClientSideReader;
 import org.apache.hadoop.hbase.zookeeper.ZKUtil;
@@ -51,37 +52,36 @@ class ZooKeeperRegistry implements Registry {
   }
 
   @Override
-  public RegionLocations getMetaRegionLocation() throws IOException {
+  public RegionLocations getRootRegionLocation() throws IOException {
     ZooKeeperKeepAliveConnection zkw = hci.getKeepAliveZooKeeperWatcher();
 
     try {
       if (LOG.isTraceEnabled()) {
-        LOG.trace("Looking up meta region location in ZK," + " connection=" + this);
+        LOG.trace("Looking up root region location in ZK," + " connection=" + this);
       }
-      List<ServerName> servers = new MetaTableLocator().blockUntilAvailable(zkw, hci.rpcTimeout,
+      List<Pair<HRegionInfo, ServerName>> pairs =
+          new RootTableLocator().blockUntilAvailable(zkw, hci.rpcTimeout,
           hci.getConfiguration());
       if (LOG.isTraceEnabled()) {
-        if (servers == null) {
-          LOG.trace("Looked up meta region location, connection=" + this +
+        if (pairs == null) {
+          LOG.trace("Looked up root region location, connection=" + this +
             "; servers = null");
         } else {
           StringBuilder str = new StringBuilder();
-          for (ServerName s : servers) {
-            str.append(s.toString());
+          for (Pair<HRegionInfo, ServerName> entry : pairs) {
+            str.append(entry.getSecond().toString());
             str.append(" ");
           }
-          LOG.trace("Looked up meta region location, connection=" + this +
+          LOG.trace("Looked up root region location, connection=" + this +
             "; servers = " + str.toString());
         }
       }
-      if (servers == null) return null;
-      HRegionLocation[] locs = new HRegionLocation[servers.size()];
+      if (pairs == null) return null;
+      HRegionLocation[] locs = new HRegionLocation[pairs.size()];
       int i = 0;
-      for (ServerName server : servers) {
-        HRegionInfo h = RegionReplicaUtil.getRegionInfoForReplica(
-                HRegionInfo.FIRST_META_REGIONINFO, i);
-        if (server == null) locs[i++] = null;
-        else locs[i++] = new HRegionLocation(h, server, 0);
+      for (Pair<HRegionInfo, ServerName> entry : pairs) {
+        if (entry.getSecond() == null) locs[i++] = null;
+        else locs[i++] = new HRegionLocation(entry.getFirst(), entry.getSecond(), 0);
       }
       return new RegionLocations(locs);
     } catch (InterruptedException e) {

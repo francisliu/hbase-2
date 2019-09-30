@@ -1735,14 +1735,14 @@ public class ZKUtil {
                                               zkw.backupMasterAddressesZNode)) {
         sb.append("\n ").append(child);
       }
-      sb.append("\nRegion server holding hbase:meta: "
-        + new MetaTableLocator().getMetaRegionLocation(zkw));
+      sb.append("\nRegion server holding hbase:root: "
+        + new RootTableLocator().getRootRegionLocation(zkw));
       Configuration conf = HBaseConfiguration.create();
       int numMetaReplicas = conf.getInt(HConstants.META_REPLICAS_NUM,
                HConstants.DEFAULT_META_REPLICA_NUM);
       for (int i = 1; i < numMetaReplicas; i++) {
-        sb.append("\nRegion server holding hbase:meta, replicaId " + i + " "
-                    + new MetaTableLocator().getMetaRegionLocation(zkw, i));
+        sb.append("\nRegion server holding hbase:root, replicaId " + i + " "
+                    + new RootTableLocator().getRootRegionLocation(zkw, i));
       }
       sb.append("\nRegion servers:");
       for (String child : listChildrenNoWatch(zkw, zkw.rsZNode)) {

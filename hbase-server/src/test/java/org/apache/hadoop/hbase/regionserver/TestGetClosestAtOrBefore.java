@@ -33,7 +33,7 @@ import org.apache.hadoop.hbase.HConstants;
 import org.apache.hadoop.hbase.HRegionInfo;
 import org.apache.hadoop.hbase.HTableDescriptor;
 import org.apache.hadoop.hbase.KeyValue;
-import org.apache.hadoop.hbase.MetaTableAccessor;
+import org.apache.hadoop.hbase.CatalogAccessor;
 import org.apache.hadoop.hbase.TableName;
 import org.apache.hadoop.hbase.client.Delete;
 import org.apache.hadoop.hbase.client.Durability;
@@ -83,7 +83,7 @@ public class TestGetClosestAtOrBefore extends HBaseTestCase {
           i == 0? HConstants.EMPTY_BYTE_ARRAY: Bytes.toBytes((byte)i),
           i == last? HConstants.EMPTY_BYTE_ARRAY: Bytes.toBytes((byte)i + interval));
 
-        Put put = MetaTableAccessor.makePutFromRegionInfo(hri);
+        Put put = CatalogAccessor.makePutFromRegionInfo(hri);
         put.setDurability(Durability.SKIP_WAL);
         mr.put(put);
       }

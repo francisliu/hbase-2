@@ -27,12 +27,17 @@ import javax.servlet.http.HttpServlet;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 
+import org.apache.commons.logging.Log;
+import org.apache.commons.logging.LogFactory;
+import org.apache.hadoop.hbase.HRegionInfo;
+import org.apache.hadoop.hbase.TableName;
 import org.apache.hadoop.hbase.classification.InterfaceAudience;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hbase.ServerName;
+import org.apache.hadoop.hbase.master.RegionState.State;
 import org.apache.hadoop.hbase.tmpl.master.MasterStatusTmpl;
 import org.apache.hadoop.hbase.util.FSUtils;
-import org.apache.hadoop.hbase.zookeeper.MetaTableLocator;
+import org.apache.hadoop.hbase.zookeeper.RootTableLocator;
 
 /**
  * The servlet responsible for rendering the index page of the
@@ -40,6 +45,7 @@ import org.apache.hadoop.hbase.zookeeper.MetaTableLocator;
  */
 @InterfaceAudience.Private
 public class MasterStatusServlet extends HttpServlet {
+  private static final Log LOG = LogFactory.getLog(MasterStatusServlet.class.getName());
   private static final long serialVersionUID = 1L;
 
   @Override
@@ -54,12 +60,16 @@ public class MasterStatusServlet extends HttpServlet {
     Configuration conf = master.getConfiguration();
 
     Map<String, Integer> frags = getFragmentationInfo(master, conf);
-    ServerName metaLocation = null;
+    ServerName rootLocation = null;
+    boolean metaFound = false;
     List<ServerName> servers = null;
     Set<ServerName> deadServers = null;
     
     if(master.isActiveMaster()) {
-      metaLocation = getMetaLocationOrNull(master);
+      rootLocation = getRootLocationOrNull(master);
+      //metaFound is really used to check whether to start showing user tables in the UI
+      //prolly to make sure all regions are loaded into regionstate
+      metaFound = master.isInitialized();
       ServerManager serverManager = master.getServerManager();
       if (serverManager != null) {
         deadServers = serverManager.getDeadServers().copyServerNames();
@@ -69,7 +79,8 @@ public class MasterStatusServlet extends HttpServlet {
 
     MasterStatusTmpl tmpl = new MasterStatusTmpl()
       .setFrags(frags)
-      .setMetaLocation(metaLocation)
+      .setMetaFound(metaFound)
+      .setRootLocation(rootLocation)
       .setServers(servers)
       .setDeadServers(deadServers)
       .setCatalogJanitorEnabled(master.isCatalogJanitorEnabled());
@@ -81,10 +92,10 @@ public class MasterStatusServlet extends HttpServlet {
     tmpl.render(response.getWriter(), master);
   }
 
-  private ServerName getMetaLocationOrNull(HMaster master) {
-    MetaTableLocator metaTableLocator = master.getMetaTableLocator();
-    return metaTableLocator == null ? null :
-      metaTableLocator.getMetaRegionLocation(master.getZooKeeper());
+  private ServerName getRootLocationOrNull(HMaster master) {
+    RootTableLocator rootTableLocator = master.getRootTableLocator();
+    return rootTableLocator == null ? null :
+      rootTableLocator.getRootRegionLocation(master.getZooKeeper());
   }
 
   private Map<String, Integer> getFragmentationInfo(

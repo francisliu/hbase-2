@@ -22,6 +22,7 @@ import java.util.Arrays;
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
+import org.apache.hadoop.hbase.Server;
 import org.apache.hadoop.hbase.classification.InterfaceAudience;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hbase.Cell;
@@ -29,10 +30,9 @@ import org.apache.hadoop.hbase.HConstants;
 import org.apache.hadoop.hbase.HRegionInfo;
 import org.apache.hadoop.hbase.HRegionLocation;
 import org.apache.hadoop.hbase.RegionLocations;
-import org.apache.hadoop.hbase.Server;
 import org.apache.hadoop.hbase.ServerName;
 import org.apache.hadoop.hbase.TableName;
-import org.apache.hadoop.hbase.MetaTableAccessor;
+import org.apache.hadoop.hbase.CatalogAccessor;
 import org.apache.hadoop.hbase.client.Put;
 import org.apache.hadoop.hbase.client.Result;
 import org.apache.hadoop.hbase.master.RegionState.State;
@@ -42,7 +42,7 @@ import org.apache.hadoop.hbase.util.Bytes;
 import org.apache.hadoop.hbase.util.ConfigUtil;
 import org.apache.hadoop.hbase.util.EnvironmentEdgeManager;
 import org.apache.hadoop.hbase.util.MultiHConnection;
-import org.apache.hadoop.hbase.zookeeper.MetaTableLocator;
+import org.apache.hadoop.hbase.zookeeper.RootTableLocator;
 import org.apache.zookeeper.KeeperException;
 
 import com.google.common.base.Preconditions;
@@ -59,6 +59,7 @@ public class RegionStateStore {
   protected static final char META_REPLICA_ID_DELIMITER = '_';
 
   private volatile Region metaRegion;
+  private volatile Region rootRegion;
   private MultiHConnection multiHConnection;
   private volatile boolean initialized;
 
@@ -76,7 +77,7 @@ public class RegionStateStore {
   static ServerName getRegionServer(final Result r, int replicaId) {
     Cell cell = r.getColumnLatestCell(HConstants.CATALOG_FAMILY, getServerNameColumn(replicaId));
     if (cell == null || cell.getValueLength() == 0) {
-      RegionLocations locations = MetaTableAccessor.getRegionLocations(r);
+      RegionLocations locations = CatalogAccessor.getRegionLocations(r);
       if (locations != null) {
         HRegionLocation location = locations.getRegionLocation(replicaId);
         if (location != null) {
@@ -126,7 +127,7 @@ public class RegionStateStore {
    */
   private boolean shouldPersistStateChange(
       HRegionInfo hri, RegionState state, RegionState oldState) {
-    return !hri.isMetaRegion() && !RegionStates.isOneOfStates(
+    return !hri.isRootRegion() && !RegionStates.isOneOfStates(
       state, State.MERGING_NEW, State.SPLITTING_NEW, State.MERGED)
       && !(RegionStates.isOneOfStates(state, State.OFFLINE)
         && RegionStates.isOneOfStates(oldState, State.MERGING_NEW,
@@ -147,8 +148,10 @@ public class RegionStateStore {
       if (server instanceof RegionServerServices) {
         metaRegion = ((RegionServerServices)server).getFromOnlineRegions(
           HRegionInfo.FIRST_META_REGIONINFO.getEncodedName());
+        rootRegion = ((RegionServerServices)server).getFromOnlineRegions(
+          HRegionInfo.ROOT_REGIONINFO.getEncodedName());
       }
-      if (metaRegion == null) {
+      if (metaRegion == null || rootRegion == null) {
         Configuration conf = server.getConfiguration();
         // Config to determine the no of HConnections to META.
         // A single HConnection should be sufficient in most cases. Only if
@@ -178,10 +181,10 @@ public class RegionStateStore {
     HRegionInfo hri = newState.getRegion();
     try {
        // Update meta before checking for initialization. Meta state stored in zk.
-      if (hri.isMetaRegion()) {
+      if (hri.isRootRegion()) {
         // persist meta state in MetaTableLocator (which in turn is zk storage currently)
         try {
-          MetaTableLocator.setMetaLocation(server.getZooKeeper(),
+          RootTableLocator.setRootLocation(server.getZooKeeper(),
             newState.getServerName(), hri.getReplicaId(), newState.getState());
           return; // Done
         } catch (KeeperException e) {
@@ -189,59 +192,98 @@ public class RegionStateStore {
         }
       }
 
-    if (!initialized || !shouldPersistStateChange(hri, newState, oldState)) {
-      return;
-    }
+      if (!shouldPersistStateChange(hri, newState, oldState)) {
+        return;
+      }
 
-    ServerName oldServer = oldState != null ? oldState.getServerName() : null;
-    ServerName serverName = newState.getServerName();
-    State state = newState.getState();
+      ServerName oldServer = oldState != null ? oldState.getServerName() : null;
+      ServerName serverName = newState.getServerName();
+      State state = newState.getState();
 
       int replicaId = hri.getReplicaId();
-      Put put = new Put(MetaTableAccessor.getMetaKeyForRegion(hri));
-      StringBuilder info = new StringBuilder("Updating hbase:meta row ");
+      Put metaPut = new Put(CatalogAccessor.getMetaKeyForRegion(hri));
+      StringBuilder info = new StringBuilder();
       info.append(hri.getRegionNameAsString()).append(" with state=").append(state);
       if (serverName != null && !serverName.equals(oldServer)) {
-        put.addImmutable(HConstants.CATALOG_FAMILY, getServerNameColumn(replicaId),
+        metaPut.addImmutable(HConstants.CATALOG_FAMILY, getServerNameColumn(replicaId),
           Bytes.toBytes(serverName.getServerName()));
         info.append(", sn=").append(serverName);
       }
       if (openSeqNum >= 0) {
         Preconditions.checkArgument(state == State.OPEN
           && serverName != null, "Open region should be on a server");
-        MetaTableAccessor.addLocation(put, serverName, openSeqNum, -1, replicaId);
+        CatalogAccessor.addLocation(metaPut, serverName, openSeqNum, -1, replicaId);
         info.append(", openSeqNum=").append(openSeqNum);
         info.append(", server=").append(serverName);
       }
-      put.addImmutable(HConstants.CATALOG_FAMILY, getStateColumn(replicaId),
+      metaPut.addImmutable(HConstants.CATALOG_FAMILY, getStateColumn(replicaId),
         Bytes.toBytes(state.name()));
-      LOG.info(info);
+      TableName putTableName = TableName.META_TABLE_NAME;
 
-      // Persist the state change to meta
-      if (metaRegion != null) {
-        try {
-          // Assume meta is pinned to master.
-          // At least, that's what we want.
-          metaRegion.put(put);
-          return; // Done here
-        } catch (Throwable t) {
-          // In unit tests, meta could be moved away by intention
-          // So, the shortcut is gone. We won't try to establish the
-          // shortcut any more because we prefer meta to be pinned
-          // to the master
-          synchronized (this) {
-            if (metaRegion != null) {
-              LOG.info("Meta region shortcut failed", t);
-              if (multiHConnection == null) {
-                multiHConnection = new MultiHConnection(server.getConfiguration(), 1);
+      if (hri.isMetaRegion()) {
+        LOG.debug("Updating hbase:root row " + info);
+
+        putTableName = TableName.ROOT_TABLE_NAME;
+        if (rootRegion != null) {
+          try {
+            // Assume root is pinned to master.
+            // At least, that's what we want.
+            rootRegion.put(metaPut);
+            return; // Done here
+          } catch (Throwable t) {
+            // In unit tests, meta could be moved away by intention
+            // So, the shortcut is gone. We won't try to establish the
+            // shortcut any more because we prefer meta to be pinned
+            // to the master
+            synchronized (this) {
+              if (rootRegion != null) {
+                LOG.info("Root region shortcut failed", t);
+                if (multiHConnection == null) {
+                  multiHConnection = new MultiHConnection(server.getConfiguration(), 1);
+                }
+                rootRegion = null;
               }
-              metaRegion = null;
+            }
+          }
+        } else {
+          if (multiHConnection == null) {
+            multiHConnection = new MultiHConnection(server.getConfiguration(), 1);
+          }
+        }
+      } else {
+        LOG.debug("Updating hbase:meta row " + info);
+
+        // Persist the state change to meta
+        if (metaRegion != null) {
+          try {
+            // Assume meta is pinned to master.
+            // At least, that's what we want.
+            metaRegion.put(metaPut);
+            return; // Done here
+          } catch (Throwable t) {
+            // In unit tests, meta could be moved away by intention
+            // So, the shortcut is gone. We won't try to establish the
+            // shortcut any more because we prefer meta to be pinned
+            // to the master
+            synchronized (this) {
+              if (metaRegion != null) {
+                LOG.info("Meta region shortcut failed", t);
+                if (multiHConnection == null) {
+                  multiHConnection = new MultiHConnection(server.getConfiguration(), 1);
+                }
+                metaRegion = null;
+              }
             }
           }
         }
       }
+
+      if (!initialized && !hri.isMetaRegion()) {
+        return;
+      }
+
       // Called when meta is not on master
-      multiHConnection.processBatchCallback(Arrays.asList(put), TableName.META_TABLE_NAME, null, null);
+      multiHConnection.processBatchCallback(Arrays.asList(metaPut), putTableName, null, null);
 
     } catch (IOException ioe) {
       LOG.error("Failed to persist region state " + newState, ioe);
@@ -251,12 +293,12 @@ public class RegionStateStore {
 
   void splitRegion(HRegionInfo p,
       HRegionInfo a, HRegionInfo b, ServerName sn, int regionReplication) throws IOException {
-    MetaTableAccessor.splitRegion(server.getConnection(), p, a, b, sn, regionReplication);
+    CatalogAccessor.splitRegion(server.getConnection(), p, a, b, sn, regionReplication);
   }
 
   void mergeRegions(HRegionInfo p,
       HRegionInfo a, HRegionInfo b, ServerName sn, int regionReplication) throws IOException {
-    MetaTableAccessor.mergeRegions(server.getConnection(), p, a, b, sn, regionReplication,
+    CatalogAccessor.mergeRegions(server.getConnection(), p, a, b, sn, regionReplication,
     		EnvironmentEdgeManager.currentTime());
   }
 }

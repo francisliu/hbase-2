@@ -130,7 +130,7 @@ public class TestMasterStatusServlet {
     setupMockTables();
 
     new MasterStatusTmpl()
-      .setMetaLocation(ServerName.valueOf("metaserver:123,12345"))
+      .setRootLocation(ServerName.valueOf("rootserver:123,12345"))
       .render(new StringWriter(), master);
   }
 
@@ -148,6 +148,7 @@ public class TestMasterStatusServlet {
     );
 
     new MasterStatusTmpl()
+      .setRootLocation(ServerName.valueOf("rootserver:123,12345"))
       .setMetaLocation(ServerName.valueOf("metaserver:123,12345"))
       .setServers(servers)
       .setDeadServers(deadServers)
@@ -193,6 +194,14 @@ public class TestMasterStatusServlet {
       count++;
     }
     assertEquals(50, count);
+  }
+  
+  @Test
+  public void testStatusTemplateRootAndMetaAvailable() throws IOException {
+    new MasterStatusTmpl()
+      .setRootLocation(ServerName.valueOf("rootserver:123,12345"))
+      .setMetaLocation(ServerName.valueOf("metaserver:123,12345"))
+      .render(new StringWriter(), master);
   }
 
 }

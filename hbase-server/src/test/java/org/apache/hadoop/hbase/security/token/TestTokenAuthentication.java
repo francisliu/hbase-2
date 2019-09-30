@@ -70,7 +70,7 @@ import org.apache.hadoop.hbase.util.Sleeper;
 import org.apache.hadoop.hbase.util.Strings;
 import org.apache.hadoop.hbase.util.Threads;
 import org.apache.hadoop.hbase.util.Writables;
-import org.apache.hadoop.hbase.zookeeper.MetaTableLocator;
+import org.apache.hadoop.hbase.zookeeper.RootTableLocator;
 import org.apache.hadoop.hbase.zookeeper.ZKClusterId;
 import org.apache.hadoop.hbase.zookeeper.ZooKeeperWatcher;
 import org.apache.hadoop.net.DNS;
@@ -140,7 +140,8 @@ public class TestTokenAuthentication {
       sai.add(new BlockingServiceAndInterface(service,
         AuthenticationProtos.AuthenticationService.BlockingInterface.class));
       this.rpcServer =
-        new RpcServer(this, "tokenServer", sai, initialIsa, conf, new FifoRpcScheduler(conf, 1));
+        new RpcServer(this, "tokenServer", sai, initialIsa, conf,
+            new FifoRpcScheduler(conf, 1));
       InetSocketAddress address = rpcServer.getListenerAddress();
       if (address == null) {
         throw new IOException("Listener channel is closed");
@@ -159,8 +160,7 @@ public class TestTokenAuthentication {
       return null;
     }
 
-    @Override
-    public MetaTableLocator getMetaTableLocator() {
+    public RootTableLocator getRootTableLocator() {
       return null;
     }
 

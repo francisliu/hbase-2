@@ -42,8 +42,8 @@ import org.apache.hadoop.hbase.HColumnDescriptor;
 import org.apache.hadoop.hbase.HConstants;
 import org.apache.hadoop.hbase.HRegionInfo;
 import org.apache.hadoop.hbase.HRegionLocation;
+import org.apache.hadoop.hbase.CatalogAccessor;
 import org.apache.hadoop.hbase.HTableDescriptor;
-import org.apache.hadoop.hbase.MetaTableAccessor;
 import org.apache.hadoop.hbase.NotServingRegionException;
 import org.apache.hadoop.hbase.ScheduledChore;
 import org.apache.hadoop.hbase.ServerName;
@@ -604,10 +604,10 @@ public class TestEndToEndSplitTransaction {
           break;
         }
 
-        region = MetaTableAccessor.getHRegionInfo(result);
+        region = CatalogAccessor.getHRegionInfo(result);
         if (region.isSplitParent()) {
           log("found parent region: " + region.toString());
-          PairOfSameType<HRegionInfo> pair = MetaTableAccessor.getDaughterRegions(result);
+          PairOfSameType<HRegionInfo> pair = CatalogAccessor.getDaughterRegions(result);
           daughterA = pair.getFirst();
           daughterB = pair.getSecond();
           break;
@@ -664,7 +664,7 @@ public class TestEndToEndSplitTransaction {
     log("blocking until region is in META: " + hri.getRegionNameAsString());
     long start = System.currentTimeMillis();
     while (System.currentTimeMillis() - start < timeout) {
-      HRegionLocation loc = MetaTableAccessor.getRegionLocation(conn, hri);
+      HRegionLocation loc = CatalogAccessor.getRegionLocation(conn, hri);
       if (loc != null && !loc.getRegionInfo().isOffline()) {
         log("found region in META: " + hri.getRegionNameAsString());
         break;

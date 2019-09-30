@@ -90,6 +90,7 @@ import org.apache.hadoop.hbase.security.User;
 import org.apache.hadoop.hbase.util.Bytes;
 import org.apache.hadoop.hbase.util.ChecksumType;
 import org.apache.hadoop.hbase.util.ClassSize;
+import org.apache.hadoop.hbase.util.ConfigUtil;
 import org.apache.hadoop.hbase.util.EnvironmentEdgeManager;
 import org.apache.hadoop.hbase.util.ReflectionUtils;
 import org.apache.hadoop.util.StringUtils;
@@ -2145,7 +2146,11 @@ public class HStore implements Store {
     this.lock.readLock().lock();
     try {
       // Should already be enforced by the split policy!
-      assert !this.getRegionInfo().isMetaRegion();
+      if (!ConfigUtil.shouldSplitMeta(conf)) {
+        assert !this.getRegionInfo().isMetaRegion();
+      }
+      assert !this.getRegionInfo().isRootRegion();
+      
       // Not split-able if we find a reference store file present in the store.
       if (hasReferences()) {
         if (LOG.isTraceEnabled()) {

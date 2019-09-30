@@ -125,6 +125,7 @@ import org.apache.hadoop.hbase.client.RowMutations;
 import org.apache.hadoop.hbase.client.Scan;
 import org.apache.hadoop.hbase.conf.ConfigurationManager;
 import org.apache.hadoop.hbase.conf.PropagatingConfigurationObserver;
+import org.apache.hadoop.hbase.constraint.ConstraintException;
 import org.apache.hadoop.hbase.coprocessor.RegionObserver;
 import org.apache.hadoop.hbase.errorhandling.ForeignExceptionSnare;
 import org.apache.hadoop.hbase.exceptions.FailedSanityCheckException;
@@ -184,6 +185,7 @@ import org.apache.hadoop.hbase.util.Bytes;
 import org.apache.hadoop.hbase.util.CancelableProgressable;
 import org.apache.hadoop.hbase.util.ClassSize;
 import org.apache.hadoop.hbase.util.CompressionTest;
+import org.apache.hadoop.hbase.util.ConfigUtil;
 import org.apache.hadoop.hbase.util.Counter;
 import org.apache.hadoop.hbase.util.EncryptionTest;
 import org.apache.hadoop.hbase.util.EnvironmentEdgeManager;
@@ -3890,7 +3892,7 @@ public class HRegion implements HeapSize, PropagatingConfigurationObserver, Regi
   */
   private void checkResources() throws RegionTooBusyException {
     // If catalog region, do not impose resource constraints or block updates.
-    if (this.getRegionInfo().isMetaRegion()) return;
+    if (this.getRegionInfo().isMetaRegion() || this.getRegionInfo().isRootRegion()) return;
 
     if (this.memstoreSize.get() > this.blockingMemStoreSize) {
       blockedRequestsCount.increment();
@@ -7037,7 +7039,6 @@ public class HRegion implements HeapSize, PropagatingConfigurationObserver, Regi
    *
    * @throws IOException
    */
-  // TODO remove since only test and merge use this
   public static void addRegionToMETA(final HRegion meta, final HRegion r) throws IOException {
     meta.checkResources();
     // The row key is the region name
@@ -7064,9 +7065,11 @@ public class HRegion implements HeapSize, PropagatingConfigurationObserver, Regi
    */
   public static boolean rowIsInRange(HRegionInfo info, final byte [] row) {
     return ((info.getStartKey().length == 0) ||
-        (Bytes.compareTo(info.getStartKey(), row) <= 0)) &&
+        (info.getComparator().compareRows(info.getStartKey(), 0, info.getStartKey().length,
+            row, 0, row.length) <= 0)) &&
         ((info.getEndKey().length == 0) ||
-            (Bytes.compareTo(info.getEndKey(), row) > 0));
+            (info.getComparator().compareRows(info.getEndKey(), 0, info.getEndKey().length,
+              row, 0, row.length) > 0));
   }
 
   public static boolean rowIsInRange(HRegionInfo info, final byte [] row, final int offset,
@@ -8383,7 +8386,15 @@ public class HRegion implements HeapSize, PropagatingConfigurationObserver, Regi
     HRegion region;
     FSTableDescriptors fst = new FSTableDescriptors(c);
     // Currently expects tables have one region only.
-    if (FSUtils.getTableName(p).equals(TableName.META_TABLE_NAME)) {
+    if (FSUtils.getTableName(p).equals(TableName.ROOT_TABLE_NAME)) {
+      final WAL wal = walFactory.getRootWAL(
+          HRegionInfo.ROOT_REGIONINFO.getEncodedNameAsBytes());
+      region = HRegion.newHRegion(p, wal, fs, c,
+          HRegionInfo.ROOT_REGIONINFO, fst.get(TableName.ROOT_TABLE_NAME), null);
+    } else if (FSUtils.getTableName(p).equals(TableName.META_TABLE_NAME)) {
+      if (ConfigUtil.shouldSplitMeta(c)) {
+        throw new ConstraintException("Currently not supported when split meta is enabled.");
+      }
       final WAL wal = walFactory.getMetaWAL(
           HRegionInfo.FIRST_META_REGIONINFO.getEncodedNameAsBytes());
       region = HRegion.newHRegion(p, wal, fs, c,
@@ -8425,12 +8436,25 @@ public class HRegion implements HeapSize, PropagatingConfigurationObserver, Regi
     return this.explicitSplitPoint;
   }
 
-  void forceSplit(byte[] sp) {
+  void forceSplit(byte[] sp) throws IOException {
     // This HRegion will go away after the forced split is successful
     // But if a forced split fails, we need to clear forced split.
     this.splitRequest = true;
     if (sp != null) {
-      this.explicitSplitPoint = sp;
+      try {
+        //If the split key for meta table is not a well-formed
+        //region name then it completely messes up ordering, etc
+        if (getRegionInfo().getTable().equals(TableName.META_TABLE_NAME)) {
+          byte[][] name = HRegionInfo.parseRegionName(sp);
+          if (name[0].length < 1 || name[2].length < 1) {
+            throw new ConstraintException("Invalid meta split key");
+          }
+        }
+        this.explicitSplitPoint = sp;
+      } catch(IOException ex) {
+        clearSplit();
+        throw ex;
+      }
     }
   }
 
@@ -8453,8 +8477,10 @@ public class HRegion implements HeapSize, PropagatingConfigurationObserver, Regi
    * is based on the size of the store.
    */
   public byte[] checkSplit() {
-    // Can't split META
-    if (this.getRegionInfo().isMetaTable() ||
+    // Can't split ROOT/META
+    
+    if (this.getRegionInfo().isRootRegion() || (!ConfigUtil.shouldSplitMeta(conf) &&
+        this.getRegionInfo().isMetaRegion()) ||
         TableName.NAMESPACE_TABLE_NAME.equals(this.getRegionInfo().getTable())) {
       if (shouldForceSplit()) {
         LOG.warn("Cannot split meta region in HBase 0.20 and above");
@@ -8687,7 +8713,7 @@ public class HRegion implements HeapSize, PropagatingConfigurationObserver, Regi
    * @throws IOException If anything goes wrong with DFS
    */
   private void syncOrDefer(long txid, Durability durability) throws IOException {
-    if (this.getRegionInfo().isMetaRegion()) {
+    if (this.getRegionInfo().isRootRegion() || this.getRegionInfo().isMetaRegion()) {
       this.wal.sync(txid);
     } else {
       switch(durability) {

@@ -84,7 +84,7 @@ public class TestRegionOpen {
     ThreadPoolExecutor exec = getRS().getExecutorService()
         .getExecutorThreadPool(ExecutorType.RS_OPEN_PRIORITY_REGION);
 
-    assertEquals(1, exec.getCompletedTaskCount()); // namespace region
+    assertEquals(2, exec.getCompletedTaskCount()); // namespace region
 
     HTableDescriptor htd = new HTableDescriptor(tableName);
     htd.setPriority(HConstants.HIGH_QOS);
@@ -94,7 +94,7 @@ public class TestRegionOpen {
       admin.createTable(htd);
     }
 
-    assertEquals(2, exec.getCompletedTaskCount());
+    assertEquals(3, exec.getCompletedTaskCount());
   }
 
   @Test

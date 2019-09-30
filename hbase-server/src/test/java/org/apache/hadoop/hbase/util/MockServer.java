@@ -29,7 +29,7 @@ import org.apache.hadoop.hbase.Server;
 import org.apache.hadoop.hbase.ServerName;
 import org.apache.hadoop.hbase.ZooKeeperConnectionException;
 import org.apache.hadoop.hbase.client.ClusterConnection;
-import org.apache.hadoop.hbase.zookeeper.MetaTableLocator;
+import org.apache.hadoop.hbase.zookeeper.RootTableLocator;
 import org.apache.hadoop.hbase.zookeeper.ZooKeeperWatcher;
 
 /**
@@ -107,8 +107,7 @@ public class MockServer implements Server {
     return null;
   }
 
-  @Override
-  public MetaTableLocator getMetaTableLocator() {
+  public RootTableLocator getRootTableLocator() {
     return null;
   }
 

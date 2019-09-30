@@ -29,6 +29,7 @@ import java.util.Collection;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
 
+import com.google.common.collect.Sets;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
@@ -38,7 +39,7 @@ import org.apache.hadoop.hbase.HBaseTestingUtility;
 import org.apache.hadoop.hbase.HConstants;
 import org.apache.hadoop.hbase.HRegionInfo;
 import org.apache.hadoop.hbase.HRegionLocation;
-import org.apache.hadoop.hbase.MetaTableAccessor;
+import org.apache.hadoop.hbase.CatalogAccessor;
 import org.apache.hadoop.hbase.RegionLocations;
 import org.apache.hadoop.hbase.ServerName;
 import org.apache.hadoop.hbase.TableName;
@@ -97,11 +98,30 @@ public class TestMetaWithReplicas {
     });
     l.setBalancerOn(false);
     for (int replicaId = 1; replicaId < 3; replicaId ++) {
+      HRegionInfo h = RegionReplicaUtil.getRegionInfoForReplica(HRegionInfo.ROOT_REGIONINFO,
+        replicaId);
+      LOG.debug("Waiting for assignment of: "+h);
+      TEST_UTIL.getMiniHBaseCluster().getMaster().getAssignmentManager().waitForAssignment(h);
+      LOG.debug("Region is assigned: "+h);
+    }
+    LOG.debug("All root replicas assigned");
+
+    for (int replicaId = 1; replicaId < 3; replicaId ++) {
       HRegionInfo h = RegionReplicaUtil.getRegionInfoForReplica(HRegionInfo.FIRST_META_REGIONINFO,
         replicaId);
+      LOG.debug("Waiting for assignment of: "+h);
       TEST_UTIL.getMiniHBaseCluster().getMaster().getAssignmentManager().waitForAssignment(h);
+      LOG.debug("Region is assigned: "+h);
     }
     LOG.debug("All meta replicas assigned");
+    flushRootRegion();
+  }
+
+  private void flushRootRegion() throws IOException, InterruptedException {
+    TEST_UTIL.getHBaseAdmin().flush(TableName.ROOT_TABLE_NAME);
+    Thread.sleep(TEST_UTIL.getConfiguration().getInt(
+        StorefileRefresherChore.REGIONSERVER_STOREFILE_REFRESH_PERIOD,
+        30000) * 6);
   }
 
   @After
@@ -116,7 +136,7 @@ public class TestMetaWithReplicas {
   }
 
   @Test
-  public void testZookeeperNodesForReplicas() throws Exception {
+  public void   testZookeeperNodesForReplicas() throws Exception {
     // Checks all the znodes exist when meta's replicas are enabled
     ZooKeeperWatcher zkw = TEST_UTIL.getZooKeeperWatcher();
     Configuration conf = TEST_UTIL.getConfiguration();
@@ -172,12 +192,20 @@ public class TestMetaWithReplicas {
     ServerName master = null;
     try (Connection c = ConnectionFactory.createConnection(util.getConfiguration());) {
       try (Table htable = util.createTable(TABLE, FAMILIES, conf);) {
+        util.getHBaseAdmin().flush(TableName.ROOT_TABLE_NAME);
         util.getHBaseAdmin().flush(TableName.META_TABLE_NAME);
         Thread.sleep(conf.getInt(StorefileRefresherChore.REGIONSERVER_STOREFILE_REFRESH_PERIOD,
            30000) * 6);
-        List<HRegionInfo> regions = MetaTableAccessor.getTableRegions(zkw, c,
+        for (int i=0;i<3;i++) {
+          for (Result result :
+              util.getConnection().getTable(TableName.ROOT_TABLE_NAME).getScanner(
+                  new Scan().setConsistency(Consistency.TIMELINE).setReplicaId(i)
+              )) {
+          }
+        }
+        List<HRegionInfo> regions = CatalogAccessor.getTableRegions(zkw, c,
           TableName.valueOf(TABLE));
-        HRegionLocation hrl = MetaTableAccessor.getRegionLocation(c, regions.get(0));
+        HRegionLocation hrl = CatalogAccessor.getRegionLocation(c, regions.get(0));
         // Ensure that the primary server for test table is not the same one as the primary
         // of the meta region since we will be killing the srv holding the meta's primary...
         // We want to be able to write to the test table even when the meta is not present ..
@@ -188,7 +216,7 @@ public class TestMetaWithReplicas {
           // wait for the move to complete
           do {
             Thread.sleep(10);
-            hrl = MetaTableAccessor.getRegionLocation(c, regions.get(0));
+            hrl = CatalogAccessor.getRegionLocation(c, regions.get(0));
           } while (primary.equals(hrl.getServerName()));
           util.getHBaseAdmin().flush(TableName.META_TABLE_NAME);
           Thread.sleep(conf.getInt(StorefileRefresherChore.REGIONSERVER_STOREFILE_REFRESH_PERIOD,
@@ -266,7 +294,7 @@ public class TestMetaWithReplicas {
     ServerName sn = TEST_UTIL.getHBaseClusterInterface().getClusterStatus().getMaster();
     TEST_UTIL.getHBaseClusterInterface().stopMaster(sn);
     TEST_UTIL.getHBaseClusterInterface().waitForMasterToStop(sn, 60000);
-    List<String> metaZnodes = TEST_UTIL.getZooKeeperWatcher().getMetaReplicaNodes();
+    List<String> metaZnodes = TEST_UTIL.getZooKeeperWatcher().getRootReplicaNodes();
     assert(metaZnodes.size() == originalReplicaCount); //we should have what was configured before
     TEST_UTIL.getHBaseClusterInterface().getConf().setInt(HConstants.META_REPLICAS_NUM,
         newReplicaCount);
@@ -274,7 +302,7 @@ public class TestMetaWithReplicas {
     TEST_UTIL.getHBaseClusterInterface().waitForActiveAndReadyMaster();
     int count = 0;
     do {
-      metaZnodes = TEST_UTIL.getZooKeeperWatcher().getMetaReplicaNodes();
+      metaZnodes = TEST_UTIL.getZooKeeperWatcher().getRootReplicaNodes();
       Thread.sleep(10);
       count++;
       // wait for the count to be different from the originalReplicaCount. When the
@@ -285,6 +313,7 @@ public class TestMetaWithReplicas {
     // also check if hbck returns without errors
     TEST_UTIL.getConfiguration().setInt(HConstants.META_REPLICAS_NUM,
         newReplicaCount);
+    flushRootRegion();
     HBaseFsck hbck = HbckTestingUtil.doFsck(TEST_UTIL.getConfiguration(), false);
     HbckTestingUtil.assertNoErrors(hbck);
   }
@@ -314,10 +343,10 @@ public class TestMetaWithReplicas {
   }
 
   @Test
-  public void testHBaseFsckWithFewerMetaReplicaZnodes() throws Exception {
+  public void testHBaseFsckWithFewerRootReplicaZnodes() throws Exception {
     ClusterConnection c = (ClusterConnection)ConnectionFactory.createConnection(
         TEST_UTIL.getConfiguration());
-    RegionLocations rl = c.locateRegion(TableName.META_TABLE_NAME, HConstants.EMPTY_START_ROW,
+    RegionLocations rl = c.locateRegion(TableName.ROOT_TABLE_NAME, HConstants.EMPTY_START_ROW,
         false, false);
     HBaseFsckRepair.closeRegionSilentlyAndWait(c,
         rl.getRegionLocation(2).getServerName(), rl.getRegionLocation(2).getRegionInfo());
@@ -325,7 +354,28 @@ public class TestMetaWithReplicas {
     ZKUtil.deleteNode(zkw, zkw.getZNodeForReplica(2));
     // check that problem exists
     HBaseFsck hbck = doFsck(TEST_UTIL.getConfiguration(), false);
-    assertErrors(hbck, new ERROR_CODE[]{ERROR_CODE.UNKNOWN,ERROR_CODE.NO_META_REGION});
+    assertErrors(hbck, new ERROR_CODE[]{ERROR_CODE.UNKNOWN, ERROR_CODE.NULL_ROOT_REGION});
+    // fix the problem
+    hbck = doFsck(TEST_UTIL.getConfiguration(), true);
+    // run hbck again to make sure we don't see any errors
+    hbck = doFsck(TEST_UTIL.getConfiguration(), false);
+    assertErrors(hbck, new ERROR_CODE[]{});
+  }
+
+  @Test
+  public void testHBaseFsckWithFewerMetaReplicaEntries() throws Exception {
+    ClusterConnection c = (ClusterConnection)ConnectionFactory.createConnection(
+        TEST_UTIL.getConfiguration());
+    RegionLocations rl = c.locateRegion(TableName.META_TABLE_NAME, HConstants.EMPTY_START_ROW,
+        false, false);
+    HBaseFsckRepair.closeRegionSilentlyAndWait(c,
+        rl.getRegionLocation(2).getServerName(), rl.getRegionLocation(2).getRegionInfo());
+    CatalogAccessor.removeRegionReplicasFromRoot(
+        Sets.newHashSet(rl.getDefaultRegionLocation().getRegionInfo().getRegionName()),
+        2, 1, c);
+    // check that problem exists
+    HBaseFsck hbck = doFsck(TEST_UTIL.getConfiguration(), false);
+    assertErrors(hbck, new ERROR_CODE[]{ERROR_CODE.UNKNOWN, ERROR_CODE.NO_META_REGION});
     // fix the problem
     hbck = doFsck(TEST_UTIL.getConfiguration(), true);
     // run hbck again to make sure we don't see any errors
@@ -372,7 +422,7 @@ public class TestMetaWithReplicas {
     String tableName = "randomTable5678";
     TEST_UTIL.createTable(TableName.valueOf(tableName), "f");
     assertTrue(TEST_UTIL.getHBaseAdmin().tableExists(tableName));
-    TEST_UTIL.getHBaseAdmin().move(HRegionInfo.FIRST_META_REGIONINFO.getEncodedNameAsBytes(),
+    TEST_UTIL.getHBaseAdmin().move(HRegionInfo.ROOT_REGIONINFO.getEncodedNameAsBytes(),
         Bytes.toBytes(moveToServer.getServerName()));
     int i = 0;
     do {
@@ -399,12 +449,34 @@ public class TestMetaWithReplicas {
     do {
       LOG.debug("Waiting for the replica " + hrl.getRegionInfo() + " to come up");
       Thread.sleep(30000); //wait for the detection/recovery
+      //flush so root replica gets up to date
+      TEST_UTIL.getHBaseAdmin().flush(TableName.ROOT_TABLE_NAME);
       rl = ConnectionManager.getConnectionInternal(TEST_UTIL.getConfiguration()).
           locateRegion(TableName.META_TABLE_NAME, Bytes.toBytes(""), false, true);
       hrl = rl.getRegionLocation(1);
       i++;
     } while ((hrl == null || hrl.getServerName().equals(oldServer)) && i < 3);
     assertTrue(i != 3);
+  }
+
+  @Test
+  public void testHBaseFsckWithExcessRootReplicas() throws Exception {
+    // Create a meta replica (this will be the 4th one) and assign it
+    HRegionInfo h = RegionReplicaUtil.getRegionInfoForReplica(
+        HRegionInfo.ROOT_REGIONINFO, 3);
+    // create in-memory state otherwise master won't assign
+    TEST_UTIL.getMiniHBaseCluster().getMaster().getAssignmentManager()
+             .getRegionStates().createRegionState(h);
+    TEST_UTIL.getMiniHBaseCluster().getMaster().assignRegion(h);
+    HBaseFsckRepair.waitUntilAssigned(TEST_UTIL.getHBaseAdmin(), h);
+    // check that problem exists
+    HBaseFsck hbck = doFsck(TEST_UTIL.getConfiguration(), false);
+    assertErrors(hbck, new ERROR_CODE[]{ERROR_CODE.UNKNOWN, ERROR_CODE.SHOULD_NOT_BE_DEPLOYED});
+    // fix the problem
+    hbck = doFsck(TEST_UTIL.getConfiguration(), true);
+    // run hbck again to make sure we don't see any errors
+    hbck = doFsck(TEST_UTIL.getConfiguration(), false);
+    assertErrors(hbck, new ERROR_CODE[]{});
   }
 
   @Test
@@ -427,23 +499,32 @@ public class TestMetaWithReplicas {
     assertErrors(hbck, new ERROR_CODE[]{});
   }
 
+
+  @Test (timeout=180000)
+  public void testRootTableReplicaAssignment() throws Exception {
+    testCatalogTableReplicaAssignment(TableName.ROOT_TABLE_NAME);
+  }
+
   @Test
   public void testMetaTableReplicaAssignment() throws Exception {
+    testCatalogTableReplicaAssignment(TableName.META_TABLE_NAME);
+  }
+
+  public void testCatalogTableReplicaAssignment(final TableName tableName) throws Exception {
     final ClusterConnection c =
         ConnectionManager.getConnectionInternal(TEST_UTIL.getConfiguration());
-    final RegionLocations rl =
-        c.locateRegion(TableName.META_TABLE_NAME, HConstants.EMPTY_START_ROW, false, true);
+    final RegionLocations rl = c.locateRegion(tableName, HConstants.EMPTY_START_ROW, false, true);
 
-    final ServerName meta0SN = rl.getRegionLocation(0).getServerName();
-    LOG.debug("The hbase:meta default replica region is in server: " + meta0SN);
-    final ServerName meta1SN = rl.getRegionLocation(1).getServerName();
-    LOG.debug("The hbase:meta replica 1 region " + rl.getRegionLocation(1).getRegionInfo() +
-      " is in server: " + meta1SN);
+    final ServerName region0SN = rl.getRegionLocation(0).getServerName();
+    LOG.debug("The "+tableName+" default replica region is in server: " + region0SN);
+    final ServerName region1SN = rl.getRegionLocation(1).getServerName();
+    LOG.debug("The "+tableName+" replica 1 region " + rl.getRegionLocation(1).getRegionInfo() +
+      " is in server: " + region1SN);
 
-    LOG.debug("Killing the region server " + meta1SN +
-      " that hosts hbase:meta replica 1 region " + rl.getRegionLocation(1).getRegionInfo());
-    TEST_UTIL.getHBaseClusterInterface().killRegionServer(meta1SN);
-    TEST_UTIL.getHBaseClusterInterface().waitForRegionServerToStop(meta1SN, 60000);
+    LOG.debug("Killing the region server " + region1SN +
+      " that hosts "+tableName+" replica 1 region " + rl.getRegionLocation(1).getRegionInfo());
+    TEST_UTIL.getHBaseClusterInterface().killRegionServer(region1SN);
+    TEST_UTIL.getHBaseClusterInterface().waitForRegionServerToStop(region1SN, 60000);
 
     ServerName masterSN = TEST_UTIL.getHBaseClusterInterface().getClusterStatus().getMaster();
     LOG.debug("Killing the master server " + masterSN);
@@ -459,11 +540,11 @@ public class TestMetaWithReplicas {
       @Override
       public boolean evaluate() throws IOException {
         RegionLocations rls =
-            c.locateRegion(TableName.META_TABLE_NAME, HConstants.EMPTY_START_ROW, false, true);
+            c.locateRegion(tableName, HConstants.EMPTY_START_ROW, false, true);
         HRegionLocation loc = rls.getRegionLocation(1);
-        if (loc != null && !meta1SN.equals(loc.getServerName())) {
+        if (loc != null && !region1SN.equals(loc.getServerName())) {
           LOG.debug("The hbase:meta replica 1 region " + rls.getRegionLocation(1).getRegionInfo() +
-              " is now moved from server " + meta1SN + " to server " + loc.getServerName());
+              " is now moved from server " + region1SN + " to server " + loc.getServerName());
           return true;
         } else {
           return false;
@@ -477,13 +558,13 @@ public class TestMetaWithReplicas {
       }
     });
 
-    LOG.debug("Killing the region server " + meta0SN +
-      " that hosts hbase:meta default replica region " + rl.getRegionLocation(0).getRegionInfo());
-    TEST_UTIL.getHBaseClusterInterface().killRegionServer(meta0SN);
-    TEST_UTIL.getHBaseClusterInterface().waitForRegionServerToStop(meta0SN, 60000);
+    LOG.debug("Killing the region server " + region0SN +
+      " that hosts "+tableName+" default replica region " + rl.getRegionLocation(0).getRegionInfo());
+    TEST_UTIL.getHBaseClusterInterface().killRegionServer(region0SN);
+    TEST_UTIL.getHBaseClusterInterface().waitForRegionServerToStop(region0SN, 60000);
 
     TEST_UTIL.getMiniHBaseCluster().getMaster().getAssignmentManager().waitForAssignment(
-      HRegionInfo.FIRST_META_REGIONINFO);
+      rl.getDefaultRegionLocation().getRegionInfo());
 
     // wait for default replica to be re-assigned
     TEST_UTIL.waitFor(60000, 100, new ExplainingPredicate<IOException>() {
@@ -491,12 +572,12 @@ public class TestMetaWithReplicas {
       @Override
       public boolean evaluate() throws IOException {
         RegionLocations rls =
-            c.locateRegion(TableName.META_TABLE_NAME, HConstants.EMPTY_START_ROW, false, true);
+            c.locateRegion(tableName, HConstants.EMPTY_START_ROW, false, true);
         HRegionLocation loc = rls.getRegionLocation(0);
-        if (loc != null && !meta0SN.equals(loc.getServerName())) {
+        if (loc != null && !region0SN.equals(loc.getServerName())) {
           LOG.debug(
             "The hbase:meta default replica region " + rls.getRegionLocation(0).getRegionInfo() +
-                " is now moved from server " + meta0SN + " to server " + loc.getServerName());
+                " is now moved from server " + region0SN + " to server " + loc.getServerName());
           return true;
         } else {
           return false;

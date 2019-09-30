@@ -36,6 +36,8 @@ import org.apache.hadoop.hbase.master.procedure.MasterProcedureEnv;
 import org.apache.hadoop.hbase.procedure2.ProcedureExecutor;
 import org.apache.hadoop.hbase.protobuf.generated.HBaseProtos.SnapshotDescription;
 import org.apache.hadoop.hbase.protobuf.generated.QuotaProtos.Quotas;
+import org.apache.hadoop.hbase.protobuf.generated.RegionServerStatusProtos.RegionStateTransition
+    .TransitionCode;
 
 import java.io.IOException;
 import java.util.List;
@@ -452,7 +454,7 @@ public class BaseMasterObserver implements MasterObserver {
   public void postListSnapshot(final ObserverContext<MasterCoprocessorEnvironment> ctx,
       final SnapshotDescription snapshot) throws IOException {
   }
-  
+
   @Override
   public void preCloneSnapshot(final ObserverContext<MasterCoprocessorEnvironment> ctx,
       final SnapshotDescription snapshot, final HTableDescriptor hTableDescriptor)
@@ -503,6 +505,11 @@ public class BaseMasterObserver implements MasterObserver {
   public void preGetTableDescriptors(ObserverContext<MasterCoprocessorEnvironment> ctx,
       List<TableName> tableNamesList, List<HTableDescriptor> descriptors, String regex)
       throws IOException {
+  }
+
+  @Override
+  public void preOnRegionTransition(ObserverContext<MasterCoprocessorEnvironment> ctx,
+      HRegionInfo hri, TransitionCode code) throws IOException {
   }
 
   @Override

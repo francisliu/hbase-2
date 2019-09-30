@@ -661,7 +661,7 @@ public abstract class FSUtils {
   throws IOException, DeserializationException {
     String version = getVersion(fs, rootdir);
     if (version == null) {
-      if (!metaRegionExists(fs, rootdir)) {
+      if (!rootRegionExists(fs, rootdir)) {
         // rootDir is empty (no version file and no root region)
         // just create new version file (HBASE-1195)
         setVersion(fs, rootdir, wait, retries);
@@ -1093,8 +1093,9 @@ public abstract class FSUtils {
    * @throws IOException e
    */
   @SuppressWarnings("deprecation")
-  public static boolean metaRegionExists(FileSystem fs, Path rootDir) throws IOException {
-    Path metaRegionDir = getRegionDirFromRootDir(rootDir, HRegionInfo.FIRST_META_REGIONINFO);
+  public static boolean rootRegionExists(FileSystem fs, Path rootDir)
+  throws IOException {
+    Path metaRegionDir = getRegionDirFromRootDir(rootDir, HRegionInfo.ROOT_REGIONINFO);
     return fs.exists(metaRegionDir);
   }
 

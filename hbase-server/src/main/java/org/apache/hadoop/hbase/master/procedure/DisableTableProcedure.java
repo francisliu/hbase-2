@@ -29,7 +29,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.hbase.HRegionInfo;
-import org.apache.hadoop.hbase.MetaTableAccessor;
+import org.apache.hadoop.hbase.CatalogAccessor;
 import org.apache.hadoop.hbase.TableName;
 import org.apache.hadoop.hbase.TableNotEnabledException;
 import org.apache.hadoop.hbase.TableNotFoundException;
@@ -267,10 +267,11 @@ public class DisableTableProcedure
    */
   private boolean prepareDisable(final MasterProcedureEnv env) throws HBaseException, IOException {
     boolean canTableBeDisabled = true;
-    if (tableName.equals(TableName.META_TABLE_NAME)) {
+    if (tableName.equals(TableName.META_TABLE_NAME)
+        || tableName.equals(TableName.ROOT_TABLE_NAME)) {
       setFailure("master-disable-table", new ConstraintException("Cannot disable catalog table"));
       canTableBeDisabled = false;
-    } else if (!MetaTableAccessor.tableExists(env.getMasterServices().getConnection(), tableName)) {
+    } else if (!CatalogAccessor.tableExists(env.getMasterServices().getConnection(), tableName)) {
       setFailure("master-disable-table", new TableNotFoundException(tableName));
       canTableBeDisabled = false;
     } else if (!skipTableStateCheck) {

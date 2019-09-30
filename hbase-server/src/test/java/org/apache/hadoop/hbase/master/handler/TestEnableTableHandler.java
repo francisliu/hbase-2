@@ -29,7 +29,7 @@ import com.google.common.collect.Lists;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.hbase.HConstants;
-import org.apache.hadoop.hbase.MetaTableAccessor;
+import org.apache.hadoop.hbase.CatalogAccessor;
 import org.apache.hadoop.hbase.HBaseTestingUtility;
 import org.apache.hadoop.hbase.HColumnDescriptor;
 import org.apache.hadoop.hbase.HRegionInfo;
@@ -66,7 +66,7 @@ public class TestEnableTableHandler {
 
   @Before
   public void setUp() throws Exception {
-    TEST_UTIL.getConfiguration().set("hbase.balancer.tablesOnMaster", "hbase:meta");
+    TEST_UTIL.getConfiguration().set("hbase.balancer.tablesOnMaster", "hbase:root,hbase:meta");
     TEST_UTIL.getConfiguration().
       setInt(HConstants.REGION_SERVER_HIGH_PRIORITY_HANDLER_COUNT, 10);
     TEST_UTIL.getConfiguration().set(CoprocessorHost.MASTER_COPROCESSOR_CONF_KEY,
@@ -104,6 +104,7 @@ public class TestEnableTableHandler {
     cluster.waitForRegionServerToStop(rs.getRegionServer().getServerName(), 10000);
 
     TEST_UTIL.waitUntilAllRegionsAssigned(TableName.META_TABLE_NAME);
+    TEST_UTIL.waitUntilAllRegionsAssigned(TableName.ROOT_TABLE_NAME);
     LOG.debug("Now enabling table " + tableName);
 
     admin.enableTable(tableName);
@@ -185,7 +186,7 @@ public class TestEnableTableHandler {
     // content from a few of the rows.
     try (Table metaTable = TEST_UTIL.getConnection().getTable(TableName.META_TABLE_NAME)) {
       try (ResultScanner scanner =
-          metaTable.getScanner(MetaTableAccessor.getScanForTableName(tableName))) {
+          metaTable.getScanner(CatalogAccessor.getScanForTableName(tableName))) {
         for (Result result : scanner) {
           // Just delete one row.
           Delete d = new Delete(result.getRow());
@@ -206,7 +207,7 @@ public class TestEnableTableHandler {
       }
       int rowCount = 0;
       try (ResultScanner scanner =
-          metaTable.getScanner(MetaTableAccessor.getScanForTableName(tableName))) {
+          metaTable.getScanner(CatalogAccessor.getScanForTableName(tableName))) {
         for (Result result : scanner) {
           LOG.info("Found when none expected: " + result);
           rowCount++;

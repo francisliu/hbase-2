@@ -32,7 +32,7 @@ import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.hbase.HRegionInfo;
 import org.apache.hadoop.hbase.HTableDescriptor;
 import org.apache.hadoop.hbase.TableName;
-import org.apache.hadoop.hbase.MetaTableAccessor;
+import org.apache.hadoop.hbase.CatalogAccessor;
 import org.apache.hadoop.hbase.client.Connection;
 import org.apache.hadoop.hbase.errorhandling.ForeignException;
 import org.apache.hadoop.hbase.errorhandling.ForeignExceptionDispatcher;
@@ -149,7 +149,7 @@ public class RestoreSnapshotHandler extends TableEventHandler implements Snapsho
       // that are not correct after the restore.
       List<HRegionInfo> hrisToRemove = new LinkedList<HRegionInfo>();
       if (metaChanges.hasRegionsToRemove()) hrisToRemove.addAll(metaChanges.getRegionsToRemove());
-      MetaTableAccessor.deleteRegions(conn, hrisToRemove);
+      CatalogAccessor.deleteRegions(conn, hrisToRemove);
 
       // 4.2 Add the new set of regions to META
       //
@@ -159,9 +159,9 @@ public class RestoreSnapshotHandler extends TableEventHandler implements Snapsho
       // in the snapshot folder.
       hris.clear();
       if (metaChanges.hasRegionsToAdd()) hris.addAll(metaChanges.getRegionsToAdd());
-      MetaTableAccessor.addRegionsToMeta(conn, hris, hTableDescriptor.getRegionReplication());
+      CatalogAccessor.addRegionsToCatalog(conn, hris, hTableDescriptor.getRegionReplication());
       if (metaChanges.hasRegionsToRestore()) {
-        MetaTableAccessor.overwriteRegions(conn, metaChanges.getRegionsToRestore(),
+        CatalogAccessor.overwriteRegions(conn, metaChanges.getRegionsToRestore(),
           hTableDescriptor.getRegionReplication());
       }
       metaChanges.updateMetaParentRegions(this.server.getConnection(), hris);

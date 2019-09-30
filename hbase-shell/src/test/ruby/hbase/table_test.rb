@@ -61,6 +61,10 @@ module Hbase
       assert(table('hbase:meta').is_meta_table?)
     end
 
+    define_test "is_meta_table? method should return true for the root table" do
+      assert(table('hbase:root').is_meta_table?)
+    end
+
     define_test "is_meta_table? method should return false for a normal table" do
       assert(!@test_table.is_meta_table?)
     end

@@ -19,6 +19,7 @@
 package org.apache.hadoop.hbase.wal;
 
 import static org.apache.hadoop.hbase.wal.DefaultWALProvider.META_WAL_PROVIDER_ID;
+import static org.apache.hadoop.hbase.wal.DefaultWALProvider.ROOT_WAL_PROVIDER_ID;
 import static org.apache.hadoop.hbase.wal.DefaultWALProvider.WAL_FILE_NAME_DELIMITER;
 
 import java.io.IOException;
@@ -125,6 +126,7 @@ public class RegionGroupingProvider implements WALProvider {
   public static final String DEFAULT_DELEGATE_PROVIDER = WALFactory.Providers.defaultProvider
       .name();
 
+  private static final String ROOT_WAL_GROUP_NAME = "root";
   private static final String META_WAL_GROUP_NAME = "meta";
 
   /** A group-provider mapping, make sure one-one rather than many-one mapping */
@@ -160,8 +162,10 @@ public class RegionGroupingProvider implements WALProvider {
   }
 
   private WALProvider createProvider(String group) throws IOException {
-    if (META_WAL_PROVIDER_ID.equals(providerId)) {
-      return factory.createProvider(providerClass, listeners, META_WAL_PROVIDER_ID);
+    if (ROOT_WAL_PROVIDER_ID.equals(providerId)) {
+      return factory.createProvider(providerClass, listeners, ROOT_WAL_PROVIDER_ID);
+    } else if (META_WAL_PROVIDER_ID.equals(providerId)) {
+        return factory.createProvider(providerClass, listeners, META_WAL_PROVIDER_ID);
     } else {
       return factory.createProvider(providerClass, listeners, group);
     }
@@ -188,8 +192,11 @@ public class RegionGroupingProvider implements WALProvider {
   @Override
   public WAL getWAL(final byte[] identifier, byte[] namespace) throws IOException {
     final String group;
-    if (META_WAL_PROVIDER_ID.equals(this.providerId)) {
-      group = META_WAL_GROUP_NAME;
+    if (ROOT_WAL_PROVIDER_ID.equals(this.providerId)) {
+      group = ROOT_WAL_GROUP_NAME;
+    }
+    else if (META_WAL_PROVIDER_ID.equals(this.providerId)) {
+        group = META_WAL_GROUP_NAME;
     } else {
       group = strategy.group(identifier, namespace);
     }

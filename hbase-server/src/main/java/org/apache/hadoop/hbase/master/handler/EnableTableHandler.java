@@ -28,7 +28,7 @@ import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.hbase.CoordinatedStateException;
 import org.apache.hadoop.hbase.HRegionInfo;
-import org.apache.hadoop.hbase.MetaTableAccessor;
+import org.apache.hadoop.hbase.CatalogAccessor;
 import org.apache.hadoop.hbase.Server;
 import org.apache.hadoop.hbase.ServerName;
 import org.apache.hadoop.hbase.TableName;
@@ -49,7 +49,7 @@ import org.apache.hadoop.hbase.master.TableLockManager;
 import org.apache.hadoop.hbase.master.TableLockManager.TableLock;
 import org.apache.hadoop.hbase.protobuf.generated.ZooKeeperProtos;
 import org.apache.hadoop.hbase.util.Pair;
-import org.apache.hadoop.hbase.zookeeper.MetaTableLocator;
+import org.apache.hadoop.hbase.zookeeper.RootTableLocator;
 
 /**
  * Handler to run enable of a table.
@@ -92,7 +92,7 @@ public class EnableTableHandler extends EventHandler {
     boolean success = false;
     try {
       // Check if table exists
-      if (!MetaTableAccessor.tableExists(this.server.getConnection(), tableName)) {
+      if (!CatalogAccessor.tableExists(this.server.getConnection(), tableName)) {
         // retainAssignment is true only during recovery.  In normal case it is false
         if (!this.skipTableStateCheck) {
           throw new TableNotFoundException(tableName);
@@ -191,11 +191,12 @@ public class EnableTableHandler extends EventHandler {
     // Get the regions of this table. We're done when all listed
     // tables are onlined.
     List<Pair<HRegionInfo, ServerName>> tableRegionsAndLocations;
-    if (TableName.META_TABLE_NAME.equals(tableName)) {
-      tableRegionsAndLocations = new MetaTableLocator().getMetaRegionsAndLocations(
+    //TODO we prolly don't need this since we can't disable META
+    if (TableName.ROOT_TABLE_NAME.equals(tableName)) {
+      tableRegionsAndLocations = new RootTableLocator().getRootRegionsAndLocations(
         server.getZooKeeper());
     } else {
-      tableRegionsAndLocations = MetaTableAccessor.getTableRegionsAndLocations(
+      tableRegionsAndLocations = CatalogAccessor.getTableRegionsAndLocations(
         server.getZooKeeper(), server.getConnection(), tableName, true);
     }
 

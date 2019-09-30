@@ -30,6 +30,7 @@ import java.util.UUID;
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
+import org.apache.hadoop.hbase.TableName;
 import org.apache.hadoop.hbase.testclassification.SmallTests;
 import org.junit.Test;
 
@@ -72,14 +73,17 @@ public class TestRegionSplitCalculator {
     }
   }
 
-  Comparator<SimpleRange> cmp = new Comparator<SimpleRange>() {
+  static Comparator<byte[]> rowComparator =
+      RegionSplitCalculator.getRowComparator(TableName.valueOf("foo"));
+
+  static Comparator<SimpleRange> keyRangeComparator = new Comparator<SimpleRange>() {
     @Override
     public int compare(SimpleRange sr1, SimpleRange sr2) {
       ComparisonChain cc = ComparisonChain.start();
       cc = cc.compare(sr1.getStartKey(), sr2.getStartKey(),
-          Bytes.BYTES_COMPARATOR);
+          rowComparator);
       cc = cc.compare(sr1.getEndKey(), sr2.getEndKey(),
-          RegionSplitCalculator.BYTES_COMPARATOR);
+          rowComparator);
       cc = cc.compare(sr1.tiebreaker, sr2.tiebreaker);
       return cc.result();
     }
@@ -125,8 +129,8 @@ public class TestRegionSplitCalculator {
     SimpleRange a = new SimpleRange(Bytes.toBytes("A"), Bytes.toBytes("B"));
     SimpleRange b = new SimpleRange(Bytes.toBytes("B"), Bytes.toBytes("C"));
     SimpleRange c = new SimpleRange(Bytes.toBytes("C"), Bytes.toBytes("D"));
-    RegionSplitCalculator<SimpleRange> sc = new RegionSplitCalculator<SimpleRange>(
-        cmp);
+    RegionSplitCalculator<SimpleRange> sc =
+        new RegionSplitCalculator<>(TableName.valueOf("foo"), keyRangeComparator);
     sc.add(a);
     sc.add(b);
     sc.add(c);
@@ -141,8 +145,8 @@ public class TestRegionSplitCalculator {
 
   @Test
   public void testSplitCalculatorNoEdge() {
-    RegionSplitCalculator<SimpleRange> sc = new RegionSplitCalculator<SimpleRange>(
-        cmp);
+    RegionSplitCalculator<SimpleRange> sc =
+        new RegionSplitCalculator<>(TableName.valueOf("foo"), keyRangeComparator);
 
     Multimap<byte[], SimpleRange> regions = sc.calcCoverage();
     LOG.info("Empty");
@@ -154,8 +158,8 @@ public class TestRegionSplitCalculator {
   @Test
   public void testSplitCalculatorSingleEdge() {
     SimpleRange a = new SimpleRange(Bytes.toBytes("A"), Bytes.toBytes("B"));
-    RegionSplitCalculator<SimpleRange> sc = new RegionSplitCalculator<SimpleRange>(
-        cmp);
+    RegionSplitCalculator<SimpleRange> sc =
+        new RegionSplitCalculator<>(TableName.valueOf("foo"), keyRangeComparator);
     sc.add(a);
 
     Multimap<byte[], SimpleRange> regions = sc.calcCoverage();
@@ -168,8 +172,8 @@ public class TestRegionSplitCalculator {
   @Test
   public void testSplitCalculatorDegenerateEdge() {
     SimpleRange a = new SimpleRange(Bytes.toBytes("A"), Bytes.toBytes("A"));
-    RegionSplitCalculator<SimpleRange> sc = new RegionSplitCalculator<SimpleRange>(
-        cmp);
+    RegionSplitCalculator<SimpleRange> sc =
+        new RegionSplitCalculator<>(TableName.valueOf("foo"), keyRangeComparator);
     sc.add(a);
 
     Multimap<byte[], SimpleRange> regions = sc.calcCoverage();
@@ -184,8 +188,8 @@ public class TestRegionSplitCalculator {
     SimpleRange a = new SimpleRange(Bytes.toBytes("A"), Bytes.toBytes("B"));
     SimpleRange b = new SimpleRange(Bytes.toBytes("B"), Bytes.toBytes("C"));
     SimpleRange c = new SimpleRange(Bytes.toBytes("A"), Bytes.toBytes("C"));
-    RegionSplitCalculator<SimpleRange> sc = new RegionSplitCalculator<SimpleRange>(
-        cmp);
+    RegionSplitCalculator<SimpleRange> sc =
+        new RegionSplitCalculator<>(TableName.valueOf("foo"), keyRangeComparator);
     sc.add(a);
     sc.add(b);
     sc.add(c);
@@ -203,8 +207,8 @@ public class TestRegionSplitCalculator {
     SimpleRange a = new SimpleRange(Bytes.toBytes("A"), Bytes.toBytes("B"));
     SimpleRange b = new SimpleRange(Bytes.toBytes("B"), Bytes.toBytes("C"));
     SimpleRange c = new SimpleRange(Bytes.toBytes("B"), Bytes.toBytes("D"));
-    RegionSplitCalculator<SimpleRange> sc = new RegionSplitCalculator<SimpleRange>(
-        cmp);
+    RegionSplitCalculator<SimpleRange> sc =
+        new RegionSplitCalculator<>(TableName.valueOf("foo"), keyRangeComparator);
     sc.add(a);
     sc.add(b);
     sc.add(c);
@@ -222,8 +226,8 @@ public class TestRegionSplitCalculator {
     SimpleRange a = new SimpleRange(Bytes.toBytes("A"), Bytes.toBytes("B"));
     SimpleRange b = new SimpleRange(Bytes.toBytes("B"), Bytes.toBytes("C"));
     SimpleRange c = new SimpleRange(Bytes.toBytes("E"), Bytes.toBytes("F"));
-    RegionSplitCalculator<SimpleRange> sc = new RegionSplitCalculator<SimpleRange>(
-        cmp);
+    RegionSplitCalculator<SimpleRange> sc =
+        new RegionSplitCalculator<>(TableName.valueOf("foo"), keyRangeComparator);
     sc.add(a);
     sc.add(b);
     sc.add(c);
@@ -240,8 +244,8 @@ public class TestRegionSplitCalculator {
   public void testSplitCalculatorOverreach() {
     SimpleRange a = new SimpleRange(Bytes.toBytes("A"), Bytes.toBytes("C"));
     SimpleRange b = new SimpleRange(Bytes.toBytes("B"), Bytes.toBytes("D"));
-    RegionSplitCalculator<SimpleRange> sc = new RegionSplitCalculator<SimpleRange>(
-        cmp);
+    RegionSplitCalculator<SimpleRange> sc =
+        new RegionSplitCalculator<>(TableName.valueOf("foo"), keyRangeComparator);
     sc.add(a);
     sc.add(b);
 
@@ -257,8 +261,8 @@ public class TestRegionSplitCalculator {
   public void testSplitCalculatorFloor() {
     SimpleRange a = new SimpleRange(Bytes.toBytes("A"), Bytes.toBytes("C"));
     SimpleRange b = new SimpleRange(Bytes.toBytes("A"), Bytes.toBytes("B"));
-    RegionSplitCalculator<SimpleRange> sc = new RegionSplitCalculator<SimpleRange>(
-        cmp);
+    RegionSplitCalculator<SimpleRange> sc =
+        new RegionSplitCalculator<>(TableName.valueOf("foo"), keyRangeComparator);
     sc.add(a);
     sc.add(b);
 
@@ -273,8 +277,8 @@ public class TestRegionSplitCalculator {
   public void testSplitCalculatorCeil() {
     SimpleRange a = new SimpleRange(Bytes.toBytes("A"), Bytes.toBytes("C"));
     SimpleRange b = new SimpleRange(Bytes.toBytes("B"), Bytes.toBytes("C"));
-    RegionSplitCalculator<SimpleRange> sc = new RegionSplitCalculator<SimpleRange>(
-        cmp);
+    RegionSplitCalculator<SimpleRange> sc =
+        new RegionSplitCalculator<>(TableName.valueOf("foo"), keyRangeComparator);
     sc.add(a);
     sc.add(b);
 
@@ -291,8 +295,8 @@ public class TestRegionSplitCalculator {
     SimpleRange b = new SimpleRange(Bytes.toBytes("A"), Bytes.toBytes("C"));
 
     LOG.info(a.tiebreaker + " - " + b.tiebreaker);
-    RegionSplitCalculator<SimpleRange> sc = new RegionSplitCalculator<SimpleRange>(
-        cmp);
+    RegionSplitCalculator<SimpleRange> sc =
+        new RegionSplitCalculator<>(TableName.valueOf("foo"), keyRangeComparator);
     sc.add(a);
     sc.add(b);
 
@@ -306,9 +310,8 @@ public class TestRegionSplitCalculator {
   @Test
   public void testSplitCalculatorBackwards() {
     SimpleRange a = new SimpleRange(Bytes.toBytes("C"), Bytes.toBytes("A"));
-    RegionSplitCalculator<SimpleRange> sc = new RegionSplitCalculator<SimpleRange>(
-        cmp);
-    sc.add(a);
+    RegionSplitCalculator<SimpleRange> sc =
+        new RegionSplitCalculator<>(TableName.valueOf("foo"), keyRangeComparator);
 
     Multimap<byte[], SimpleRange> regions = sc.calcCoverage();
     LOG.info("CA is backwards");
@@ -319,8 +322,8 @@ public class TestRegionSplitCalculator {
 
   @Test
   public void testComplex() {
-    RegionSplitCalculator<SimpleRange> sc = new RegionSplitCalculator<SimpleRange>(
-        cmp);
+    RegionSplitCalculator<SimpleRange> sc =
+        new RegionSplitCalculator<>(TableName.valueOf("foo"), keyRangeComparator);
     sc.add(new SimpleRange(Bytes.toBytes("A"), Bytes.toBytes("Am")));
     sc.add(new SimpleRange(Bytes.toBytes("A"), Bytes.toBytes("C")));
     sc.add(new SimpleRange(Bytes.toBytes("Am"), Bytes.toBytes("C")));
@@ -343,8 +346,8 @@ public class TestRegionSplitCalculator {
 
   @Test
   public void testBeginEndMarker() {
-    RegionSplitCalculator<SimpleRange> sc = new RegionSplitCalculator<SimpleRange>(
-        cmp);
+    RegionSplitCalculator<SimpleRange> sc =
+        new RegionSplitCalculator<>(TableName.valueOf("foo"), keyRangeComparator);
     sc.add(new SimpleRange(Bytes.toBytes(""), Bytes.toBytes("A")));
     sc.add(new SimpleRange(Bytes.toBytes("A"), Bytes.toBytes("B")));
     sc.add(new SimpleRange(Bytes.toBytes("B"), Bytes.toBytes("")));
@@ -359,6 +362,9 @@ public class TestRegionSplitCalculator {
 
   @Test
   public void testBigRanges() {
+    RegionSplitCalculator<SimpleRange> sc =
+        new RegionSplitCalculator<>(TableName.valueOf("foo"), keyRangeComparator);
+
     SimpleRange ai = new SimpleRange(Bytes.toBytes("A"), Bytes.toBytes("I"));
     SimpleRange ae = new SimpleRange(Bytes.toBytes("A"), Bytes.toBytes("E"));
     SimpleRange ac = new SimpleRange(Bytes.toBytes("A"), Bytes.toBytes("C"));
@@ -374,12 +380,12 @@ public class TestRegionSplitCalculator {
     bigOverlap.add(ac);
 
     // Expect 1 range to be returned: ai
-    List<SimpleRange> bigRanges = RegionSplitCalculator.findBigRanges(bigOverlap, 1);
+    List<SimpleRange> bigRanges = sc.findBigRanges(bigOverlap, 1);
     assertEquals(1, bigRanges.size());
     assertEquals(ai, bigRanges.get(0));
 
     // Expect 3 ranges to be returned: ai, ae and ac
-    bigRanges = RegionSplitCalculator.findBigRanges(bigOverlap, 3);
+    bigRanges = sc.findBigRanges(bigOverlap, 3);
     assertEquals(3, bigRanges.size());
     assertEquals(ai, bigRanges.get(0));
 

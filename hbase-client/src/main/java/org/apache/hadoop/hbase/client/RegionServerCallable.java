@@ -72,6 +72,7 @@ public abstract class RegionServerCallable<T> implements RetryingCallable<T> {
   public void prepare(final boolean reload) throws IOException {
     // check table state if this is a retry
     if (reload &&
+        !tableName.equals(TableName.ROOT_TABLE_NAME) &&
         !tableName.equals(TableName.META_TABLE_NAME) &&
         getConnection().isTableDisabled(tableName)) {
       throw new TableNotEnabledException(tableName.getNameAsString() + " is disabled.");

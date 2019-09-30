@@ -117,7 +117,7 @@ public class TestMasterMetrics {
   public void testDefaultMasterMetrics() throws Exception {
     MetricsMasterSource masterSource = master.getMasterMetrics().getMetricsSource();
     metricsHelper.assertGauge( "numRegionServers", 1, masterSource);
-    metricsHelper.assertGauge( "averageLoad", 2, masterSource);
+    metricsHelper.assertGauge( "averageLoad", 3, masterSource);
     metricsHelper.assertGauge( "numDeadRegionServers", 0, masterSource);
 
     metricsHelper.assertGauge("masterStartTime", master.getMasterStartTime(), masterSource);

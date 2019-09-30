@@ -43,8 +43,9 @@ import org.apache.hadoop.hbase.DoNotRetryIOException;
 import org.apache.hadoop.hbase.HBaseInterfaceAudience;
 import org.apache.hadoop.hbase.HColumnDescriptor;
 import org.apache.hadoop.hbase.HConstants;
+import org.apache.hadoop.hbase.HRegionInfo;
 import org.apache.hadoop.hbase.HTableDescriptor;
-import org.apache.hadoop.hbase.MetaTableAccessor;
+import org.apache.hadoop.hbase.CatalogAccessor;
 import org.apache.hadoop.hbase.TableName;
 import org.apache.hadoop.hbase.Tag;
 import org.apache.hadoop.hbase.TagRewriteCell;
@@ -79,6 +80,8 @@ import org.apache.hadoop.hbase.ipc.RpcServer;
 import org.apache.hadoop.hbase.master.MasterServices;
 import org.apache.hadoop.hbase.protobuf.ResponseConverter;
 import org.apache.hadoop.hbase.protobuf.generated.ClientProtos.RegionActionResult;
+import org.apache.hadoop.hbase.protobuf.generated.RegionServerStatusProtos.RegionStateTransition
+    .TransitionCode;
 import org.apache.hadoop.hbase.protobuf.generated.VisibilityLabelsProtos;
 import org.apache.hadoop.hbase.protobuf.generated.VisibilityLabelsProtos.GetAuthsRequest;
 import org.apache.hadoop.hbase.protobuf.generated.VisibilityLabelsProtos.GetAuthsResponse;
@@ -196,7 +199,7 @@ public class VisibilityController extends BaseMasterAndRegionObserver implements
   public void postStartMaster(ObserverContext<MasterCoprocessorEnvironment> ctx) throws IOException {
     // Need to create the new system table for labels here
     MasterServices master = ctx.getEnvironment().getMasterServices();
-    if (!MetaTableAccessor.tableExists(master.getConnection(), LABELS_TABLE_NAME)) {
+    if (!CatalogAccessor.tableExists(master.getConnection(), LABELS_TABLE_NAME)) {
       HTableDescriptor labelsTable = new HTableDescriptor(LABELS_TABLE_NAME);
       HColumnDescriptor labelsColumn = new HColumnDescriptor(LABELS_TABLE_FAMILY);
       labelsColumn.setBloomFilterType(BloomType.NONE);

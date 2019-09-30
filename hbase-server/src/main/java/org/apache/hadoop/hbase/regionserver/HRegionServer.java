@@ -56,6 +56,7 @@ import javax.management.MalformedObjectNameException;
 import javax.management.ObjectName;
 import javax.servlet.http.HttpServlet;
 
+import com.google.common.collect.Lists;
 import org.apache.commons.lang.SystemUtils;
 import org.apache.commons.lang.math.RandomUtils;
 import org.apache.commons.logging.Log;
@@ -63,6 +64,7 @@ import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.hbase.CallQueueTooBigException;
 import org.apache.hadoop.hbase.ChoreService;
 import org.apache.hadoop.hbase.ClockOutOfSyncException;
 import org.apache.hadoop.hbase.CoordinatedStateManager;
@@ -72,7 +74,7 @@ import org.apache.hadoop.hbase.HBaseInterfaceAudience;
 import org.apache.hadoop.hbase.HConstants;
 import org.apache.hadoop.hbase.HRegionInfo;
 import org.apache.hadoop.hbase.HealthCheckChore;
-import org.apache.hadoop.hbase.MetaTableAccessor;
+import org.apache.hadoop.hbase.CatalogAccessor;
 import org.apache.hadoop.hbase.NotServingRegionException;
 import org.apache.hadoop.hbase.RemoteExceptionHandler;
 import org.apache.hadoop.hbase.ScheduledChore;
@@ -102,6 +104,7 @@ import org.apache.hadoop.hbase.http.InfoServer;
 import org.apache.hadoop.hbase.io.hfile.CacheConfig;
 import org.apache.hadoop.hbase.io.util.HeapMemorySizeUtil;
 import org.apache.hadoop.hbase.ipc.CoprocessorRpcUtils;
+import org.apache.hadoop.hbase.ipc.PayloadCarryingRpcController;
 import org.apache.hadoop.hbase.ipc.RpcClient;
 import org.apache.hadoop.hbase.ipc.RpcClientFactory;
 import org.apache.hadoop.hbase.ipc.RpcControllerFactory;
@@ -145,6 +148,7 @@ import org.apache.hadoop.hbase.regionserver.compactions.CompactionConfiguration;
 import org.apache.hadoop.hbase.regionserver.compactions.CompactionProgress;
 import org.apache.hadoop.hbase.regionserver.handler.CloseMetaHandler;
 import org.apache.hadoop.hbase.regionserver.handler.CloseRegionHandler;
+import org.apache.hadoop.hbase.regionserver.handler.CloseRootHandler;
 import org.apache.hadoop.hbase.regionserver.handler.RegionReplicaFlushHandler;
 import org.apache.hadoop.hbase.regionserver.throttle.FlushThroughputControllerFactory;
 import org.apache.hadoop.hbase.regionserver.throttle.ThroughputController;
@@ -175,7 +179,7 @@ import org.apache.hadoop.hbase.wal.WAL;
 import org.apache.hadoop.hbase.wal.WALFactory;
 import org.apache.hadoop.hbase.zookeeper.ClusterStatusTracker;
 import org.apache.hadoop.hbase.zookeeper.MasterAddressTracker;
-import org.apache.hadoop.hbase.zookeeper.MetaTableLocator;
+import org.apache.hadoop.hbase.zookeeper.RootTableLocator;
 import org.apache.hadoop.hbase.zookeeper.RecoveringRegionWatcher;
 import org.apache.hadoop.hbase.zookeeper.ZKClusterId;
 import org.apache.hadoop.hbase.zookeeper.ZKSplitLog;
@@ -247,7 +251,7 @@ public class HRegionServer extends HasThread implements
    * operations in EventHandlers. Primary reason for this decision is to make it mockable
    * for tests.
    */
-  protected MetaTableLocator metaTableLocator;
+  protected RootTableLocator rootTableLocator;
 
   // Watch if a region is out of recovering state from ZooKeeper
   @SuppressWarnings("unused")
@@ -337,7 +341,6 @@ public class HRegionServer extends HasThread implements
   RpcClient rpcClient;
 
   private RpcRetryingCallerFactory rpcRetryingCallerFactory;
-  private RpcControllerFactory rpcControllerFactory;
 
   private UncaughtExceptionHandler uncaughtExceptionHandler;
 
@@ -374,6 +377,8 @@ public class HRegionServer extends HasThread implements
   // WAL roller. log is protected rather than private to avoid
   // eclipse warning when accessed by inner classes
   final LogRoller walRoller;
+  // Lazily initialized if this RegionServer hosts a root table.
+  final AtomicReference<LogRoller> rootwalRoller = new AtomicReference<LogRoller>();
   // Lazily initialized if this RegionServer hosts a meta table.
   final AtomicReference<LogRoller> metawalRoller = new AtomicReference<LogRoller>();
 
@@ -484,6 +489,10 @@ public class HRegionServer extends HasThread implements
   final ServerNonceManager nonceManager;
 
   private UserProvider userProvider;
+  private RpcControllerFactory rpcControllerFactory;
+  
+  private long pauseTime;
+
 
   protected final RSRpcServices rpcServices;
 
@@ -758,7 +767,7 @@ public class HRegionServer extends HasThread implements
   protected synchronized void setupClusterConnection() throws IOException {
     if (clusterConnection == null) {
       clusterConnection = createClusterConnection();
-      metaTableLocator = new MetaTableLocator();
+      rootTableLocator = new RootTableLocator();
     }
   }
 
@@ -1075,7 +1084,7 @@ public class HRegionServer extends HasThread implements
     }
 
     // so callers waiting for meta without timeout can stop
-    if (this.metaTableLocator != null) this.metaTableLocator.stop();
+    if (this.rootTableLocator != null) this.rootTableLocator.stop();
     if (this.clusterConnection != null && !clusterConnection.isClosed()) {
       try {
         this.clusterConnection.close();
@@ -1087,13 +1096,13 @@ public class HRegionServer extends HasThread implements
     }
 
     // Closing the compactSplit thread before closing meta regions
-    if (!this.killed && containsMetaTableRegions()) {
+    if (!this.killed && containsRootOrMetaTableRegions()) {
       if (!abortRequested || this.fsOk) {
         if (this.compactSplitThread != null) {
           this.compactSplitThread.join();
           this.compactSplitThread = null;
         }
-        closeMetaTableRegions(abortRequested);
+        closeCatalogRegions(abortRequested);
       }
     }
 
@@ -1149,15 +1158,22 @@ public class HRegionServer extends HasThread implements
     LOG.info(Thread.currentThread().getName() + " exiting");
   }
 
-  private boolean containsMetaTableRegions() {
-    return onlineRegions.containsKey(HRegionInfo.FIRST_META_REGIONINFO.getEncodedName());
+  private boolean containsRootOrMetaTableRegions() {
+    for (Map.Entry<String, Region> e: this.onlineRegions.entrySet()) {
+      if (e.getValue().getRegionInfo().isMetaTable()
+          || e.getValue().getRegionInfo().isRootRegion()) {
+        return true;
+      }
+    }
+    return false;
   }
 
   private boolean areAllUserRegionsOffline() {
     if (getNumberOfOnlineRegions() > 2) return false;
     boolean allUserRegionsOffline = true;
     for (Map.Entry<String, Region> e: this.onlineRegions.entrySet()) {
-      if (!e.getValue().getRegionInfo().isMetaTable()) {
+      if (!e.getValue().getRegionInfo().isMetaTable()
+          && !e.getValue().getRegionInfo().isRootRegion()) {
         allUserRegionsOffline = false;
         break;
       }
@@ -1707,6 +1723,26 @@ public class HRegionServer extends HasThread implements
    * As a part of that registration process, the roller will add itself as a
    * listener on the wal.
    */
+  protected LogRoller ensureRootWALRoller() {
+    // Using a tmp log roller to ensure metaLogRoller is alive once it is not
+    // null
+    LogRoller roller = rootwalRoller.get();
+    if (null == roller) {
+      LogRoller tmpLogRoller = new LogRoller(this, this);
+      String n = Thread.currentThread().getName();
+      Threads.setDaemonThreadRunning(tmpLogRoller.getThread(),
+          n + "-RootLogRoller", uncaughtExceptionHandler);
+      if (rootwalRoller.compareAndSet(null, tmpLogRoller)) {
+        roller = tmpLogRoller;
+      } else {
+        // Another thread won starting the roller
+        Threads.shutdown(tmpLogRoller.getThread());
+        roller = rootwalRoller.get();
+      }
+    }
+    return roller;
+  }
+
   protected LogRoller ensureMetaWALRoller() {
     // Using a tmp log roller to ensure metaLogRoller is alive once it is not
     // null
@@ -1756,11 +1792,15 @@ public class HRegionServer extends HasThread implements
       conf.getInt("hbase.regionserver.executor.openregion.threads", 3));
     this.service.startExecutorService(ExecutorType.RS_OPEN_META,
       conf.getInt("hbase.regionserver.executor.openmeta.threads", 1));
+    this.service.startExecutorService(ExecutorType.RS_OPEN_ROOT,
+      conf.getInt("hbase.regionserver.executor.openmeta.threads", 1));
     this.service.startExecutorService(ExecutorType.RS_OPEN_PRIORITY_REGION,
       conf.getInt("hbase.regionserver.executor.openpriorityregion.threads", 3));
     this.service.startExecutorService(ExecutorType.RS_CLOSE_REGION,
       conf.getInt("hbase.regionserver.executor.closeregion.threads", 3));
     this.service.startExecutorService(ExecutorType.RS_CLOSE_META,
+      conf.getInt("hbase.regionserver.executor.closemeta.threads", 1));
+    this.service.startExecutorService(ExecutorType.RS_CLOSE_ROOT,
       conf.getInt("hbase.regionserver.executor.closemeta.threads", 1));
     if (conf.getBoolean(StoreScanner.STORESCANNER_PARALLEL_SEEK_ENABLE, false)) {
       this.service.startExecutorService(ExecutorType.RS_PARALLEL_SEEK,
@@ -1896,6 +1936,11 @@ public class HRegionServer extends HasThread implements
       stop("Meta WAL roller thread is no longer alive -- stop");
       return false;
     }
+    final LogRoller rootwalRoller = this.rootwalRoller.get();
+    if (rootwalRoller != null && !rootwalRoller.isAlive()) {
+      stop("Root WAL roller thread is no longer alive -- stop");
+      return false;
+    }
     return true;
   }
 
@@ -1906,7 +1951,11 @@ public class HRegionServer extends HasThread implements
     WAL wal;
     LogRoller roller = walRoller;
     //_ROOT_ and hbase:meta regions have separate WAL.
-    if (regionInfo != null && regionInfo.isMetaTable() &&
+    if (regionInfo != null && regionInfo.isRootRegion() &&
+        regionInfo.getReplicaId() == HRegionInfo.DEFAULT_REPLICA_ID) {
+      roller = ensureRootWALRoller();
+      wal = walFactory.getRootWAL(regionInfo.getEncodedNameAsBytes());
+    } else if (regionInfo != null && regionInfo.isMetaTable() &&
         regionInfo.getReplicaId() == HRegionInfo.DEFAULT_REPLICA_ID) {
       roller = ensureMetaWALRoller();
       wal = walFactory.getMetaWAL(regionInfo.getEncodedNameAsBytes());
@@ -1925,9 +1974,8 @@ public class HRegionServer extends HasThread implements
     return this.clusterConnection;
   }
 
-  @Override
-  public MetaTableLocator getMetaTableLocator() {
-    return this.metaTableLocator;
+  public RootTableLocator getRootTableLocator() {
+    return this.rootTableLocator;
   }
 
   @Override
@@ -2005,12 +2053,16 @@ public class HRegionServer extends HasThread implements
     updateRecoveringRegionLastFlushedSequenceId(r);
 
     // Update ZK, or META
-    if (r.getRegionInfo().isMetaRegion()) {
-      MetaTableLocator.setMetaLocation(getZooKeeper(), serverName, r.getRegionInfo().getReplicaId(),
-         State.OPEN);
-    } else if (useZKForAssignment) {
-      MetaTableAccessor.updateRegionLocation(getConnection(), r.getRegionInfo(),
-        this.serverName, openSeqNum, masterSystemTime);
+    //TODO not sure why for zkless regionserver needs to set meta location directy
+    //my guess is this is a bug when running meta on master, keep in for zk only for now
+    if (useZKForAssignment) {
+      if (r.getRegionInfo().isRootRegion()) {
+        RootTableLocator.setRootLocation(
+            getZooKeeper(), serverName, r.getRegionInfo().getReplicaId(), State.OPEN);
+      } else if (useZKForAssignment) {
+        CatalogAccessor.updateRegionLocation(getConnection(), r.getRegionInfo(),
+            this.serverName, openSeqNum, masterSystemTime);
+      }
     }
     if (!useZKForAssignment && !reportRegionStateTransition(new RegionStateTransitionContext(
         TransitionCode.OPENED, openSeqNum, masterSystemTime, r.getRegionInfo()))) {
@@ -2046,13 +2098,22 @@ public class HRegionServer extends HasThread implements
     builder.setServer(ProtobufUtil.toServerName(serverName));
     RegionStateTransition.Builder transition = builder.addTransitionBuilder();
     transition.setTransitionCode(code);
+    final PayloadCarryingRpcController controller = rpcControllerFactory.newController();
     if (code == TransitionCode.OPENED && openSeqNum >= 0) {
       transition.setOpenSeqNum(openSeqNum);
     }
+    int priority = HConstants.NORMAL_QOS;
     for (HRegionInfo hri: hris) {
       transition.addRegionInfo(HRegionInfo.convert(hri));
+      if (TableName.META_TABLE_NAME.equals(hri.getTable())) {
+        priority = HConstants.META_QOS;
+      } else if (TableName.ROOT_TABLE_NAME.equals(hri.getTable())) {
+        priority = HConstants.ROOT_QOS;
+      }
     }
+    controller.setPriority(priority);
     ReportRegionStateTransitionRequest request = builder.build();
+    int tries = 0;
     while (keepLooping()) {
       RegionServerStatusService.BlockingInterface rss = rssStub;
       try {
@@ -2061,7 +2122,7 @@ public class HRegionServer extends HasThread implements
           continue;
         }
         ReportRegionStateTransitionResponse response =
-          rss.reportRegionStateTransition(null, request);
+          rss.reportRegionStateTransition(controller, request);
         if (response.hasErrorMessage()) {
           LOG.info("Failed to transition " + hris[0]
             + " to " + code + ": " + response.getErrorMessage());
@@ -2069,15 +2130,33 @@ public class HRegionServer extends HasThread implements
         }
         return true;
       } catch (ServiceException se) {
+        long sleepTime = getPauseTime(tries);
         IOException ioe = ProtobufUtil.getRemoteException(se);
-        LOG.info("Failed to report region transition, will retry", ioe);
-        if (rssStub == rss) {
+        LOG.warn("Failed to report region transition " + hris[0] + ", will retry in "
+            + sleepTime + "ms", ioe);
+        try { // Sleep
+          Thread.sleep(sleepTime);
+        } catch (InterruptedException e) {
+          LOG.warn("Interrupted when trying to sleep before " + "a retry", e);
+          return false;
+        }
+        tries++;
+        if (!(ioe instanceof CallQueueTooBigException) && rssStub == rss) {
           rssStub = null;
         }
       }
     }
     return false;
   }
+
+  private long getPauseTime(int tries) {
+    int triesCount = tries;
+    if (triesCount >= HConstants.RETRY_BACKOFF.length) {
+      triesCount = HConstants.RETRY_BACKOFF.length - 1;
+    }
+    return this.pauseTime * HConstants.RETRY_BACKOFF[triesCount];
+  }
+
 
   /**
    * Trigger a flush in the primary region replica if this region is a secondary replica. Does not
@@ -2233,6 +2312,10 @@ public class HRegionServer extends HasThread implements
     }
     if (this.walRoller != null) {
       Threads.shutdown(this.walRoller.getThread());
+    }
+    final LogRoller rootwalRoller = this.rootwalRoller.get();
+    if (rootwalRoller != null) {
+      Threads.shutdown(rootwalRoller.getThread());
     }
     final LogRoller metawalRoller = this.metawalRoller.get();
     if (metawalRoller != null) {
@@ -2445,28 +2528,31 @@ public class HRegionServer extends HasThread implements
    */
   protected void closeAllRegions(final boolean abort) {
     closeUserRegions(abort);
-    closeMetaTableRegions(abort);
+    closeCatalogRegions(abort);
   }
 
   /**
-   * Close meta region if we carry it
+   * Close roo/tmeta region if we carry it
    * @param abort Whether we're running an abort.
    */
-  void closeMetaTableRegions(final boolean abort) {
-    Region meta = null;
+  void closeCatalogRegions(final boolean abort) {
+    List<Region> regionsToClose = Lists.newArrayList();
     this.lock.writeLock().lock();
     try {
       for (Map.Entry<String, Region> e: onlineRegions.entrySet()) {
         HRegionInfo hri = e.getValue().getRegionInfo();
-        if (hri.isMetaRegion()) {
-          meta = e.getValue();
+        if (hri.isRootRegion() || hri.isMetaRegion()) {
+          if (e.getValue() != null) {
+            regionsToClose.add(e.getValue());
+          }
         }
-        if (meta != null) break;
       }
     } finally {
       this.lock.writeLock().unlock();
     }
-    if (meta != null) closeRegionIgnoreErrors(meta.getRegionInfo(), abort);
+    for (Region r : regionsToClose) {
+      closeRegionIgnoreErrors(r.getRegionInfo(), abort);
+    }
   }
 
   /**
@@ -2480,7 +2566,9 @@ public class HRegionServer extends HasThread implements
     try {
       for (Map.Entry<String, Region> e: this.onlineRegions.entrySet()) {
         Region r = e.getValue();
-        if (!r.getRegionInfo().isMetaTable() && r.isAvailable()) {
+        if (!r.getRegionInfo().isMetaTable()
+            && !r.getRegionInfo().isRootRegion()
+            && r.isAvailable()) {
           // Don't update zk with this close transition; pass false.
           closeRegionIgnoreErrors(r.getRegionInfo(), abort);
         }
@@ -2946,9 +3034,12 @@ public class HRegionServer extends HasThread implements
 
     CloseRegionHandler crh;
     final HRegionInfo hri = actualRegion.getRegionInfo();
-    if (hri.isMetaRegion()) {
-      crh = new CloseMetaHandler(this, this, hri, abort,
-        csm.getCloseRegionCoordination(), crd);
+    if (hri.isRootRegion()) {
+      crh = new CloseRootHandler(this, this, hri, abort,
+          csm.getCloseRegionCoordination(), crd);
+    } else if (hri.isMetaRegion()) {
+        crh = new CloseMetaHandler(this, this, hri, abort,
+          csm.getCloseRegionCoordination(), crd);
     } else {
       crh = new CloseRegionHandler(this, this, hri, abort,
         csm.getCloseRegionCoordination(), crd, sn);

@@ -33,7 +33,7 @@
   import="org.apache.hadoop.hbase.RegionLoad"
   import="org.apache.hadoop.hbase.HConstants"
   import="org.apache.hadoop.hbase.master.HMaster" 
-  import="org.apache.hadoop.hbase.zookeeper.MetaTableLocator"
+  import="org.apache.hadoop.hbase.zookeeper.RootTableLocator"
   import="org.apache.hadoop.hbase.util.Bytes"
   import="org.apache.hadoop.hbase.util.FSUtils"
   import="org.apache.hadoop.hbase.regionserver.compactions.CompactionRequest"
@@ -44,13 +44,13 @@
 <%
   HMaster master = (HMaster)getServletContext().getAttribute(HMaster.MASTER);
   Configuration conf = master.getConfiguration();
-  MetaTableLocator metaTableLocator = new MetaTableLocator();
+  RootTableLocator rootTableLocator = new RootTableLocator();
   String fqtn = request.getParameter("name");
   final String escaped_fqtn = StringEscapeUtils.escapeHtml(fqtn);
   HTable table = null;
   String tableHeader;
   boolean withReplica = false;
-  ServerName rl = metaTableLocator.getMetaRegionLocation(master.getZooKeeper());
+  ServerName rl = rootTableLocator.getRootRegionLocation(master.getZooKeeper());
   boolean showFragmentation = conf.getBoolean("hbase.master.ui.fragmentation.enabled", false);
   boolean readOnly = conf.getBoolean("hbase.master.ui.readonly", false);
   int numMetaReplicas = conf.getInt(HConstants.META_REPLICAS_NUM,
@@ -180,31 +180,32 @@ if ( fqtn != null ) {
     </div>
     <div class="row">
 <%
-  if(fqtn.equals(TableName.META_TABLE_NAME.getNameAsString())) {
+  if(fqtn.equals(TableName.ROOT_TABLE_NAME.getNameAsString())) {
 %>
 <%= tableHeader %>
 <%
   // NOTE: Presumes meta with one or more replicas
   for (int j = 0; j < numMetaReplicas; j++) {
-    HRegionInfo meta = RegionReplicaUtil.getRegionInfoForReplica(
-                            HRegionInfo.FIRST_META_REGIONINFO, j);
-    ServerName metaLocation = metaTableLocator.waitMetaRegionLocation(master.getZooKeeper(), j, 1);
+    HRegionInfo root = RegionReplicaUtil.getRegionInfoForReplica(
+                            HRegionInfo.ROOT_REGIONINFO, j);
+    ServerName rootLocation = rootTableLocator.waitRootRegionLocation(master.getZooKeeper(), j, 1);
     for (int i = 0; i < 1; i++) {
       // The host name portion should be safe, but I don't know how we handle IDNs so err on the side of failing safely.
-      String url = "//" + URLEncoder.encode(metaLocation.getHostname()) + ":" +
-                   master.getRegionServerInfoPort(metaLocation) + "/";
+      String url = "//" + URLEncoder.encode(rootLocation.getHostname()) + ":" +
+                   master.getRegionServerInfoPort(rootLocation) + "/";
 %>
 <tr>
-  <td><%= escapeXml(meta.getRegionNameAsString()) %></td>
-    <td><a href="<%= url %>"><%= StringEscapeUtils.escapeHtml(metaLocation.getHostname().toString()) + ":" + master.getRegionServerInfoPort(metaLocation) %></a></td>
-    <td><%= escapeXml(Bytes.toString(meta.getStartKey())) %></td>
-    <td><%= escapeXml(Bytes.toString(meta.getEndKey())) %></td>
+  <td><%= escapeXml(root.getRegionNameAsString()) %></td>
+    <td><a href="<%= url %>"><%= StringEscapeUtils.escapeHtml(rootLocation.getHostname().toString())
+            + ":" + master.getRegionServerInfoPort(rootLocation) %></a></td>
+    <td><%= escapeXml(Bytes.toString(root.getStartKey())) %></td>
+    <td><%= escapeXml(Bytes.toString(root.getEndKey())) %></td>
     <td>-</td>
     <td>-</td>
 <%
       if (withReplica) {
 %>
-    <td><%= meta.getReplicaId() %></td>
+    <td><%= root.getReplicaId() %></td>
 <%
       }
 %>

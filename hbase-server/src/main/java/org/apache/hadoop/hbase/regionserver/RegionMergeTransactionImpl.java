@@ -35,7 +35,7 @@ import org.apache.hadoop.hbase.HRegionInfo;
 import org.apache.hadoop.hbase.MetaMutationAnnotation;
 import org.apache.hadoop.hbase.Server;
 import org.apache.hadoop.hbase.ServerName;
-import org.apache.hadoop.hbase.MetaTableAccessor;
+import org.apache.hadoop.hbase.CatalogAccessor;
 import org.apache.hadoop.hbase.client.Delete;
 import org.apache.hadoop.hbase.client.HConnection;
 import org.apache.hadoop.hbase.client.Mutation;
@@ -433,7 +433,7 @@ public class RegionMergeTransactionImpl implements RegionMergeTransaction {
     // rollback
     if (!testing && useCoordinationForAssignment) {
       if (metaEntries.isEmpty()) {
-        MetaTableAccessor.mergeRegions(server.getConnection(),
+        CatalogAccessor.mergeRegions(server.getConnection(),
           mergedRegion.getRegionInfo(), region_a.getRegionInfo(), region_b.getRegionInfo(),
           server.getServerName(), region_a.getTableDesc().getRegionReplication(), masterSystemTime);
       } else {
@@ -459,7 +459,7 @@ public class RegionMergeTransactionImpl implements RegionMergeTransaction {
       int regionReplication) throws IOException {
     prepareMutationsForMerge(mergedRegion, regionA, regionB, serverName, metaEntries,
       regionReplication);
-    MetaTableAccessor.mutateMetaTable(hConnection, metaEntries);
+    CatalogAccessor.mutateMetaTable(hConnection, metaEntries);
   }
 
   public void prepareMutationsForMerge(HRegionInfo mergedRegion, HRegionInfo regionA,
@@ -471,15 +471,15 @@ public class RegionMergeTransactionImpl implements RegionMergeTransaction {
     long time = Math.max(EnvironmentEdgeManager.currentTime(), masterSystemTime);
 
     // Put for parent
-    Put putOfMerged = MetaTableAccessor.makePutFromRegionInfo(copyOfMerged, time);
+    Put putOfMerged = CatalogAccessor.makePutFromRegionInfo(copyOfMerged, time);
     putOfMerged.add(HConstants.CATALOG_FAMILY, HConstants.MERGEA_QUALIFIER,
       regionA.toByteArray());
     putOfMerged.add(HConstants.CATALOG_FAMILY, HConstants.MERGEB_QUALIFIER,
       regionB.toByteArray());
     mutations.add(putOfMerged);
     // Deletes for merging regions
-    Delete deleteA = MetaTableAccessor.makeDeleteFromRegionInfo(regionA, time);
-    Delete deleteB = MetaTableAccessor.makeDeleteFromRegionInfo(regionB, time);
+    Delete deleteA = CatalogAccessor.makeDeleteFromRegionInfo(regionA, time);
+    Delete deleteB = CatalogAccessor.makeDeleteFromRegionInfo(regionB, time);
     mutations.add(deleteA);
     mutations.add(deleteB);
 
@@ -503,10 +503,10 @@ public class RegionMergeTransactionImpl implements RegionMergeTransaction {
   }
 
   private static Put addEmptyLocation(final Put p, int replicaId) {
-    p.addImmutable(HConstants.CATALOG_FAMILY, MetaTableAccessor.getServerColumn(replicaId), null);
-    p.addImmutable(HConstants.CATALOG_FAMILY, MetaTableAccessor.getStartCodeColumn(replicaId),
+    p.addImmutable(HConstants.CATALOG_FAMILY, CatalogAccessor.getServerColumn(replicaId), null);
+    p.addImmutable(HConstants.CATALOG_FAMILY, CatalogAccessor.getStartCodeColumn(replicaId),
       null);
-    p.addImmutable(HConstants.CATALOG_FAMILY, MetaTableAccessor.getSeqNumColumn(replicaId), null);
+    p.addImmutable(HConstants.CATALOG_FAMILY, CatalogAccessor.getSeqNumColumn(replicaId), null);
     return p;
   }
 
@@ -674,7 +674,9 @@ public class RegionMergeTransactionImpl implements RegionMergeTransaction {
     // Choose the bigger as end key
     if (Bytes.equals(a.getEndKey(), HConstants.EMPTY_BYTE_ARRAY)
         || (!Bytes.equals(b.getEndKey(), HConstants.EMPTY_BYTE_ARRAY)
-            && Bytes.compareTo(a.getEndKey(), b.getEndKey()) > 0)) {
+            && a.getComparator().compareRows(
+                a.getEndKey(), 0, a.getEndKey().length,
+                b.getEndKey(), 0, b.getEndKey().length) > 0)) {
       endKey = a.getEndKey();
     } else {
       endKey = b.getEndKey();
@@ -938,7 +940,7 @@ public class RegionMergeTransactionImpl implements RegionMergeTransaction {
     if (services == null) return false;
     // Get merge regions if it is a merged region and already has merge
     // qualifier
-    Pair<HRegionInfo, HRegionInfo> mergeRegions = MetaTableAccessor
+    Pair<HRegionInfo, HRegionInfo> mergeRegions = CatalogAccessor
         .getRegionsFromMergeQualifier(services.getConnection(), regionName);
     if (mergeRegions != null &&
         (mergeRegions.getFirst() != null || mergeRegions.getSecond() != null)) {

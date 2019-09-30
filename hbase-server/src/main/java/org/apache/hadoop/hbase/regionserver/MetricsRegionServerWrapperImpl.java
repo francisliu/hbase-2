@@ -649,8 +649,10 @@ class MetricsRegionServerWrapperImpl
 
         WALProvider provider = regionServer.walFactory.getWALProvider();
         WALProvider metaProvider = regionServer.walFactory.getMetaWALProvider();
+        WALProvider rootProvider = regionServer.walFactory.getRootWALProvider();
         numWALFiles =
             (provider == null ? 0 : provider.getNumLogFiles())
+                + (rootProvider == null ? 0 : rootProvider.getNumLogFiles())
                 + (metaProvider == null ? 0 : metaProvider.getNumLogFiles());
         walFileSize =
             (provider == null ? 0 : provider.getLogFileSize())

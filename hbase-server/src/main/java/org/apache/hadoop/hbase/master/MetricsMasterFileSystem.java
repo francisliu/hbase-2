@@ -47,4 +47,14 @@ public class MetricsMasterFileSystem {
     source.updateMetaWALSplitTime(time);
     source.updateMetaWALSplitSize(size);
   }
+  
+  /**
+   * Record a single instance of a split
+   * @param time time that the split took
+   * @param size length of original HLogs that were split
+   */
+  public synchronized void addRootWALSplit(long time, long size) {
+    source.updateRootWALSplitTime(time);
+    source.updateRootWALSplitSize(size);
+  }
 }

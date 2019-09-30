@@ -21,9 +21,9 @@ package org.apache.hadoop.hbase.client;
 import java.util.Collection;
 import java.util.Iterator;
 
+import org.apache.hadoop.hbase.KeyValue.KVComparator;
 import org.apache.hadoop.hbase.classification.InterfaceAudience;
 import org.apache.hadoop.hbase.HRegionInfo;
-import org.apache.hadoop.hbase.util.Bytes;
 
 /**
  * Utility methods which contain the logic for regions and replicas.
@@ -47,7 +47,7 @@ public class RegionReplicaUtil {
   /**
    * The default replicaId for the region
    */
-  static final int DEFAULT_REPLICA_ID = 0;
+  public static final int DEFAULT_REPLICA_ID = 0;
 
   /**
    * Returns the HRegionInfo for the given replicaId. HRegionInfo's correspond to
@@ -62,8 +62,20 @@ public class RegionReplicaUtil {
       return regionInfo;
     }
     HRegionInfo replicaInfo;
-    if (regionInfo.isMetaRegion()) {
+    if (regionInfo.isRootRegion() && regionInfo.getRegionId() ==
+        HRegionInfo.ROOT_REGIONINFO.getRegionId()) {
       replicaInfo = new HRegionInfo(regionInfo.getRegionId(), regionInfo.getTable(), replicaId);
+    } else if (regionInfo.isMetaRegion() && regionInfo.getRegionId() ==
+        HRegionInfo.FIRST_META_REGIONINFO.getRegionId()) {
+      //We need this condition since we want the regionname to still be old format
+      if (replicaId == DEFAULT_REPLICA_ID) {
+        replicaInfo = new HRegionInfo(HRegionInfo.FIRST_META_REGIONINFO,
+            DEFAULT_REPLICA_ID);
+        replicaInfo.setSplit(regionInfo.isSplit());
+      } else {
+        replicaInfo = new HRegionInfo(regionInfo.getRegionId(), regionInfo.getTable(), replicaId);
+        replicaInfo.setSplit(regionInfo.isSplit());
+      }
     } else {
       replicaInfo = new HRegionInfo(regionInfo.getTable(), regionInfo.getStartKey(),
         regionInfo.getEndKey(), regionInfo.isSplit(), regionInfo.getRegionId(), replicaId);
@@ -111,21 +123,30 @@ public class RegionReplicaUtil {
     return compareRegionInfosWithoutReplicaId(regionInfoA, regionInfoB) == 0;
   }
 
-  private static int compareRegionInfosWithoutReplicaId(HRegionInfo regionInfoA,
+  public static int compareRegionInfosWithoutReplicaId(HRegionInfo regionInfoA,
       HRegionInfo regionInfoB) {
     int result = regionInfoA.getTable().compareTo(regionInfoB.getTable());
     if (result != 0) {
       return result;
     }
+    if (regionInfoA.getComparator() != regionInfoB.getComparator()) {
+      throw new IllegalStateException("Regions have different comparators: " +
+        regionInfoA + " and " + regionInfoB);
+    }
 
+    KVComparator kvComparator = regionInfoA.getComparator();
     // Compare start keys.
-    result = Bytes.compareTo(regionInfoA.getStartKey(), regionInfoB.getStartKey());
+    result = kvComparator.compareRows(
+        regionInfoA.getStartKey(), 0, regionInfoA.getStartKey().length,
+        regionInfoB.getStartKey(), 0, regionInfoB.getStartKey().length);
     if (result != 0) {
       return result;
     }
 
     // Compare end keys.
-    result = Bytes.compareTo(regionInfoA.getEndKey(), regionInfoB.getEndKey());
+    result = kvComparator.compareRows(
+        regionInfoA.getEndKey(), 0, regionInfoA.getEndKey().length,
+        regionInfoB.getEndKey(), 0, regionInfoB.getEndKey().length);
 
     if (result != 0) {
       if (regionInfoA.getStartKey().length != 0

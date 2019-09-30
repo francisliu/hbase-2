@@ -41,7 +41,7 @@ import org.apache.hadoop.hbase.HConstants;
 import org.apache.hadoop.hbase.HRegionInfo;
 import org.apache.hadoop.hbase.Server;
 import org.apache.hadoop.hbase.ServerName;
-import org.apache.hadoop.hbase.MetaTableAccessor;
+import org.apache.hadoop.hbase.CatalogAccessor;
 import org.apache.hadoop.hbase.client.HConnection;
 import org.apache.hadoop.hbase.client.Mutation;
 import org.apache.hadoop.hbase.client.Put;
@@ -334,10 +334,12 @@ public class SplitTransactionImpl implements SplitTransaction {
     // and assign the parent region.
     if (!testing && useZKForAssignment) {
       if (metaEntries == null || metaEntries.isEmpty()) {
-        MetaTableAccessor.splitRegion(server.getConnection(),
-          parent.getRegionInfo(), daughterRegions.getFirst().getRegionInfo(),
-          daughterRegions.getSecond().getRegionInfo(), server.getServerName(),
-          parent.getTableDesc().getRegionReplication());
+        CatalogAccessor.splitRegion(server.getConnection(),
+            parent.getRegionInfo(),
+            daughterRegions.getFirst().getRegionInfo(),
+            daughterRegions.getSecond().getRegionInfo(),
+            server.getServerName(),
+            parent.getTableDesc().getRegionReplication());
       } else {
         offlineParentInMetaAndputMetaEntries(server.getConnection(),
           parent.getRegionInfo(), daughterRegions.getFirst().getRegionInfo(), daughterRegions
@@ -639,13 +641,13 @@ public class SplitTransactionImpl implements SplitTransaction {
     copyOfParent.setSplit(true);
 
     //Put for parent
-    Put putParent = MetaTableAccessor.makePutFromRegionInfo(copyOfParent);
-    MetaTableAccessor.addDaughtersToPut(putParent, splitA, splitB);
+    Put putParent = CatalogAccessor.makePutFromRegionInfo(copyOfParent);
+    CatalogAccessor.addDaughtersToPut(putParent, splitA, splitB);
     mutations.add(putParent);
 
     //Puts for daughters
-    Put putA = MetaTableAccessor.makePutFromRegionInfo(splitA);
-    Put putB = MetaTableAccessor.makePutFromRegionInfo(splitB);
+    Put putA = CatalogAccessor.makePutFromRegionInfo(splitA);
+    Put putB = CatalogAccessor.makePutFromRegionInfo(splitB);
 
     addLocation(putA, serverName, 1); //these are new regions, openSeqNum = 1 is fine.
     addLocation(putB, serverName, 1);
@@ -659,14 +661,14 @@ public class SplitTransactionImpl implements SplitTransaction {
       addEmptyLocation(putB, i);
     }
 
-    MetaTableAccessor.mutateMetaTable(hConnection, mutations);
+    CatalogAccessor.mutateMetaTable(hConnection, mutations);
   }
 
   private static Put addEmptyLocation(final Put p, int replicaId){
-    p.addImmutable(HConstants.CATALOG_FAMILY, MetaTableAccessor.getServerColumn(replicaId), null);
-    p.addImmutable(HConstants.CATALOG_FAMILY, MetaTableAccessor.getStartCodeColumn(replicaId),
+    p.addImmutable(HConstants.CATALOG_FAMILY, CatalogAccessor.getServerColumn(replicaId), null);
+    p.addImmutable(HConstants.CATALOG_FAMILY, CatalogAccessor.getStartCodeColumn(replicaId),
       null);
-    p.addImmutable(HConstants.CATALOG_FAMILY, MetaTableAccessor.getSeqNumColumn(replicaId), null);
+    p.addImmutable(HConstants.CATALOG_FAMILY, CatalogAccessor.getSeqNumColumn(replicaId), null);
     return p;
   }
 

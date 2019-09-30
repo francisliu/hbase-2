@@ -567,6 +567,8 @@ public class FixedFileTrailer {
       // HFile V2 legacy comparator class names.
       if (comparatorClassName.equals(KeyValue.COMPARATOR.getLegacyKeyComparatorName())) {
         comparatorClassName = KeyValue.COMPARATOR.getClass().getName();
+      } else if (comparatorClassName.equals(KeyValue.ROOT_COMPARATOR.getLegacyKeyComparatorName())) {
+        comparatorClassName = KeyValue.ROOT_COMPARATOR.getClass().getName();
       } else if (comparatorClassName.equals(KeyValue.META_COMPARATOR.getLegacyKeyComparatorName())) {
         comparatorClassName = KeyValue.META_COMPARATOR.getClass().getName();
       } else if (comparatorClassName.equals(KeyValue.RAW_COMPARATOR.getLegacyKeyComparatorName())) {

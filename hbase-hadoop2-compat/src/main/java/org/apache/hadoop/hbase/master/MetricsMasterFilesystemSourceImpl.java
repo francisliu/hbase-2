@@ -31,6 +31,9 @@ public class MetricsMasterFilesystemSourceImpl
   private MetricHistogram splitTimeHisto;
   private MetricHistogram metaSplitTimeHisto;
   private MetricHistogram metaSplitSizeHisto;
+  private MetricHistogram rootSplitTimeHisto;
+  private MetricHistogram rootSplitSizeHisto;
+
 
   public MetricsMasterFilesystemSourceImpl() {
     this(METRICS_NAME, METRICS_DESCRIPTION, METRICS_CONTEXT, METRICS_JMX_CONTEXT);
@@ -50,6 +53,11 @@ public class MetricsMasterFilesystemSourceImpl
         metricsRegistry.newTimeHistogram(META_SPLIT_TIME_NAME, META_SPLIT_TIME_DESC);
     metaSplitSizeHisto =
         metricsRegistry.newSizeHistogram(META_SPLIT_SIZE_NAME, META_SPLIT_SIZE_DESC);
+    rootSplitTimeHisto =
+        metricsRegistry.newTimeHistogram(ROOT_SPLIT_TIME_NAME, ROOT_SPLIT_TIME_DESC);
+    rootSplitSizeHisto =
+        metricsRegistry.newSizeHistogram(ROOT_SPLIT_SIZE_NAME, ROOT_SPLIT_SIZE_DESC);
+
   }
 
   @Override
@@ -71,5 +79,15 @@ public class MetricsMasterFilesystemSourceImpl
   @Override
   public void updateMetaWALSplitSize(long size) {
     metaSplitSizeHisto.add(size);
+  }
+  
+  @Override
+  public void updateRootWALSplitTime(long time) {
+    rootSplitTimeHisto.add(time);
+  }
+
+  @Override
+  public void updateRootWALSplitSize(long size) {
+    rootSplitSizeHisto.add(size);
   }
 }

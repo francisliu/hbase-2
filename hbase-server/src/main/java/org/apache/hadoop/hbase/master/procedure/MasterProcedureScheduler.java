@@ -70,6 +70,7 @@ public class MasterProcedureScheduler implements ProcedureRunnableSet {
   private Queue<String> namespaceMap = null;
   private Queue<TableName> tableMap = null;
 
+  private final int rootTablePriority;
   private final int metaTablePriority;
   private final int userTablePriority;
   private final int sysTablePriority;
@@ -82,6 +83,7 @@ public class MasterProcedureScheduler implements ProcedureRunnableSet {
     this.lockManager = lockManager;
 
     // TODO: should this be part of the HTD?
+    rootTablePriority = conf.getInt("hbase.master.procedure.queue.meta.table.priority", 4);
     metaTablePriority = conf.getInt("hbase.master.procedure.queue.meta.table.priority", 3);
     sysTablePriority = conf.getInt("hbase.master.procedure.queue.system.table.priority", 2);
     userTablePriority = conf.getInt("hbase.master.procedure.queue.user.table.priority", 1);
@@ -492,7 +494,9 @@ public class MasterProcedureScheduler implements ProcedureRunnableSet {
   }
 
   private int getTablePriority(TableName tableName) {
-    if (tableName.equals(TableName.META_TABLE_NAME)) {
+    if (tableName.equals(TableName.ROOT_TABLE_NAME)) {
+      return rootTablePriority;
+    } else if (tableName.equals(TableName.META_TABLE_NAME)) {
       return metaTablePriority;
     } else if (tableName.isSystemTable()) {
       return sysTablePriority;

@@ -19,6 +19,7 @@
 package org.apache.hadoop.hbase.master.handler;
 
 import java.io.IOException;
+import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
 
@@ -31,7 +32,7 @@ import org.apache.hadoop.hbase.HRegionInfo;
 import org.apache.hadoop.hbase.Server;
 import org.apache.hadoop.hbase.TableNotEnabledException;
 import org.apache.hadoop.hbase.TableNotFoundException;
-import org.apache.hadoop.hbase.MetaTableAccessor;
+import org.apache.hadoop.hbase.CatalogAccessor;
 import org.apache.hadoop.hbase.constraint.ConstraintException;
 import org.apache.hadoop.hbase.executor.EventHandler;
 import org.apache.hadoop.hbase.executor.EventType;
@@ -39,6 +40,7 @@ import org.apache.hadoop.hbase.master.AssignmentManager;
 import org.apache.hadoop.hbase.master.BulkAssigner;
 import org.apache.hadoop.hbase.master.HMaster;
 import org.apache.hadoop.hbase.master.MasterCoprocessorHost;
+import org.apache.hadoop.hbase.master.RegionState;
 import org.apache.hadoop.hbase.master.RegionStates;
 import org.apache.hadoop.hbase.master.TableLockManager;
 import org.apache.hadoop.hbase.master.RegionState.State;
@@ -70,7 +72,7 @@ public class DisableTableHandler extends EventHandler {
 
   public DisableTableHandler prepare()
       throws TableNotFoundException, TableNotEnabledException, IOException {
-    if(tableName.equals(TableName.META_TABLE_NAME)) {
+    if(tableName.equals(TableName.META_TABLE_NAME) || tableName.equals(TableName.ROOT_TABLE_NAME)) {
       throw new ConstraintException("Cannot disable catalog table");
     }
     //acquire the table write lock, blocking
@@ -81,7 +83,7 @@ public class DisableTableHandler extends EventHandler {
     boolean success = false;
     try {
       // Check if table exists
-      if (!MetaTableAccessor.tableExists(this.server.getConnection(), tableName)) {
+      if (!CatalogAccessor.tableExists(this.server.getConnection(), tableName)) {
         throw new TableNotFoundException(tableName);
       }
 
@@ -167,6 +169,9 @@ public class DisableTableHandler extends EventHandler {
       // to the in-memory state on this master.
       final List<HRegionInfo> regions = this.assignmentManager
         .getRegionStates().getRegionsOfTable(tableName);
+      //shuffle regions so access to meta
+      //is not monotonically increasing
+      Collections.shuffle(regions);
       if (regions.size() == 0) {
         done = true;
         break;
@@ -235,6 +240,12 @@ public class DisableTableHandler extends EventHandler {
         if (LOG.isDebugEnabled() && ((now - lastLogTime) > 10000)) {
           lastLogTime =  now;
           LOG.debug("Disable waiting until done; " + remaining + " ms remaining; " + regions);
+          for (RegionState regionState :
+              assignmentManager.getRegionStates().getRegionsInTransition().values()) {
+            if (regionState.getRegion().getTable().equals(tableName)) {
+              LOG.debug("RITs: " + regionState);
+            }
+          }
         }
         if (regions.isEmpty()) break;
         remaining = timeout - (now - startTime);

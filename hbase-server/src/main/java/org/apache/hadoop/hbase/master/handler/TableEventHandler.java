@@ -33,7 +33,7 @@ import org.apache.hadoop.hbase.HRegionInfo;
 import org.apache.hadoop.hbase.HRegionLocation;
 import org.apache.hadoop.hbase.HTableDescriptor;
 import org.apache.hadoop.hbase.InvalidFamilyOperationException;
-import org.apache.hadoop.hbase.MetaTableAccessor;
+import org.apache.hadoop.hbase.CatalogAccessor;
 import org.apache.hadoop.hbase.Server;
 import org.apache.hadoop.hbase.ServerName;
 import org.apache.hadoop.hbase.TableName;
@@ -47,7 +47,7 @@ import org.apache.hadoop.hbase.master.MasterServices;
 import org.apache.hadoop.hbase.master.TableLockManager.TableLock;
 import org.apache.hadoop.hbase.protobuf.generated.ZooKeeperProtos;
 import org.apache.hadoop.hbase.util.Bytes;
-import org.apache.hadoop.hbase.zookeeper.MetaTableLocator;
+import org.apache.hadoop.hbase.zookeeper.RootTableLocator;
 import org.apache.hadoop.hbase.classification.InterfaceAudience;
 
 import com.google.common.collect.Lists;
@@ -127,10 +127,10 @@ public abstract class TableEventHandler extends EventHandler {
           tableName);
 
       List<HRegionInfo> hris;
-      if (TableName.META_TABLE_NAME.equals(tableName)) {
-        hris = new MetaTableLocator().getMetaRegions(server.getZooKeeper());
+      if (TableName.ROOT_TABLE_NAME.equals(tableName)) {
+        hris = new RootTableLocator().getRootRegions(server.getZooKeeper());
       } else {
-        hris = MetaTableAccessor.getTableRegions(server.getZooKeeper(),
+        hris = CatalogAccessor.getTableRegions(server.getZooKeeper(),
           server.getConnection(), tableName);
       }
       handleTableOperation(hris);

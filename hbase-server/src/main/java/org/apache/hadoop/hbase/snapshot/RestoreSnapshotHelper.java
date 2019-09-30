@@ -44,7 +44,7 @@ import org.apache.hadoop.hbase.HRegionInfo;
 import org.apache.hadoop.hbase.HTableDescriptor;
 import org.apache.hadoop.hbase.TableName;
 import org.apache.hadoop.hbase.backup.HFileArchiver;
-import org.apache.hadoop.hbase.MetaTableAccessor;
+import org.apache.hadoop.hbase.CatalogAccessor;
 import org.apache.hadoop.hbase.client.Connection;
 import org.apache.hadoop.hbase.errorhandling.ForeignExceptionDispatcher;
 import org.apache.hadoop.hbase.io.HFileLink;
@@ -271,7 +271,7 @@ public class RestoreSnapshotHelper {
     /**
      * Returns the list of new regions added during the on-disk restore.
      * The caller is responsible to add the regions to META.
-     * e.g MetaTableAccessor.addRegionsToMeta(...)
+     * e.g MetaTableAccessor.addRegionsToCatalog(...)
      * @return the list of regions to add to META
      */
     public List<HRegionInfo> getRegionsToAdd() {
@@ -364,7 +364,7 @@ public class RestoreSnapshotHelper {
         }
 
         LOG.debug("Update splits parent " + regionInfo.getEncodedName() + " -> " + daughters);
-        MetaTableAccessor.addRegionToMeta(connection, regionInfo,
+        CatalogAccessor.addRegionToCatalog(connection, regionInfo,
           regionsByName.get(daughters.getFirst()),
           regionsByName.get(daughters.getSecond()));
       }

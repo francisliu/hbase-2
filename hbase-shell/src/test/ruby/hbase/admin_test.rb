@@ -84,6 +84,7 @@ module Hbase
 
     define_test "list should not return meta tables" do
       assert(!admin.list.member?('hbase:meta'))
+      assert(!admin.list.member?('hbase:root'))
     end
 
     define_test "list_namespace_tables for the system namespace should return a list of tables" do

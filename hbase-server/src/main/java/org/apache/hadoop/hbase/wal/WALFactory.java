@@ -88,14 +88,18 @@ public class WALFactory {
   public static final String WAL_PROVIDER = "hbase.wal.provider";
   static final String DEFAULT_WAL_PROVIDER = Providers.defaultProvider.name();
 
+  static final String ROOT_WAL_PROVIDER = "hbase.wal.root_provider";
+  static final String DEFAULT_ROOT_WAL_PROVIDER = Providers.defaultProvider.name();
+
   static final String META_WAL_PROVIDER = "hbase.wal.meta_provider";
   static final String DEFAULT_META_WAL_PROVIDER = Providers.defaultProvider.name();
 
   final String factoryId;
   final WALProvider provider;
-  // The meta updates are written to a different wal. If this
-  // regionserver holds meta regions, then this ref will be non-null.
-  // lazily intialized; most RegionServers don't deal with META
+  // The root and meta updates are written to a different wal. If this
+  // regionserver holds root/meta regions, then this ref will be non-null.
+  // lazily intialized; most RegionServers don't deal with ROOT/META
+  final AtomicReference<WALProvider> rootProvider = new AtomicReference<WALProvider>();
   final AtomicReference<WALProvider> metaProvider = new AtomicReference<WALProvider>();
 
   /**
@@ -200,6 +204,10 @@ public class WALFactory {
    * factory.
    */
   public void close() throws IOException {
+    final WALProvider rootProvider = this.rootProvider.get();
+    if (null != rootProvider) {
+      rootProvider.close();
+    }
     final WALProvider metaProvider = this.metaProvider.get();
     if (null != metaProvider) {
       metaProvider.close();
@@ -218,6 +226,14 @@ public class WALFactory {
    */
   public void shutdown() throws IOException {
     IOException exception = null;
+    final WALProvider rootProvider = this.rootProvider.get();
+    if (null != rootProvider) {
+      try {
+        rootProvider.shutdown();
+      } catch(IOException ioe) {
+        exception = ioe;
+      }
+    }
     final WALProvider metaProvider = this.metaProvider.get();
     if (null != metaProvider) {
       try {
@@ -238,6 +254,26 @@ public class WALFactory {
    */
   public WAL getWAL(final byte[] identifier, final byte[] namespace) throws IOException {
     return provider.getWAL(identifier, namespace);
+  }
+
+  /**
+   * @param identifier may not be null, contents will not be altered
+   */
+  public WAL getRootWAL(final byte[] identifier) throws IOException {
+    WALProvider rootProvider = this.rootProvider.get();
+    if (null == rootProvider) {
+      final WALProvider temp = getProvider(ROOT_WAL_PROVIDER, DEFAULT_ROOT_WAL_PROVIDER,
+          Collections.<WALActionsListener>singletonList(new MetricsWAL()),
+          DefaultWALProvider.ROOT_WAL_PROVIDER_ID);
+      if (this.rootProvider.compareAndSet(null, temp)) {
+        rootProvider = temp;
+      } else {
+        // reference must now be to a provider created in another thread.
+        temp.close();
+        rootProvider = this.rootProvider.get();
+      }
+    }
+    return rootProvider.getWAL(identifier, null);
   }
 
   /**
@@ -469,6 +505,9 @@ public class WALFactory {
     return this.provider;
   }
 
+  public final WALProvider getRootWALProvider() {
+    return this.rootProvider.get();
+  }
   public final WALProvider getMetaWALProvider() {
     return this.metaProvider.get();
   }

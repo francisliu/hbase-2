@@ -27,7 +27,7 @@ import org.apache.hadoop.hbase.master.snapshot.SnapshotManager;
 import org.apache.hadoop.hbase.procedure2.ProcedureExecutor;
 import org.apache.hadoop.hbase.quotas.MasterQuotaManager;
 import org.apache.hadoop.hbase.security.User;
-import org.apache.hadoop.hbase.zookeeper.MetaTableLocator;
+import org.apache.hadoop.hbase.zookeeper.RootTableLocator;
 import org.apache.hadoop.hbase.zookeeper.ZooKeeperWatcher;
 
 import java.io.IOException;
@@ -248,8 +248,7 @@ public class MockNoopMasterServices implements MasterServices, Server {
     return null;
   }
 
-  @Override
-  public MetaTableLocator getMetaTableLocator() {
+  public RootTableLocator getRootTableLocator() {
     return null;
   }
 

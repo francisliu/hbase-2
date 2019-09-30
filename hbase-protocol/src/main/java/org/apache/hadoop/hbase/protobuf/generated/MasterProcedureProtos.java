@@ -1421,9 +1421,13 @@ public final class MasterProcedureProtos {
      */
     SERVER_CRASH_WAIT_ON_ASSIGN(7, 9),
     /**
+     * <code>SERVER_CRASH_PROCESS_ROOT = 200;</code>
+     */
+    SERVER_CRASH_PROCESS_ROOT(8, 200),
+    /**
      * <code>SERVER_CRASH_FINISH = 100;</code>
      */
-    SERVER_CRASH_FINISH(8, 100),
+    SERVER_CRASH_FINISH(9, 100),
     ;
 
     /**
@@ -1463,6 +1467,10 @@ public final class MasterProcedureProtos {
      */
     public static final int SERVER_CRASH_WAIT_ON_ASSIGN_VALUE = 9;
     /**
+     * <code>SERVER_CRASH_PROCESS_ROOT = 200;</code>
+     */
+    public static final int SERVER_CRASH_PROCESS_ROOT_VALUE = 200;
+    /**
      * <code>SERVER_CRASH_FINISH = 100;</code>
      */
     public static final int SERVER_CRASH_FINISH_VALUE = 100;
@@ -1480,6 +1488,7 @@ public final class MasterProcedureProtos {
         case 6: return SERVER_CRASH_PREPARE_LOG_REPLAY;
         case 8: return SERVER_CRASH_ASSIGN;
         case 9: return SERVER_CRASH_WAIT_ON_ASSIGN;
+        case 200: return SERVER_CRASH_PROCESS_ROOT;
         case 100: return SERVER_CRASH_FINISH;
         default: return null;
       }
@@ -13823,6 +13832,16 @@ public final class MasterProcedureProtos {
      * <code>optional bool should_split_wal = 6 [default = true];</code>
      */
     boolean getShouldSplitWal();
+
+    // optional bool carrying_root = 200;
+    /**
+     * <code>optional bool carrying_root = 200;</code>
+     */
+    boolean hasCarryingRoot();
+    /**
+     * <code>optional bool carrying_root = 200;</code>
+     */
+    boolean getCarryingRoot();
   }
   /**
    * Protobuf type {@code hbase.pb.ServerCrashStateData}
@@ -13917,6 +13936,11 @@ public final class MasterProcedureProtos {
             case 48: {
               bitField0_ |= 0x00000008;
               shouldSplitWal_ = input.readBool();
+              break;
+            }
+            case 1600: {
+              bitField0_ |= 0x00000010;
+              carryingRoot_ = input.readBool();
               break;
             }
           }
@@ -14107,6 +14131,22 @@ public final class MasterProcedureProtos {
       return shouldSplitWal_;
     }
 
+    // optional bool carrying_root = 200;
+    public static final int CARRYING_ROOT_FIELD_NUMBER = 200;
+    private boolean carryingRoot_;
+    /**
+     * <code>optional bool carrying_root = 200;</code>
+     */
+    public boolean hasCarryingRoot() {
+      return ((bitField0_ & 0x00000010) == 0x00000010);
+    }
+    /**
+     * <code>optional bool carrying_root = 200;</code>
+     */
+    public boolean getCarryingRoot() {
+      return carryingRoot_;
+    }
+
     private void initFields() {
       serverName_ = org.apache.hadoop.hbase.protobuf.generated.HBaseProtos.ServerName.getDefaultInstance();
       distributedLogReplay_ = false;
@@ -14114,6 +14154,7 @@ public final class MasterProcedureProtos {
       regionsAssigned_ = java.util.Collections.emptyList();
       carryingMeta_ = false;
       shouldSplitWal_ = true;
+      carryingRoot_ = false;
     }
     private byte memoizedIsInitialized = -1;
     public final boolean isInitialized() {
@@ -14165,6 +14206,9 @@ public final class MasterProcedureProtos {
       if (((bitField0_ & 0x00000008) == 0x00000008)) {
         output.writeBool(6, shouldSplitWal_);
       }
+      if (((bitField0_ & 0x00000010) == 0x00000010)) {
+        output.writeBool(200, carryingRoot_);
+      }
       getUnknownFields().writeTo(output);
     }
 
@@ -14197,6 +14241,10 @@ public final class MasterProcedureProtos {
       if (((bitField0_ & 0x00000008) == 0x00000008)) {
         size += com.google.protobuf.CodedOutputStream
           .computeBoolSize(6, shouldSplitWal_);
+      }
+      if (((bitField0_ & 0x00000010) == 0x00000010)) {
+        size += com.google.protobuf.CodedOutputStream
+          .computeBoolSize(200, carryingRoot_);
       }
       size += getUnknownFields().getSerializedSize();
       memoizedSerializedSize = size;
@@ -14245,6 +14293,11 @@ public final class MasterProcedureProtos {
         result = result && (getShouldSplitWal()
             == other.getShouldSplitWal());
       }
+      result = result && (hasCarryingRoot() == other.hasCarryingRoot());
+      if (hasCarryingRoot()) {
+        result = result && (getCarryingRoot()
+            == other.getCarryingRoot());
+      }
       result = result &&
           getUnknownFields().equals(other.getUnknownFields());
       return result;
@@ -14281,6 +14334,10 @@ public final class MasterProcedureProtos {
       if (hasShouldSplitWal()) {
         hash = (37 * hash) + SHOULD_SPLIT_WAL_FIELD_NUMBER;
         hash = (53 * hash) + hashBoolean(getShouldSplitWal());
+      }
+      if (hasCarryingRoot()) {
+        hash = (37 * hash) + CARRYING_ROOT_FIELD_NUMBER;
+        hash = (53 * hash) + hashBoolean(getCarryingRoot());
       }
       hash = (29 * hash) + getUnknownFields().hashCode();
       memoizedHashCode = hash;
@@ -14418,6 +14475,8 @@ public final class MasterProcedureProtos {
         bitField0_ = (bitField0_ & ~0x00000010);
         shouldSplitWal_ = true;
         bitField0_ = (bitField0_ & ~0x00000020);
+        carryingRoot_ = false;
+        bitField0_ = (bitField0_ & ~0x00000040);
         return this;
       }
 
@@ -14484,6 +14543,10 @@ public final class MasterProcedureProtos {
           to_bitField0_ |= 0x00000008;
         }
         result.shouldSplitWal_ = shouldSplitWal_;
+        if (((from_bitField0_ & 0x00000040) == 0x00000040)) {
+          to_bitField0_ |= 0x00000010;
+        }
+        result.carryingRoot_ = carryingRoot_;
         result.bitField0_ = to_bitField0_;
         onBuilt();
         return result;
@@ -14563,6 +14626,9 @@ public final class MasterProcedureProtos {
         }
         if (other.hasShouldSplitWal()) {
           setShouldSplitWal(other.getShouldSplitWal());
+        }
+        if (other.hasCarryingRoot()) {
+          setCarryingRoot(other.getCarryingRoot());
         }
         this.mergeUnknownFields(other.getUnknownFields());
         return this;
@@ -15307,6 +15373,39 @@ public final class MasterProcedureProtos {
         return this;
       }
 
+      // optional bool carrying_root = 200;
+      private boolean carryingRoot_ ;
+      /**
+       * <code>optional bool carrying_root = 200;</code>
+       */
+      public boolean hasCarryingRoot() {
+        return ((bitField0_ & 0x00000040) == 0x00000040);
+      }
+      /**
+       * <code>optional bool carrying_root = 200;</code>
+       */
+      public boolean getCarryingRoot() {
+        return carryingRoot_;
+      }
+      /**
+       * <code>optional bool carrying_root = 200;</code>
+       */
+      public Builder setCarryingRoot(boolean value) {
+        bitField0_ |= 0x00000040;
+        carryingRoot_ = value;
+        onChanged();
+        return this;
+      }
+      /**
+       * <code>optional bool carrying_root = 200;</code>
+       */
+      public Builder clearCarryingRoot() {
+        bitField0_ = (bitField0_ & ~0x00000040);
+        carryingRoot_ = false;
+        onChanged();
+        return this;
+      }
+
       // @@protoc_insertion_point(builder_scope:hbase.pb.ServerCrashStateData)
     }
 
@@ -15445,91 +15544,93 @@ public final class MasterProcedureProtos {
       "isableTableStateData\022,\n\tuser_info\030\001 \002(\0132" +
       "\031.hbase.pb.UserInformation\022\'\n\ntable_name" +
       "\030\002 \002(\0132\023.hbase.pb.TableName\022\036\n\026skip_tabl" +
-      "e_state_check\030\003 \002(\010\"\201\002\n\024ServerCrashState" +
+      "e_state_check\030\003 \002(\010\"\231\002\n\024ServerCrashState" +
       "Data\022)\n\013server_name\030\001 \002(\0132\024.hbase.pb.Ser" +
       "verName\022\036\n\026distributed_log_replay\030\002 \001(\010\022" +
       "7\n\031regions_on_crashed_server\030\003 \003(\0132\024.hba" +
       "se.pb.RegionInfo\022.\n\020regions_assigned\030\004 \003" +
       "(\0132\024.hbase.pb.RegionInfo\022\025\n\rcarrying_met" +
-      "a\030\005 \001(\010\022\036\n\020should_split_wal\030\006 \001(\010:\004true*",
-      "\330\001\n\020CreateTableState\022\036\n\032CREATE_TABLE_PRE" +
-      "_OPERATION\020\001\022 \n\034CREATE_TABLE_WRITE_FS_LA" +
-      "YOUT\020\002\022\034\n\030CREATE_TABLE_ADD_TO_META\020\003\022\037\n\033" +
-      "CREATE_TABLE_ASSIGN_REGIONS\020\004\022\"\n\036CREATE_" +
-      "TABLE_UPDATE_DESC_CACHE\020\005\022\037\n\033CREATE_TABL" +
-      "E_POST_OPERATION\020\006*\207\002\n\020ModifyTableState\022" +
-      "\030\n\024MODIFY_TABLE_PREPARE\020\001\022\036\n\032MODIFY_TABL" +
-      "E_PRE_OPERATION\020\002\022(\n$MODIFY_TABLE_UPDATE" +
-      "_TABLE_DESCRIPTOR\020\003\022&\n\"MODIFY_TABLE_REMO" +
-      "VE_REPLICA_COLUMN\020\004\022!\n\035MODIFY_TABLE_DELE",
-      "TE_FS_LAYOUT\020\005\022\037\n\033MODIFY_TABLE_POST_OPER" +
-      "ATION\020\006\022#\n\037MODIFY_TABLE_REOPEN_ALL_REGIO" +
-      "NS\020\007*\212\002\n\022TruncateTableState\022 \n\034TRUNCATE_" +
-      "TABLE_PRE_OPERATION\020\001\022#\n\037TRUNCATE_TABLE_" +
-      "REMOVE_FROM_META\020\002\022\"\n\036TRUNCATE_TABLE_CLE" +
-      "AR_FS_LAYOUT\020\003\022#\n\037TRUNCATE_TABLE_CREATE_" +
-      "FS_LAYOUT\020\004\022\036\n\032TRUNCATE_TABLE_ADD_TO_MET" +
-      "A\020\005\022!\n\035TRUNCATE_TABLE_ASSIGN_REGIONS\020\006\022!" +
-      "\n\035TRUNCATE_TABLE_POST_OPERATION\020\007*\337\001\n\020De" +
-      "leteTableState\022\036\n\032DELETE_TABLE_PRE_OPERA",
-      "TION\020\001\022!\n\035DELETE_TABLE_REMOVE_FROM_META\020" +
-      "\002\022 \n\034DELETE_TABLE_CLEAR_FS_LAYOUT\020\003\022\"\n\036D" +
-      "ELETE_TABLE_UPDATE_DESC_CACHE\020\004\022!\n\035DELET" +
-      "E_TABLE_UNASSIGN_REGIONS\020\005\022\037\n\033DELETE_TAB" +
-      "LE_POST_OPERATION\020\006*\320\001\n\024CreateNamespaceS" +
-      "tate\022\034\n\030CREATE_NAMESPACE_PREPARE\020\001\022%\n!CR" +
-      "EATE_NAMESPACE_CREATE_DIRECTORY\020\002\022)\n%CRE" +
-      "ATE_NAMESPACE_INSERT_INTO_NS_TABLE\020\003\022\036\n\032" +
-      "CREATE_NAMESPACE_UPDATE_ZK\020\004\022(\n$CREATE_N" +
-      "AMESPACE_SET_NAMESPACE_QUOTA\020\005*z\n\024Modify",
-      "NamespaceState\022\034\n\030MODIFY_NAMESPACE_PREPA" +
-      "RE\020\001\022$\n MODIFY_NAMESPACE_UPDATE_NS_TABLE" +
-      "\020\002\022\036\n\032MODIFY_NAMESPACE_UPDATE_ZK\020\003*\332\001\n\024D" +
-      "eleteNamespaceState\022\034\n\030DELETE_NAMESPACE_" +
-      "PREPARE\020\001\022)\n%DELETE_NAMESPACE_DELETE_FRO" +
-      "M_NS_TABLE\020\002\022#\n\037DELETE_NAMESPACE_REMOVE_" +
-      "FROM_ZK\020\003\022\'\n#DELETE_NAMESPACE_DELETE_DIR" +
-      "ECTORIES\020\004\022+\n\'DELETE_NAMESPACE_REMOVE_NA" +
-      "MESPACE_QUOTA\020\005*\331\001\n\024AddColumnFamilyState" +
-      "\022\035\n\031ADD_COLUMN_FAMILY_PREPARE\020\001\022#\n\037ADD_C",
-      "OLUMN_FAMILY_PRE_OPERATION\020\002\022-\n)ADD_COLU" +
-      "MN_FAMILY_UPDATE_TABLE_DESCRIPTOR\020\003\022$\n A" +
-      "DD_COLUMN_FAMILY_POST_OPERATION\020\004\022(\n$ADD" +
-      "_COLUMN_FAMILY_REOPEN_ALL_REGIONS\020\005*\353\001\n\027" +
-      "ModifyColumnFamilyState\022 \n\034MODIFY_COLUMN" +
-      "_FAMILY_PREPARE\020\001\022&\n\"MODIFY_COLUMN_FAMIL" +
-      "Y_PRE_OPERATION\020\002\0220\n,MODIFY_COLUMN_FAMIL" +
-      "Y_UPDATE_TABLE_DESCRIPTOR\020\003\022\'\n#MODIFY_CO" +
-      "LUMN_FAMILY_POST_OPERATION\020\004\022+\n\'MODIFY_C" +
-      "OLUMN_FAMILY_REOPEN_ALL_REGIONS\020\005*\226\002\n\027De",
-      "leteColumnFamilyState\022 \n\034DELETE_COLUMN_F" +
-      "AMILY_PREPARE\020\001\022&\n\"DELETE_COLUMN_FAMILY_" +
-      "PRE_OPERATION\020\002\0220\n,DELETE_COLUMN_FAMILY_" +
-      "UPDATE_TABLE_DESCRIPTOR\020\003\022)\n%DELETE_COLU" +
-      "MN_FAMILY_DELETE_FS_LAYOUT\020\004\022\'\n#DELETE_C" +
-      "OLUMN_FAMILY_POST_OPERATION\020\005\022+\n\'DELETE_" +
-      "COLUMN_FAMILY_REOPEN_ALL_REGIONS\020\006*\350\001\n\020E" +
-      "nableTableState\022\030\n\024ENABLE_TABLE_PREPARE\020" +
-      "\001\022\036\n\032ENABLE_TABLE_PRE_OPERATION\020\002\022)\n%ENA" +
-      "BLE_TABLE_SET_ENABLING_TABLE_STATE\020\003\022$\n ",
-      "ENABLE_TABLE_MARK_REGIONS_ONLINE\020\004\022(\n$EN" +
-      "ABLE_TABLE_SET_ENABLED_TABLE_STATE\020\005\022\037\n\033" +
-      "ENABLE_TABLE_POST_OPERATION\020\006*\362\001\n\021Disabl" +
-      "eTableState\022\031\n\025DISABLE_TABLE_PREPARE\020\001\022\037" +
-      "\n\033DISABLE_TABLE_PRE_OPERATION\020\002\022+\n\'DISAB" +
-      "LE_TABLE_SET_DISABLING_TABLE_STATE\020\003\022&\n\"" +
-      "DISABLE_TABLE_MARK_REGIONS_OFFLINE\020\004\022*\n&" +
-      "DISABLE_TABLE_SET_DISABLED_TABLE_STATE\020\005" +
-      "\022 \n\034DISABLE_TABLE_POST_OPERATION\020\006*\234\002\n\020S" +
-      "erverCrashState\022\026\n\022SERVER_CRASH_START\020\001\022",
-      "\035\n\031SERVER_CRASH_PROCESS_META\020\002\022\034\n\030SERVER" +
-      "_CRASH_GET_REGIONS\020\003\022\036\n\032SERVER_CRASH_NO_" +
-      "SPLIT_LOGS\020\004\022\033\n\027SERVER_CRASH_SPLIT_LOGS\020" +
-      "\005\022#\n\037SERVER_CRASH_PREPARE_LOG_REPLAY\020\006\022\027" +
-      "\n\023SERVER_CRASH_ASSIGN\020\010\022\037\n\033SERVER_CRASH_" +
-      "WAIT_ON_ASSIGN\020\t\022\027\n\023SERVER_CRASH_FINISH\020" +
-      "dBK\n*org.apache.hadoop.hbase.protobuf.ge" +
-      "neratedB\025MasterProcedureProtosH\001\210\001\001\240\001\001"
+      "a\030\005 \001(\010\022\036\n\020should_split_wal\030\006 \001(\010:\004true\022",
+      "\026\n\rcarrying_root\030\310\001 \001(\010*\330\001\n\020CreateTableS" +
+      "tate\022\036\n\032CREATE_TABLE_PRE_OPERATION\020\001\022 \n\034" +
+      "CREATE_TABLE_WRITE_FS_LAYOUT\020\002\022\034\n\030CREATE" +
+      "_TABLE_ADD_TO_META\020\003\022\037\n\033CREATE_TABLE_ASS" +
+      "IGN_REGIONS\020\004\022\"\n\036CREATE_TABLE_UPDATE_DES" +
+      "C_CACHE\020\005\022\037\n\033CREATE_TABLE_POST_OPERATION" +
+      "\020\006*\207\002\n\020ModifyTableState\022\030\n\024MODIFY_TABLE_" +
+      "PREPARE\020\001\022\036\n\032MODIFY_TABLE_PRE_OPERATION\020" +
+      "\002\022(\n$MODIFY_TABLE_UPDATE_TABLE_DESCRIPTO" +
+      "R\020\003\022&\n\"MODIFY_TABLE_REMOVE_REPLICA_COLUM",
+      "N\020\004\022!\n\035MODIFY_TABLE_DELETE_FS_LAYOUT\020\005\022\037" +
+      "\n\033MODIFY_TABLE_POST_OPERATION\020\006\022#\n\037MODIF" +
+      "Y_TABLE_REOPEN_ALL_REGIONS\020\007*\212\002\n\022Truncat" +
+      "eTableState\022 \n\034TRUNCATE_TABLE_PRE_OPERAT" +
+      "ION\020\001\022#\n\037TRUNCATE_TABLE_REMOVE_FROM_META" +
+      "\020\002\022\"\n\036TRUNCATE_TABLE_CLEAR_FS_LAYOUT\020\003\022#" +
+      "\n\037TRUNCATE_TABLE_CREATE_FS_LAYOUT\020\004\022\036\n\032T" +
+      "RUNCATE_TABLE_ADD_TO_META\020\005\022!\n\035TRUNCATE_" +
+      "TABLE_ASSIGN_REGIONS\020\006\022!\n\035TRUNCATE_TABLE" +
+      "_POST_OPERATION\020\007*\337\001\n\020DeleteTableState\022\036",
+      "\n\032DELETE_TABLE_PRE_OPERATION\020\001\022!\n\035DELETE" +
+      "_TABLE_REMOVE_FROM_META\020\002\022 \n\034DELETE_TABL" +
+      "E_CLEAR_FS_LAYOUT\020\003\022\"\n\036DELETE_TABLE_UPDA" +
+      "TE_DESC_CACHE\020\004\022!\n\035DELETE_TABLE_UNASSIGN" +
+      "_REGIONS\020\005\022\037\n\033DELETE_TABLE_POST_OPERATIO" +
+      "N\020\006*\320\001\n\024CreateNamespaceState\022\034\n\030CREATE_N" +
+      "AMESPACE_PREPARE\020\001\022%\n!CREATE_NAMESPACE_C" +
+      "REATE_DIRECTORY\020\002\022)\n%CREATE_NAMESPACE_IN" +
+      "SERT_INTO_NS_TABLE\020\003\022\036\n\032CREATE_NAMESPACE" +
+      "_UPDATE_ZK\020\004\022(\n$CREATE_NAMESPACE_SET_NAM",
+      "ESPACE_QUOTA\020\005*z\n\024ModifyNamespaceState\022\034" +
+      "\n\030MODIFY_NAMESPACE_PREPARE\020\001\022$\n MODIFY_N" +
+      "AMESPACE_UPDATE_NS_TABLE\020\002\022\036\n\032MODIFY_NAM" +
+      "ESPACE_UPDATE_ZK\020\003*\332\001\n\024DeleteNamespaceSt" +
+      "ate\022\034\n\030DELETE_NAMESPACE_PREPARE\020\001\022)\n%DEL" +
+      "ETE_NAMESPACE_DELETE_FROM_NS_TABLE\020\002\022#\n\037" +
+      "DELETE_NAMESPACE_REMOVE_FROM_ZK\020\003\022\'\n#DEL" +
+      "ETE_NAMESPACE_DELETE_DIRECTORIES\020\004\022+\n\'DE" +
+      "LETE_NAMESPACE_REMOVE_NAMESPACE_QUOTA\020\005*" +
+      "\331\001\n\024AddColumnFamilyState\022\035\n\031ADD_COLUMN_F",
+      "AMILY_PREPARE\020\001\022#\n\037ADD_COLUMN_FAMILY_PRE" +
+      "_OPERATION\020\002\022-\n)ADD_COLUMN_FAMILY_UPDATE" +
+      "_TABLE_DESCRIPTOR\020\003\022$\n ADD_COLUMN_FAMILY" +
+      "_POST_OPERATION\020\004\022(\n$ADD_COLUMN_FAMILY_R" +
+      "EOPEN_ALL_REGIONS\020\005*\353\001\n\027ModifyColumnFami" +
+      "lyState\022 \n\034MODIFY_COLUMN_FAMILY_PREPARE\020" +
+      "\001\022&\n\"MODIFY_COLUMN_FAMILY_PRE_OPERATION\020" +
+      "\002\0220\n,MODIFY_COLUMN_FAMILY_UPDATE_TABLE_D" +
+      "ESCRIPTOR\020\003\022\'\n#MODIFY_COLUMN_FAMILY_POST" +
+      "_OPERATION\020\004\022+\n\'MODIFY_COLUMN_FAMILY_REO",
+      "PEN_ALL_REGIONS\020\005*\226\002\n\027DeleteColumnFamily" +
+      "State\022 \n\034DELETE_COLUMN_FAMILY_PREPARE\020\001\022" +
+      "&\n\"DELETE_COLUMN_FAMILY_PRE_OPERATION\020\002\022" +
+      "0\n,DELETE_COLUMN_FAMILY_UPDATE_TABLE_DES" +
+      "CRIPTOR\020\003\022)\n%DELETE_COLUMN_FAMILY_DELETE" +
+      "_FS_LAYOUT\020\004\022\'\n#DELETE_COLUMN_FAMILY_POS" +
+      "T_OPERATION\020\005\022+\n\'DELETE_COLUMN_FAMILY_RE" +
+      "OPEN_ALL_REGIONS\020\006*\350\001\n\020EnableTableState\022" +
+      "\030\n\024ENABLE_TABLE_PREPARE\020\001\022\036\n\032ENABLE_TABL" +
+      "E_PRE_OPERATION\020\002\022)\n%ENABLE_TABLE_SET_EN",
+      "ABLING_TABLE_STATE\020\003\022$\n ENABLE_TABLE_MAR" +
+      "K_REGIONS_ONLINE\020\004\022(\n$ENABLE_TABLE_SET_E" +
+      "NABLED_TABLE_STATE\020\005\022\037\n\033ENABLE_TABLE_POS" +
+      "T_OPERATION\020\006*\362\001\n\021DisableTableState\022\031\n\025D" +
+      "ISABLE_TABLE_PREPARE\020\001\022\037\n\033DISABLE_TABLE_" +
+      "PRE_OPERATION\020\002\022+\n\'DISABLE_TABLE_SET_DIS" +
+      "ABLING_TABLE_STATE\020\003\022&\n\"DISABLE_TABLE_MA" +
+      "RK_REGIONS_OFFLINE\020\004\022*\n&DISABLE_TABLE_SE" +
+      "T_DISABLED_TABLE_STATE\020\005\022 \n\034DISABLE_TABL" +
+      "E_POST_OPERATION\020\006*\274\002\n\020ServerCrashState\022",
+      "\026\n\022SERVER_CRASH_START\020\001\022\035\n\031SERVER_CRASH_" +
+      "PROCESS_META\020\002\022\034\n\030SERVER_CRASH_GET_REGIO" +
+      "NS\020\003\022\036\n\032SERVER_CRASH_NO_SPLIT_LOGS\020\004\022\033\n\027" +
+      "SERVER_CRASH_SPLIT_LOGS\020\005\022#\n\037SERVER_CRAS" +
+      "H_PREPARE_LOG_REPLAY\020\006\022\027\n\023SERVER_CRASH_A" +
+      "SSIGN\020\010\022\037\n\033SERVER_CRASH_WAIT_ON_ASSIGN\020\t" +
+      "\022\036\n\031SERVER_CRASH_PROCESS_ROOT\020\310\001\022\027\n\023SERV" +
+      "ER_CRASH_FINISH\020dBK\n*org.apache.hadoop.h" +
+      "base.protobuf.generatedB\025MasterProcedure" +
+      "ProtosH\001\210\001\001\240\001\001"
     };
     com.google.protobuf.Descriptors.FileDescriptor.InternalDescriptorAssigner assigner =
       new com.google.protobuf.Descriptors.FileDescriptor.InternalDescriptorAssigner() {
@@ -15613,7 +15714,7 @@ public final class MasterProcedureProtos {
           internal_static_hbase_pb_ServerCrashStateData_fieldAccessorTable = new
             com.google.protobuf.GeneratedMessage.FieldAccessorTable(
               internal_static_hbase_pb_ServerCrashStateData_descriptor,
-              new java.lang.String[] { "ServerName", "DistributedLogReplay", "RegionsOnCrashedServer", "RegionsAssigned", "CarryingMeta", "ShouldSplitWal", });
+              new java.lang.String[] { "ServerName", "DistributedLogReplay", "RegionsOnCrashedServer", "RegionsAssigned", "CarryingMeta", "ShouldSplitWal", "CarryingRoot", });
           return null;
         }
       };

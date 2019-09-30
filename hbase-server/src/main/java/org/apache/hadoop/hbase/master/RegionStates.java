@@ -20,6 +20,7 @@ package org.apache.hadoop.hbase.master;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
@@ -34,7 +35,7 @@ import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hbase.HConstants;
 import org.apache.hadoop.hbase.HRegionInfo;
 import org.apache.hadoop.hbase.HTableDescriptor;
-import org.apache.hadoop.hbase.MetaTableAccessor;
+import org.apache.hadoop.hbase.CatalogAccessor;
 import org.apache.hadoop.hbase.RegionTransition;
 import org.apache.hadoop.hbase.ServerLoad;
 import org.apache.hadoop.hbase.ServerName;
@@ -54,6 +55,7 @@ import org.apache.zookeeper.KeeperException;
 
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Preconditions;
+import com.google.common.collect.Sets;
 
 /**
  * Region state accountant. It holds the states of all regions in the memory.
@@ -691,8 +693,10 @@ public class RegionStates {
 
   /**
    * A server is offline, all regions on it are dead.
+   * @param metaOnly process only meta regions
    */
-  public List<HRegionInfo> serverOffline(final ZooKeeperWatcher watcher, final ServerName sn) {
+  public List<HRegionInfo> serverOffline(final ZooKeeperWatcher watcher, final ServerName sn, 
+      boolean metaOnly) {
     // Offline all regions on this server not already in transition.
     List<HRegionInfo> rits = new ArrayList<HRegionInfo>();
     Set<HRegionInfo> regionsToClean = new HashSet<HRegionInfo>();
@@ -700,11 +704,11 @@ public class RegionStates {
     // ConcurrentModificationException and deadlock in case of meta anassigned,
     // but RegionState a blocked.
     Set<HRegionInfo> regionsToOffline = new HashSet<HRegionInfo>();
+    List<HRegionInfo> regionsToMerge = new ArrayList<HRegionInfo>();
+    List<HRegionInfo> regionsToSplit = new ArrayList<HRegionInfo>();
     synchronized (this) {
       Set<HRegionInfo> assignedRegions = serverHoldings.get(sn);
-      if (assignedRegions == null) {
-        assignedRegions = new HashSet<HRegionInfo>();
-      }
+      assignedRegions = metaOnly ? filterMeta(assignedRegions) : filterNonMeta(assignedRegions);
 
       for (HRegionInfo region : assignedRegions) {
         // Offline open regions, no need to offline if SPLIT/MERGED/OFFLINE
@@ -723,6 +727,9 @@ public class RegionStates {
       }
 
       for (RegionState state : regionsInTransition.values()) {
+        if (metaOnly != state.getRegion().isMetaTable()) {
+          continue;
+        }        
         HRegionInfo hri = state.getRegion();
         if (assignedRegions.contains(hri)) {
           // Region is open on this region server, but in transition.
@@ -742,9 +749,23 @@ public class RegionStates {
               " to be reassigned by ServerCrashProcedure for " + sn);
             rits.add(hri);
           } else if(state.isSplittingNew() || state.isMergingNew()) {
-            LOG.info("Offline/Cleanup region if no meta entry exists, hri: " + hri +
-                " state: " + state);
+            LOG.info("Offline/Cleanup region if no meta entry exists, hri: " + hri
+                + " state: " + state);
             regionsToClean.add(state.getRegion());
+          } else if (state.isMerging() && !useZK) {
+            //TODO this should go somehwere else
+            //Should not add one more place to do
+            //Region state transitions
+            LOG.info("Found region in " + state + " rolling forward to final merged state " +
+                "RegionStates.merge() was called " + sn);
+            regionsToMerge.add(hri);
+          } else if (state.isSplitting() && !useZK) {
+            //TODO this should go somehwere else
+            //Should not add one more place to do
+            //Region state transitions
+            LOG.info("Found region in " + state + " rolling forward to final split state " +
+                "RegionStates.split() was called " + sn);
+            regionsToSplit.add(hri);
           } else {
             LOG.warn("THIS SHOULD NOT HAPPEN: unexpected " + state);
           }
@@ -757,8 +778,42 @@ public class RegionStates {
       regionOffline(hri);
     }
 
+    for (HRegionInfo hri : regionsToMerge) {
+      regionOffline(hri, State.MERGED);
+    }
+
+    for (HRegionInfo hri : regionsToSplit) {
+      regionOffline(hri, State.SPLIT);
+    }
+
     cleanFailedSplitMergeRegions(regionsToClean);
     return rits;
+  }
+
+  private Set<HRegionInfo> filterMeta(Set<HRegionInfo> regions) {
+    if (regions == null) {
+      return Collections.emptySet();
+    }
+    Set<HRegionInfo> metaRegions = Sets.newHashSet();
+    for (HRegionInfo region : regions) {
+      if (region.isMetaTable()) {
+        metaRegions.add(region);
+      }
+    }
+    return metaRegions;
+  }
+
+  private Set<HRegionInfo> filterNonMeta(Set<HRegionInfo> regions) {
+    if (regions == null) {
+      return Collections.emptySet();
+    }
+    Set<HRegionInfo> nonMetaRegions = Sets.newHashSet();
+    for (HRegionInfo region : regions) {
+      if (!region.isMetaTable()) {
+        nonMetaRegions.add(region);
+      }
+    }
+    return nonMetaRegions;
   }
 
   /**
@@ -779,13 +834,14 @@ public class RegionStates {
       // This is a cleanup task. Not critical.
       try {
         Pair<HRegionInfo, ServerName> regionPair =
-            MetaTableAccessor.getRegion(server.getConnection(), hri.getRegionName());
+            CatalogAccessor.getRegion(server.getConnection(), hri.getRegionName());
+
         if (regionPair == null || useZK) {
           regionOffline(hri);
 
           // If we use ZK, then we can cleanup entries from meta, since we roll back.
           if (regionPair != null) {
-            MetaTableAccessor.deleteRegion(this.server.getConnection(), hri);
+            CatalogAccessor.deleteRegion(this.server.getConnection(), hri);
           }
           LOG.debug("Cleaning up HDFS since no meta entry exists, hri: " + hri);
           FSUtils.deleteRegionDir(server.getConfiguration(), hri);
@@ -1038,7 +1094,8 @@ public class RegionStates {
         continue;
       }
       TableName tableName = hri.getTable();
-      if (!TableName.META_TABLE_NAME.equals(tableName)
+      if (!TableName.ROOT_TABLE_NAME.equals(tableName)
+          && !TableName.META_TABLE_NAME.equals(tableName)
           && (noExcludeTables || !excludedTables.contains(tableName))) {
         toBeClosed.add(hri);
       }
@@ -1107,7 +1164,7 @@ public class RegionStates {
       } else {
         for (Map.Entry<ServerName, Set<HRegionInfo>> e: serverHoldings.entrySet()) {
           for (HRegionInfo hri: e.getValue()) {
-            if (hri.isMetaRegion()) continue;
+            if (hri.isMetaRegion() || hri.isRootRegion()) continue;
             TableName tablename = hri.getTable();
             Map<ServerName, List<HRegionInfo>> svrToRegions = result.get(tablename);
             if (svrToRegions == null) {
@@ -1176,7 +1233,7 @@ public class RegionStates {
 
     try {
       Pair<HRegionInfo, ServerName> p =
-        MetaTableAccessor.getRegion(server.getConnection(), regionName);
+        CatalogAccessor.getRegion(server.getConnection(), regionName);
       HRegionInfo hri = p == null ? null : p.getFirst();
       if (hri != null) {
         createRegionState(hri);
