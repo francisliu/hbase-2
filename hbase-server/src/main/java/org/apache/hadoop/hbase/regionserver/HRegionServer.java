@@ -64,30 +64,9 @@ import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
-import org.apache.hadoop.hbase.CallQueueTooBigException;
-import org.apache.hadoop.hbase.ChoreService;
-import org.apache.hadoop.hbase.ClockOutOfSyncException;
-import org.apache.hadoop.hbase.CoordinatedStateManager;
-import org.apache.hadoop.hbase.CoordinatedStateManagerFactory;
-import org.apache.hadoop.hbase.HBaseConfiguration;
-import org.apache.hadoop.hbase.HBaseInterfaceAudience;
-import org.apache.hadoop.hbase.HConstants;
-import org.apache.hadoop.hbase.HRegionInfo;
-import org.apache.hadoop.hbase.HealthCheckChore;
-import org.apache.hadoop.hbase.CatalogAccessor;
-import org.apache.hadoop.hbase.NotServingRegionException;
-import org.apache.hadoop.hbase.RemoteExceptionHandler;
-import org.apache.hadoop.hbase.ScheduledChore;
-import org.apache.hadoop.hbase.ServerName;
-import org.apache.hadoop.hbase.Stoppable;
-import org.apache.hadoop.hbase.TableDescriptors;
-import org.apache.hadoop.hbase.TableName;
-import org.apache.hadoop.hbase.YouAreDeadException;
-import org.apache.hadoop.hbase.ZNodeClearer;
+import org.apache.hadoop.hbase.*;
 import org.apache.hadoop.hbase.classification.InterfaceAudience;
-import org.apache.hadoop.hbase.client.ClusterConnection;
-import org.apache.hadoop.hbase.client.ConnectionUtils;
-import org.apache.hadoop.hbase.client.RpcRetryingCallerFactory;
+import org.apache.hadoop.hbase.client.*;
 import org.apache.hadoop.hbase.conf.ConfigurationManager;
 import org.apache.hadoop.hbase.conf.ConfigurationObserver;
 import org.apache.hadoop.hbase.coordination.BaseCoordinatedStateManager;
@@ -3110,6 +3089,27 @@ public class HRegionServer extends HasThread implements
       MovedRegionInfo moveInfo = getMovedRegion(encodedRegionName);
       if (moveInfo != null) {
         throw new RegionMovedException(moveInfo.getServerName(), moveInfo.getSeqNum());
+      }
+
+      if (HRegionInfo.FIRST_META_REGIONINFO.getEncodedName().equals(encodedRegionName) &&
+          this.onlineRegions.get(HRegionInfo.ROOT_REGIONINFO.getEncodedName()) != null &&
+          this.onlineRegions.get(HRegionInfo.FIRST_META_REGIONINFO.getEncodedName()) == null) {
+
+        HRegionLocation  found = null;
+        try {
+          Region rootRegion = this.onlineRegions.get(HRegionInfo.ROOT_REGIONINFO.getEncodedName());
+          List<Cell> cells = new ArrayList<>();
+          RegionScanner scanner = rootRegion.getScanner(new Scan());
+          scanner.next(cells);
+          Result result = Result.create(cells);
+          found = CatalogAccessor.getRegionLocations(result).getDefaultRegionLocation();
+          scanner.close();
+        } catch (IOException e) {
+          LOG.info("Failed to get meta location for meta redirect", e);
+        }
+        if (found != null) {
+          throw new RegionMovedException(found.getServerName(), found.getSeqNum());
+        }
       }
       Boolean isOpening = this.regionsInTransitionInRS.get(Bytes.toBytes(encodedRegionName));
       String regionNameStr = regionName == null?
